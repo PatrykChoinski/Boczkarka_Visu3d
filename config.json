@@ -1,0 +1,12 @@
+{
+  "endpoint": "opc.tcp://localhost:4840",
+  "username": "",
+  "password": "",
+  "node_prefix": "",
+  "poll_ms": 50,
+  "variables": {},
+  "auto_clear_on_start": true,
+  "material_margin": 300.0,
+  "material_min_size": [1200.0, 800.0],
+  "fullscreen": false
+}
