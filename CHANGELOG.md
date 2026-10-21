@@ -6,6 +6,9 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Podpięcie zmiennych PLC przez OPC UA – sprawdzone (#128)
+- `scripts/check-plc-symbols.mjs` uruchomiony na świeżym pliku symboli projektu AI (Generuj kod po #130): 87/87 zmiennych z `VARIABLES` w symbol configu, typy zgodne. Wszystkie zmienne są zadeklarowane w GVL. Pozycje, prędkości, tryby i wyjścia zapisuje PLC, a parametry i bity `bService…` są wpisywane z HMI. Opis i wynik w README (Rozwój i testy → Podpięcie zmiennych PLC).
+
 ### Wychył w cięciu, okno ruchów ręcznych, blokada bez bazowania, logowanie (#142, #143, #144, #145)
 - #142 Wychył: pola „Cięcie pod kątem – wychył B” (`bManualBAngle`) i kąt (`fManualBSetPosition`, −2,5…90°) na ekranie cięcia prostego jak `manual_ciecie` w HMI (wcześniej schowane we wspólnych polach „Głębokość, wychył, wyjazd”). Skos tylko dla 0 < B < 90 (`GetPositions`) – inaczej komunikat i cięcie pionowe. Pasy, bloki, krawędzie, łuk, okrąg i elipsa tną bez skosu jak w PLC (`CutStripesST`, `CutArcST`, `CutCircleST` zerują `bManualBAngle`; wcześniej wychył ze wspólnych pól działał też w pasach i blokach).
 - #143 Ruchy ręczne: zamiast zakładki – okno otwierane przyciskiem „Ruchy ręczne” w górnym menu, przesuwane za nagłówek (myszą i dotykiem, w granicach ekranu, pozycja zapamiętana w przeglądarce), zamykane ×. Przycisk aktywny tylko offline po bazowaniu (i od poziomu Operator).

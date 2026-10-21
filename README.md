@@ -123,7 +123,8 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
    potrzebna.
 3. Na sterowniku musi działać serwer OPC UA CODESYS (port 4840). W symbol
    configu jest już `SupportOPCUA` i potrzebne zmienne (`HMI`, `HMI2`,
-   `Communication`, `IOVars`).
+   `Communication`, `IOVars`, `ToolChangeGVL`). Sprawdzenie – patrz
+   „Podpięcie zmiennych PLC” w rozdziale Rozwój i testy.
 4. Na panelu potrzebna jest przeglądarka z WebGL (Edge albo Chrome).
 
 ### Logowanie (#145)
@@ -624,3 +625,22 @@ Tryb `--sim` otwiera projekt w DIADesigner-AX bez interfejsu
 (`scripts/plc_figures_sim.py`). Symulację urządzenia włącza tylko w pamięci,
 loguje się, startuje aplikację i czyta zmienne przez API skryptowe. Projekt
 nie jest zapisywany.
+
+**Podpięcie zmiennych PLC** (`scripts/check-plc-symbols.mjs`): każda zmienna
+z `VARIABLES` (`src/shared/config.js`) musi być w konfiguracji symboli PLC –
+inaczej serwer OPC UA jej nie poda i tryb online zgłosi „brak zmiennych w
+OPC UA”. Skrypt czyta plik symboli z kompilacji
+(`<projekt>.Device.Application.xml`, powstaje przy Generuj kod) i sprawdza
+typ (flagi BOOL, tablice, liczby).
+
+```powershell
+node scripts/check-plc-symbols.mjs ..\PLC\PilaJednosuportowaAI.Device.Application.xml ..\PLC\PilaJednosuportowa.Device.Application.xml
+```
+
+Wynik z 2026-10-21 (świeży plik symboli projektu AI po #130): 87/87 zmiennych
+w symbol configu, typy zgodne; wszystkie zadeklarowane w GVL (`HMI`, `HMI2`,
+`Communication`, `IOVars`, `ToolChangeGVL.ActiveTool`). Pozycje osi, prędkości,
+tryby, kroki, woda i laser są zapisywane przez PLC. Parametry narzędzi, liczba
+wierzchołków stołu i kamienia, jog A / B oraz bity `bService…` są wpisywane
+z HMI (retain). Bity serwisowe z ekranu Ustawienia (`src/shared/service.js`, 12)
+też istnieją w `HMI`.
