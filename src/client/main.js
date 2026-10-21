@@ -1121,7 +1121,8 @@ function setMode(mode) {
   clearCuts();
   state.fitted = false;
   if (mode === 'offline') {
-    const start = state.pose || state.cfg.offline.start;
+    // bez pozycji (start strony): zbazowany tryb z localStorage - B jak po bazowaniu (frez / wiertlo / polerka 90)
+    const start = state.pose || { ...state.cfg.offline.start, b: state.tool.based ? modeById(state.tool.mode).homeB : state.cfg.offline.start.b };
     applyPose({ ...start }, offlineMachine());
     writeFields('pos', start);
     restoreOfflineAreas();
@@ -1376,6 +1377,8 @@ function updateCncInfo(extra = '') {
     `Zakres programu: X ${fmtMm(s.lo[0])} … ${fmtMm(s.hi[0])}, Y ${fmtMm(s.lo[1])} … ${fmtMm(s.hi[1])}, Z ${fmtMm(s.lo[2])} … ${fmtMm(s.hi[2])} mm`,
     `Frez Ø${fmtMm(toolSize(m).diameter)} mm (fParameterMillWidth); najgłębiej Z ${fmtMm(s.hi[2])} mm pod G54_Z`,
   ];
+  // CNC w PLC nie rusza A / B - frez musi byc pionowo (B 90 po bazowaniu)
+  if (state.pose && Math.abs(state.pose.b - 90) > 0.5) lines.push(`<span style="color:var(--bad)">Wychył B ${fmtMm(state.pose.b)}° – frez nie jest pionowo. Program CNC (jak w PLC) nie rusza A / B: ustaw B 90° (Bazowanie, Ręczne albo Pozycja)</span>`);
   if (s.hi[2] > m.materialThickness) lines.push(`<span style="color:var(--bad)">Program schodzi ${fmtMm(s.hi[2])} mm – głębiej niż grubość kamienia (${fmtMm(m.materialThickness)} mm)</span>`);
   const hm = cncState.hm;
   if (hm && hm.cut) lines.push(`Materiał: obrobione ${(hm.cut * hm.res * hm.res / 100).toFixed(0)} cm², najgłębiej ${fmtMm(hm.top - hm.minZ())} mm (siatka co ${hm.res} mm)`);
@@ -1413,6 +1416,12 @@ function bindCnc() {
 // Widok: mapa wysokosci i tor - tylko w trybie frezu
 function drawCnc() {
   const show = cncState.prog && currentMode() === 'mill';
+  // podsumowanie materialu w trakcie animacji - najwyzej co 1 s
+  const now = performance.now();
+  if (show && cncState.hm && !$('.tab[data-tab="cnc"]').hidden && now - (cncState.infoAt || 0) > 1000) {
+    cncState.infoAt = now;
+    updateCncInfo();
+  }
   view.setHeightMap(show ? cncState.hm : null);
   const paths = show && $('#cncShowPath').checked ? cncPaths() : null;
   view.setCncPath(paths, paths ? cncState.pathsKey : null);
