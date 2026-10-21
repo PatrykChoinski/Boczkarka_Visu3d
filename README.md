@@ -299,3 +299,19 @@ npm run offline          # strona bez PLC: http://localhost:8128
 npm run fake-plc         # udawany CODESYS na opc.tcp://localhost:4840 ...
 npm start                # ... i strona z danymi z niego (tryb Online)
 ```
+
+**Porównanie figur z PLC** (`scripts/compare-figures-plc.mjs`): dla każdej
+figury i trzech wariantów (domyślne, wewnętrzne, dodatkowa droga) wpisuje pola
+do PLC, uruchamia `FiguresGeometricSt` i porównuje `aFigure…` oraz
+`iFigureNumber` z buforem Visu3D (wszystkie kolumny, wiersz po wierszu).
+
+```powershell
+$env:PROJECT_PASSWORD = "..."
+node scripts/compare-figures-plc.mjs --sim ..\PLC\PilaJednosuportowaAI.project   # symulacja DIADesigner-AX, projekt bez zapisu
+node scripts/compare-figures-plc.mjs opc.tcp://localhost:4840                    # działający PLC testowy (zapisuje zmienne!)
+```
+
+Tryb `--sim` otwiera projekt w DIADesigner-AX bez interfejsu
+(`scripts/plc_figures_sim.py`). Symulację urządzenia włącza tylko w pamięci,
+loguje się, startuje aplikację i czyta zmienne przez API skryptowe. Projekt
+nie jest zapisywany.

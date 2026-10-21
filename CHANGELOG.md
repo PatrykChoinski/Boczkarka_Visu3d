@@ -27,7 +27,8 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
   - promień elipsy 120 punktów z drugiej instancji FB.
 - Sprawdzone:
   - `npm test` 89/89: rejestr (23 figury budują bufor, kroki z właściwego enuma), prostokąt punkt w punkt jak `GetRectanglePositions_1`, testy grup A / B / C z wartościami liczonymi z formuł ST, bufor prostokąta → program automatu.
-  - W przeglądarce: prostokąt, daszki, krzyż (piła), książki (profile) i serce (frez) wypełniają bufor; bufor prostokąta przechodzi przez automat do końca.
+  - W przeglądarce: wszystkie 23 figury wypełniają bufor (właściwy rodzaj programu, bez NaN i nieznanych kroków), a 13 buforów piły i profili przechodzi przez automat jako program ruchu.
+  - **Zgodność z PLC: 69 / 69.** `scripts/compare-figures-plc.mjs --sim` porównał 23 figury × 3 warianty (domyślne, wewnętrzne, dodatkowa droga) z `PilaJednosuportowaAI.project` uruchomionym w symulacji DIADesigner-AX. Kod PLC jest skompilowany i działa; skrypt wpisuje pola, uruchamia `FiguresGeometricSt` i czyta `aFigure…`. Wszystkie kolumny bufora i `iFigureNumber` są identyczne. Projekt nie jest zapisywany. Jest też tryb OPC UA dla działającego PLC testowego.
 
 ### Cięcie proste: dwa punkty / kąt i długość, pola wg opcji, jazda na zadany kąt A / B (#128)
 - Cięcie proste jak `CutST.GetPositions` (`bManualTwoPoint`): dwa punkty albo kąt i długość. Przy kącie i długości koniec = start + L·(cos, sin), a z `bManualToLaser` start − L·(cos, sin); kąt głowicy A zostaje zadany (`cutParams.angle`, `cutAngle`).
