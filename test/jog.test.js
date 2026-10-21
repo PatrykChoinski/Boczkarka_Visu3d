@@ -74,3 +74,20 @@ test('predkosci ruchow recznych (#140): kazda os z wlasnej fJogVelocity, przepis
   for (let t = 0.01; t < rel.duration; t += 0.01) maxV = Math.max(maxV, (rel.at(t).pose.a - rel.at(t - 0.01).pose.a) / 0.01);
   assert.ok(Math.abs(maxV - 15) < 0.5, `max ${maxV}`);
 });
+
+test('okno ruchow recznych (#143): skosy 45 / 135 / 225 / 315 i ruch wzdluz wychylonej tarczy jak ManualInterpolationST', async () => {
+  const { DIAGONALS, diagonalDir, tiltMoveVector } = await import('../src/shared/jog.js');
+  const near2 = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+  const ru = diagonalDir(DIAGONALS.ru);
+  near2(ru.x, Math.SQRT1_2); near2(ru.y, Math.SQRT1_2);
+  const ld = diagonalDir(DIAGONALS.ld);
+  near2(ld.x, -Math.SQRT1_2); near2(ld.y, -Math.SQRT1_2);
+  // A 0, B 45, w dol o 50: Z +50 (w dol), Y +50 (glowica w strone -n jak przy glebszym skosie w GetPositions)
+  const down = tiltMoveVector(0, 45, 50, false);
+  near2(down.x, 0); near2(down.y, 50); near2(down.z, 50);
+  const up = tiltMoveVector(90, 30, 50, true);
+  near2(up.x, Math.tan(Math.PI / 6) * 50); near2(up.y, 0); near2(up.z, -50);
+  // B 0: pionowo
+  const v = tiltMoveVector(37, 0, 20, false);
+  near2(Math.hypot(v.x, v.y), 0); near2(v.z, 20);
+});

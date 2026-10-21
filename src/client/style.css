@@ -54,6 +54,10 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .tabs button { flex: 1 1 auto; }
+/* menu ekranow po lewej (jak Menu_Lewo w HMI) */
+.tabs.side { flex: none; width: 128px; flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 8px 6px;
+  background: var(--bar); border-right: 1px solid var(--border); overflow-y: auto; }
+.tabs.side button { flex: none; min-height: 56px; padding: 4px 6px; white-space: normal; line-height: 1.15; }
 .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
 label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
@@ -107,6 +111,8 @@ footer { background: var(--bar); }
 @media (max-width: 900px) {
   main { flex-direction: column; }
   #panel { width: auto; max-height: 45vh; border-left: none; border-top: 1px solid var(--border); }
+  .tabs.side { width: auto; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border); }
+  .tabs.side button { flex: 1 1 auto; min-height: 40px; }
   #viewWrap { min-height: 50vh; }
 }
 
@@ -187,3 +193,57 @@ input[type=password] { min-height: 38px; padding: 4px 8px; border: 1px solid var
 /* #144 bez bazowania: ruchy i ustawienia zablokowane */
 .lockInfo { margin: 0 0 8px; padding: 6px 10px; border: 1px solid #f1b4ae; border-radius: 6px; background: #fdecea; color: var(--bad); font-size: 13px; }
 [data-lock].locked { opacity: 0.5; }
+
+/* #143 Ruchy reczne jak ekrany HMI (MPG, MANUAL INTERPOLATION): uklad 1652 x 773 skalowany do szerokosci okna,
+   czcionki w cqw (procent szerokosci ekranu), kolory jak w DIAScreen */
+.win.hmiWin { width: min(940px, calc(100vw - 16px)); resize: horizontal; overflow: hidden; min-width: 420px; }
+.hmiWin .winBody { padding: 0 0 8px; }
+.hmiWin .winHead { background: #164B73; color: #fff; }
+.hmiWin .winHead button { min-height: 30px; }
+#manPages button { min-height: 30px; padding: 2px 10px; font-size: 12px; background: #BDC7CE; color: #164B73; border-color: #164B73; }
+#manPages button.active { background: #fff; color: #164B73; }
+.hmiScreen { position: relative; width: 100%; aspect-ratio: 1652 / 773; background: #BDC7CE; container-type: inline-size; overflow: hidden; }
+.hmiScreen > * { position: absolute; box-sizing: border-box; }
+.hmiPanel { background: #FCFCFC; border-radius: 1.2cqw; }
+.hmiPanel.inner { border: 1px solid #B4B4B4; }
+.hmiTitle { display: flex; align-items: center; justify-content: center; font: 700 1.1cqw "Segoe UI", Arial, sans-serif; color: #000; }
+.hmiTitle.left { justify-content: flex-start; }
+.hmiLabel { display: flex; align-items: center; font: 700 1cqw "Segoe UI", Arial, sans-serif; color: #000; padding-left: 4.6cqw; }
+.hmiLabel.center { justify-content: center; text-align: center; padding: 0; }
+.hmiBtn { min-height: 0; padding: 0; border: 1px solid #B4B4B4; border-radius: 0.6cqw; background: #FFBE8C; color: #000;
+  font: 700 1.05cqw "Segoe UI", Arial, sans-serif; line-height: 1.2; touch-action: none; }
+.hmiBtn.big { font-size: 2.5cqw; }
+.hmiBtn.arrow { font-size: 5.2cqw; font-weight: 900; line-height: 1; }
+.hmiBtn:active, .hmiBtn.pressed { background: #FF0000; }
+.hmiBtn[data-toggle].on { background: #00FF00; }
+.hmiBtn.dark { background: #164B73; color: #fff; border-color: #164B73; }
+.hmiBtn.dark:active { background: #FF8000; }
+#manContinuous.on { background: #FF0000; border-color: #FF0000; }
+.hmiBtn.stop { background: #FF0000; border-color: #FF0000; font-size: 2.5cqw; }
+.hmiBtn.stop:active { background: #FF8000; }
+.hmiBtn.link { background: #C9D2D9; color: #000; font-size: 0.95cqw; }
+.hmiBtn.laser { background: radial-gradient(circle at 35% 30%, #4fb0f0, #1565b5 70%); color: #fff; border: 0.5cqw solid #e6e6e6;
+  border-radius: 1cqw; box-shadow: inset 0 0 0 2px #0d3c6b; }
+.hmiBtn.laser.on { background: radial-gradient(circle at 35% 30%, #9dff9d, #00c800 70%); color: #000; }
+.hmiVal { display: flex; align-items: center; gap: 2cqw; padding: 0 1cqw; background: #E6E6E6; border: 2px solid #5B2C6F; }
+.hmiVal b, .hmiInp b { font: 700 2.5cqw "Segoe UI", Arial, sans-serif; color: #000; }
+.hmiVal output { flex: 1; font: 700 2.5cqw "Segoe UI", Arial, sans-serif; color: #000; text-align: right; }
+.hmiVal.blue { background: #4DA6FF; border-color: #1f1f8f; justify-content: center; }
+.hmiVal.blue output { font-size: 1.6cqw; text-align: center; }
+.hmiInp { display: flex; align-items: center; gap: 0.6cqw; }
+.hmiInp b { position: absolute; right: 100%; padding-right: 0.6cqw; }
+.hmiInp input { width: 100%; height: 100%; min-height: 0; border: 2px solid #164B73; border-radius: 0; background: #E6E6E6;
+  font: 700 1.6cqw Consolas, monospace; color: #164B73; text-align: center; padding: 0 0.5cqw; }
+.hmiSaw { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 10px; padding: 8px 10px 0; }
+.hmiSawTitle { font-weight: 700; align-self: center; }
+.hmiSaw label { font-size: 12px; }
+.hmiSaw input[type=number], .hmiSaw select { width: 90px; min-height: 34px; }
+.sawStart { background: #008000; border-color: #008000; color: #fff; }
+.sawStart.on { box-shadow: 0 0 0 3px #7fd27f; }
+.sawStop { background: #c62828; border-color: #c62828; color: #fff; }
+.hmiWin #manInfo { padding: 0 10px; font-size: 13px; }
+table.manPts { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+table.manPts td { padding: 3px; }
+table.manPts td:first-child { width: 22px; }
+table.manPts td:last-child { width: 80px; }
+table.manPts button { min-height: 32px; width: 100%; padding: 2px 6px; }

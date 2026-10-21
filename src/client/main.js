@@ -5,7 +5,7 @@
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
-import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, workAxisZ, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { waterLayout, laserMount } from '../shared/water.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
@@ -14,7 +14,8 @@ import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
-import { JogMotion, jogVelocity, relativeMoveDynamics, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
+import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
+import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -39,6 +40,8 @@ const state = {
   // tryb po bazowaniu (offline - ekran Bazowanie; online - bModeSaw / Mill / Drill / Polishing i bSystemBased z PLC),
   // homing - docelowy tryb bazowania w toku
   tool: { mode: 'saw', based: true, homing: null, key: '' },
+  // ruchy reczne (#143): tryb ciagly / skok, wlaczony przelacznik ruchu interpolowanego, punkty A, B, C
+  manContinuous: true, manToggle: null, points: {},
   // logowanie (#145): enabled - serwer ma users.json; level 0 niezalogowany, 1 Operator, 2 Serwis, 3 Admin
   auth: { enabled: false, users: [], user: null, level: 0, token: null, timeoutMin: 30, lastActivity: 0, lastPing: 0 },
   extent: null,
@@ -220,6 +223,7 @@ function redraw() {
   if (p && !$('.tab[data-tab="pos"]').hidden) {
     for (const el of $$('[data-act]')) el.value = fmtAxis(p[el.dataset.act]);
   }
+  syncManualWin();
   if (p) {
     const depth = Math.max(0, penetration(headFrame(p, m), m));
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
@@ -1141,6 +1145,7 @@ function showManWin(open) {
   $('#manOpen').classList.toggle('active', open);
   if (open) {
     placeManWin();
+    syncManualWin();
     updateManInfo();
   }
 }
@@ -1194,7 +1199,7 @@ function startJog(dir, vel, acc, dec) {
 
 function releaseJog() {
   if (state.jog) state.jog.release();
-  for (const b of $$('button.hold.pressed')) b.classList.remove('pressed');
+  for (const b of $$('#manWin .pressed')) b.classList.remove('pressed');
 }
 
 function jogFrame(now) {
@@ -1222,7 +1227,23 @@ function updateManInfo() {
   if (!p || $('#manWin').hidden) return;
   const d = offlineDynamics();
   syncManualSpeeds();
-  $('#manInfo').innerHTML = `Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
+  const pts = ['A', 'B', 'C'].filter((k) => state.points[k]).join(', ') || 'brak';
+  $('#manInfo').innerHTML = `${state.manContinuous ? 'Tryb ciągły – ruch, dopóki przycisk jest wciśnięty' : `Tryb skok – ruch o ${Number($('#manJump').value) || 0} mm`}; `
+    + `ruchy po skosie i interpolowane: ${((state.saw.manual ? d.cutVel : d.fastVel) * 0.06).toFixed(2)} m/min `
+    + `(${state.saw.manual ? 'prędkość cięcia – piła ON' : 'prędkość dojazdu'}). Punkty A, B, C (Pozycja): ${pts}.`;
+}
+
+// Odczyty i stany przyciskow okna ruchow recznych (pozycje osi, laser, przelaczniki ruchu interpolowanego)
+function syncManualWin() {
+  const p = state.pose;
+  if (!p || $('#manWin').hidden) return;
+  for (const ax of ['x', 'y', 'z', 'a', 'b']) {
+    const el = $(`#manPos_${ax}`);
+    if (el) el.value = fmtAxis(p[ax]);
+  }
+  for (const b of $$('#manWin [data-hmi="laser"]')) b.classList.toggle('on', $('#showLaser').checked);
+  if (state.manToggle && !state.jog) state.manToggle = null;
+  for (const b of $$('#manWin [data-toggle]')) b.classList.toggle('on', b.dataset.hmi === state.manToggle);
 }
 
 // Prędkości osi na ekranie Ręczne (#140) - te same pola co jog w Parametrach (data-d), wpisane tu przepisywane tam
@@ -1232,10 +1253,151 @@ function syncManualSpeeds() {
   }
 }
 
-// bServiceManualRewriteJogSpeed: przy wlaczonej pile (offline - przycisk Piła ON) jog X / Y z predkoscia ciecia, Z robocza
+// bServiceManualRewriteJogSpeed: przy wlaczonej pile (offline - START PIŁY) jog X / Y z predkoscia ciecia, Z robocza
 const manualRewrite = () => $('#manRewrite').checked && state.saw.manual;
 
+// Punkty reczne A, B, C (bManualSavePointA..C / bManualMovePointA..C, GoToPositionST) - zapis w przegladarce
+const POINTS_KEY = 'vizuapp.points';
+// fManualMoveWithTiltDistance (HMI, domyslnie 50 mm)
+const MOVE_WITH_TILT_DIST = 50;
+
+function savePoints() {
+  try { localStorage.setItem(POINTS_KEY, JSON.stringify(state.points)); } catch { /* jw. */ }
+  renderPoints();
+}
+
+function renderPoints() {
+  for (const k of ['A', 'B', 'C']) {
+    const v = state.points[k];
+    const el = $(`[data-point-val="${k}"]`);
+    if (el) el.textContent = v ? `X ${fmtAxis(v.x)}  Y ${fmtAxis(v.y)}  Z ${fmtAxis(v.z)}  A ${fmtAxis(v.a)}°  B ${fmtAxis(v.b)}°` : '– (nie zapisany)';
+  }
+}
+
+// Ruch reczny programem (skok, punkt, wychyl): tylko offline, z poprawna dynamika
+function manualProgram(build) {
+  const d = offlineDynamics();
+  if (!validDynamics(d) || state.mode !== 'offline' || !state.pose) return;
+  state.manToggle = null;
+  startProgram(build(d));
+}
+
+// Skok (tryb SKOK, MCRelative / mLinearXYZRelative): o wektor delta, predkosc vel / rampa acc
+function stepProgram(delta, vel, acc, step) {
+  manualProgram((d) => {
+    const pb = new ProgramBuilder(state.pose, offlineMachine(), d);
+    const to = Object.fromEntries(Object.entries(delta).map(([ax, v]) => [ax, state.pose[ax] + v]));
+    pb.linearTo(to, step, vel, acc, acc);
+    return pb.build();
+  });
+}
+
+// Akcja przycisku okna (data-hmi); hold - przycisk trzymany (puszczenie zatrzymuje ruch)
+function manualAction(act) {
+  const [kind, arg, arg2] = act.split(':');
+  const d = offlineDynamics();
+  const p = state.pose;
+  if (!p) return;
+  const jump = Math.max(0, Number($('#manJump').value) || 0);
+  // ruchy po skosie i interpolowane: piła ON - fMaxVelocitySawMode, inaczej fMaxVelocityFast
+  const xyVel = state.saw.manual ? [d.cutVel, d.cutAcc] : [d.fastVel, d.fastAcc];
+  switch (kind) {
+    case 'jog': {
+      const sign = Number(arg2);
+      const { vel, acc } = jogVelocity(arg, d, manualRewrite());
+      if (state.manContinuous) startJog({ [arg]: sign }, vel, acc);
+      else if (jump > 0) stepProgram({ [arg]: sign * jump }, vel, acc, 'MCRelative');
+      break;
+    }
+    case 'diag': {
+      const dir = diagonalDir(DIAGONALS[arg]);
+      if (state.manContinuous) startJog(dir, xyVel[0], xyVel[1]);
+      else if (jump > 0) stepProgram({ x: dir.x * jump, y: dir.y * jump }, xyVel[0], xyVel[1], 'MoveDiagonal');
+      break;
+    }
+    case 'interp': {
+      // przelacznik jak w HMI: ruch do STOP albo ponownego nacisniecia
+      if (state.manToggle === act) { releaseJog(); state.manToggle = null; break; }
+      startJog(interpolationDir(arg, p.a, state.cfg.laser?.side ?? 1), xyVel[0], xyVel[1]);
+      if (state.jog) state.manToggle = act;
+      break;
+    }
+    case 'tilt': {
+      // wzdluz pochylonej tarczy o fManualMoveWithTiltDistance; piła ON - Z robocza, inaczej dojazdowa
+      const v = tiltMoveVector(p.a, p.b, MOVE_WITH_TILT_DIST, arg === 'up');
+      stepProgram(v, state.saw.manual ? d.zVel : (d.zUpVel || d.zVel), d.zAcc, arg === 'up' ? 'MoveWithTiltUp' : 'MoveWithTiltDown');
+      break;
+    }
+    case 'a': case 'b':
+      manualProgram((dd) => gotoProgram(p, { ...p, [kind]: Number(arg) }, dd));
+      break;
+    case 'goto': {
+      const val = Number($(`#${arg}Set`).value);
+      // ManualST: B tylko 0..90 (wartosc ujemna z pola HMI nie rusza osi)
+      if (!Number.isFinite(val) || (arg === 'b' && (val < 0 || val > 90))) {
+        $('#manInfo').innerHTML = '<span style="color:var(--bad)">Wychył B: zadaj 0–90°</span>';
+        break;
+      }
+      manualProgram((dd) => gotoProgram(p, { ...p, [arg]: val }, dd));
+      break;
+    }
+    case 'point': {
+      if (arg === 'D') {
+        // NAD MATERIAŁ: Z nad material w aktualnym XY / A / B (fParameterAboveMaterialPosition)
+        const z = workAxisZ(-(commonValues().above ?? 20), p.b, offlineMachine());
+        manualProgram((dd) => gotoProgram(p, { ...p, z: Math.max(0, z) }, dd));
+      } else if (state.points[arg]) {
+        manualProgram((dd) => gotoProgram(p, { ...state.points[arg] }, dd));
+      } else {
+        $('#manInfo').innerHTML = `<span style="color:var(--bad)">Punkt ${arg} nie jest zapisany – zapisz go w zakładce Pozycja (USTAWIENIA POZYCJI)</span>`;
+      }
+      break;
+    }
+    case 'stop':
+      stopProgram();
+      releaseJog();
+      state.manToggle = null;
+      break;
+    case 'laser':
+      $('#showLaser').checked = !$('#showLaser').checked;
+      $('#showLaser').dispatchEvent(new Event('change'));
+      requestDraw();
+      break;
+    case 'tab':
+      if (!$(`.tabs [data-tab="${arg}"]`).hidden) showTab(arg);
+      break;
+    case 'continuous':
+      state.manContinuous = !state.manContinuous;
+      try { localStorage.setItem('vizuapp.manContinuous', state.manContinuous ? '1' : '0'); } catch { /* jw. */ }
+      renderContinuous();
+      break;
+    default: break;
+  }
+  syncManualWin();
+  updateManInfo();
+}
+
+// TRYB CIĄGŁY (czerwony) / TRYB SKOK (niebieski) jak przelacznik bManualContinousMode w HMI
+function renderContinuous() {
+  const b = $('#manContinuous');
+  b.textContent = state.manContinuous ? 'TRYB CIĄGŁY' : 'TRYB SKOK';
+  b.classList.toggle('on', state.manContinuous);
+}
+
 function bindManual() {
+  $('#manScreen_mpg').innerHTML = manualScreenHtml(MANUAL_SCREENS.mpg);
+  $('#manScreen_interp').innerHTML = manualScreenHtml(MANUAL_SCREENS.interp);
+  for (const b of $$('#manPages [data-page]')) {
+    b.onclick = () => {
+      for (const x of $$('#manPages [data-page]')) x.classList.toggle('active', x === b);
+      for (const sc of $$('#manWin .hmiScreen')) sc.hidden = sc.dataset.page !== b.dataset.page;
+      syncManualWin();
+    };
+  }
+  try { state.manContinuous = localStorage.getItem('vizuapp.manContinuous') !== '0'; } catch { state.manContinuous = true; }
+  try { state.points = JSON.parse(localStorage.getItem(POINTS_KEY) || '{}') || {}; } catch { state.points = {}; }
+  renderContinuous();
+  renderPoints();
   for (const el of $$('[data-jogvel]')) {
     el.addEventListener('input', () => {
       $(`[data-d="${el.dataset.jogvel}"]`).value = el.value;
@@ -1244,58 +1406,49 @@ function bindManual() {
     });
   }
   $('#manRewrite').addEventListener('input', updateManInfo);
-  const hold = (btn, start) => {
-    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture?.(e.pointerId); btn.classList.add('pressed'); start(); });
-    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, releaseJog);
-  };
-  for (const b of $$('[data-jog]')) {
-    hold(b, () => {
-      const ax = b.dataset.jog;
-      const { vel, acc } = jogVelocity(ax, offlineDynamics(), manualRewrite());
-      startJog({ [ax]: Number(b.dataset.sign) }, vel, acc);
-    });
-  }
-  for (const b of $$('[data-interp]')) {
-    hold(b, () => {
-      const d = offlineDynamics();
-      startJog(interpolationDir(b.dataset.interp, state.pose.a, state.cfg.laser?.side ?? 1), d.cutVel, d.cutAcc, d.cutDec);
-    });
-  }
-  const preset = (ax, values, box) => {
-    box.innerHTML = values.map((v) => `<button data-preset="${ax}" data-v="${v}">${v}°</button>`).join('');
-    for (const b of box.querySelectorAll('button')) {
-      b.onclick = () => {
-        const d = offlineDynamics();
-        if (!validDynamics(d) || state.mode !== 'offline') return;
-        startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: Number(b.dataset.v) }, d));
+  $('#manJump').addEventListener('input', updateManInfo);
+  for (const b of $$('#manWin [data-hmi]')) {
+    if ('hold' in b.dataset) {
+      // trzymany: ruch od nacisniecia, puszczenie - hamowanie (jog) albo stop (skok, wychyl)
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        b.setPointerCapture?.(e.pointerId);
+        b.classList.add('pressed');
+        manualAction(b.dataset.hmi);
+      });
+      const up = () => {
+        if (!b.classList.contains('pressed')) return;
+        b.classList.remove('pressed');
+        releaseJog();
+        // ManualInterpolationST: skosy i wychyl tylko trzymane (puszczenie - stop, tez w trybie skok); skok osi (MCRelative) do konca
+        if (/^(tilt|diag)/.test(b.dataset.hmi)) stopProgram();
       };
+      for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up);
+    } else {
+      b.onclick = () => manualAction(b.dataset.hmi);
     }
-  };
-  preset('a', A_PRESETS, $('#aPresets'));
-  preset('b', B_PRESETS, $('#bPresets'));
-  // jazda na zadany kat A / B: absolutnie (bManualAMoveToPosAbs) albo o kat (bManualAMoveToPosRel)
-  for (const b of $$('[data-move]')) {
+  }
+  // punkty A, B, C w zakladce Pozycja: zapis aktualnej pozycji (bManualSavePointA..C)
+  for (const b of $$('[data-savepoint]')) {
     b.onclick = () => {
-      const d = offlineDynamics();
-      if (!validDynamics(d) || state.mode !== 'offline' || !state.pose) return;
-      const ax = b.dataset.move;
-      const val = Number($(`#${ax}Set`).value);
-      if (!Number.isFinite(val)) return;
-      const target = b.dataset.rel ? state.pose[ax] + val : val;
-      // "o" wartosc jak MCRelative - predkosc jog osi; "na" wartosc jak MCAbsolute - VelA / VelB
-      startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: target }, b.dataset.rel ? relativeMoveDynamics(d) : d));
+      if (!state.pose) return;
+      const p = state.pose;
+      state.points[b.dataset.savepoint] = Object.fromEntries(AXES.map((ax) => [ax, savedPosition(p[ax])]));
+      savePoints();
+      updateManInfo();
     };
   }
   const sawCfg = state.cfg.offline.saw || { freq: 50, dir: 'FWD' };
   $('#sawFreq').value = sawCfg.freq;
   $('#sawDir').value = sawCfg.dir;
-  $('#sawToggle').onclick = () => {
-    state.saw.manual = !state.saw.manual;
-    $('#sawToggle').textContent = `${isToolMode(state.machine) ? 'Wrzeciono' : 'Piła'} ${state.saw.manual ? 'OFF' : 'ON'}`;
-    $('#sawToggle').classList.toggle('on', state.saw.manual);
+  const setSaw = (on) => {
+    state.saw.manual = on;
+    $('#sawStart').classList.toggle('on', on);
     updateManInfo();
     requestDraw();
   };
+  $('#sawStart').onclick = () => setSaw(true);
+  $('#sawStop').onclick = () => setSaw(false);
   for (const el of [$('#sawFreq'), $('#sawDir'), $('#showLaser')]) el.addEventListener('input', requestDraw);
 }
 
@@ -1737,7 +1890,8 @@ function toolModeChanged() {
   if (state.forms) applyVisibility('figctx', FIGURE_CONTEXT_FIELDS);
   const drive = mode.id === 'saw' ? 'Piła' : 'Wrzeciono';
   $('#sawTitle').textContent = drive;
-  $('#sawToggle').textContent = `${drive} ${state.saw.manual ? 'OFF' : 'ON'}`;
+  $('#sawStart').textContent = `START ${drive === 'Piła' ? 'PIŁY' : 'WRZECIONA'}`;
+  $('#sawStop').textContent = `STOP ${drive === 'Piła' ? 'PIŁY' : 'WRZECIONA'}`;
   renderHoming();
   if (state.mode === 'offline' && state.pose && !state.sim.running) applyPose(state.pose, offlineMachine());
   requestDraw();

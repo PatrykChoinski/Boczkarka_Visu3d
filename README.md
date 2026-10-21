@@ -151,6 +151,10 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 
 ## Ekran
 
+Przyciski ekranów (Stół i kamień, Operacja, Automat, G-kod, Pozycja, Parametry,
+Bazowanie) są w kolumnie po lewej stronie jak menu HMI (`Menu_Lewo`), panel
+wybranego ekranu – po prawej.
+
 - **Online (PLC) / Offline**: przełącznik trybu.
 - **Izometria / Góra / Przód / Bok / Dopasuj / + / −**: widok. Obracanie
   palcem lub lewym przyciskiem, przesuwanie dwoma palcami lub prawym
@@ -324,31 +328,45 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     - `PROFILES` (100) nie jest tworzeniem figury, tylko liczeniem profilu na
       istniejącym buforze, więc go tu nie ma.
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
-- **Ruchy ręczne** (#143, offline, wizualizacja nie steruje maszyną): jak ekran
-  ruchów ręcznych w HMI, jako okno otwierane przyciskiem „Ruchy ręczne” w
-  górnym menu. Okno przesuwa się za nagłówek (pozycja zapamiętana w
-  przeglądarce) i zamyka przyciskiem ×; przycisk jest aktywny tylko po
-  bazowaniu.
-  - **Prędkości ruchów** (#140, na dole ekranu): prędkość każdej osi osobno – X, Y, Z
-    w m/min, A, B w °/s (`fJogXVelocity` … `fJogBVelocity`). To te same
-    wartości co „Jog” w Parametrach, zmiana w jednym miejscu jest widoczna w
-    drugim. Prędkości dotyczą jogu i jazdy „o” kąt (jak `MCJog` /
-    `MCRelative` w PLC). Jazda „na” kąt i przyciski A / B idą z prędkością
-    osi (`VelA` / `VelB`). Opcja „Przy pile ON jog z prędkością cięcia”
-    (`bServiceManualRewriteJogSpeed`): przy włączonej pile X / Y jadą z
-    prędkością cięcia, a Z z prędkością roboczą Z.
-  - **Jog X/Y/Z/A/B ±**: oś jedzie, dopóki przycisk jest wciśnięty, z
-    prędkością jog (`fJog[XYZAB]Velocity`) i rampą osi; po puszczeniu hamuje.
-  - **Obrót A**: 0 / 90 / −90 / 180 / −180°. **Wychył B**: 0 / 30 / 45 / 60 /
-    90° (dojazd z prędkością i rampą osi).
-  - **Jazda na zadany kąt A / B**: „Jedź na” – absolutnie
-    (`bManualAMoveToPosAbs` / `bManualBMoveToPosAbs`, prędkość `VelA` / `VelB`),
-    „Jedź o” – o podany kąt (`…MoveToPosRel`, prędkość jog osi).
-  - **Ruchy interpolowane** względem lasera: wzdłuż lasera, przeciwnie do
-    lasera, prostopadle, prostopadle odwrotnie. Ruch w XY z prędkością cięcia i
-    `Acc` / `Dec`, także w materiale, więc tnie.
-  - **Piła ON/OFF**, kierunek FWD / REV i częstotliwość.
+- **Ruchy ręczne** (#143, offline, wizualizacja nie steruje maszyną): okno
+  otwierane przyciskiem „Ruchy ręczne” w górnym menu (jak „STEROWANIE RĘCZNE”
+  w górnym menu HMI). Okno przesuwa się za nagłówek (pozycja zapamiętana w
+  przeglądarce), zamyka przyciskiem × i jest aktywne tylko po bazowaniu.
+  Układ i kolory jak ekrany HMI (pozycje elementów z projektu DIAScreen,
+  skalowane do szerokości okna, którą można zmieniać):
+  - **STEROWANIE RĘCZNE** (ekran `MPG`):
+    - krzyż XY 3 × 3: Y+ / Y- / X- / X+ (jog osi) i skosy ↖ ↗ ↙ ↘ (ruch XY
+      pod 135 / 45 / 225 / 315°, `bManualXY…`, tylko trzymany – jak
+      `ManualInterpolationST`); Z- w górę, Z+ w dół;
+    - LASER, pozycje osi X / Y / Z;
+    - TRYB CIĄGŁY / TRYB SKOK (`bManualContinousMode`) i SKOK [mm]
+      (`fManualJumpDist`): w trybie skok oś jedzie o skok (`MCRelative`),
+      skosy o skok w kierunku skosu;
+    - A / B / C – przejazd na punkty ręczne zapisane w zakładce Pozycja
+      (`bManualMovePointA…C`, `bManualSavePointA…C`), NAD MATERIAŁ – Z nad
+      materiał w aktualnym miejscu (`bManualMovePointD`), STOP;
+    - USTAWIENIE OSI OBROTU (C – w PLC oś A): −180…+180°, USTAWIENIE OSI
+      WYCHYLU (B): 0…90°;
+    - pr. JOG X / Y / Z [m/min] (`fJogXVelocity` … – te same pola co „Jog” w
+      Parametrach); SERWIS PRĘDKOŚĆ JOG → Parametry (od poziomu Serwis),
+      USTAWIENIA POZYCJI → Pozycja.
+  - **RUCHY INTERPOLOWANE** (ekran `MANUAL INTERPOLATION`): pozycja obrotu,
+    zadany kąt i „ustaw głowicę” (`bManualAMoveToPosAbs`), presety C; ruch w
+    kierunku lasera / przeciwnym / prostopadle + / − (przełączniki jak w HMI:
+    ruch do STOP albo ponownego naciśnięcia); wychył – pozycja, zadany kąt
+    (0–90°, `bManualBMoveToPosAbs`), presety B; ruch wzdłuż wychylonej tarczy
+    ↙ / ↗ (`bManualMoveWithTiltDown` / `Up`: o 50 mm w Z, w XY o
+    tan(B) · 50 mm w stronę skosu, tylko trzymany), LASER, STOP.
+  - Prędkości jak w PLC: jog osi `fJog[XYZ]Velocity` (opcja serwisowa
+    `bServiceManualRewriteJogSpeed` – przy pile X / Y z prędkością cięcia, Z
+    roboczą), skosy i ruchy interpolowane – prędkość cięcia przy pile ON,
+    inaczej dojazdu; ruch z wychyłem – Z robocza przy pile ON, inaczej
+    dojazdowa.
+  - Pod ekranem: START / STOP PIŁY (w HMI na ekranie cięcia), kierunek FWD /
+    REV i częstotliwość.
 - **Pozycja**: u góry aktualne X/Y/Z/A/B (odświeżane na bieżąco, tylko odczyt), pod nimi zadane X/Y/Z/A/B.
+  - **Punkty ręczne A, B, C** (jak `Zapisane_Pozycje` w HMI): „Zapisz” wpisuje aktualną pozycję
+    X/Y/Z/A/B (zapamiętaną w przeglądarce); przyciski A / B / C w oknie Ruchy ręczne jadą na punkt.
   - **Jedź**: animowany dojazd; najpierw Z w górę, jeśli trzeba, potem
     wszystkie osie naraz, każda z własną rampą.
   - **Wstaw aktualną**: wpisuje do pól bieżące położenie osi.

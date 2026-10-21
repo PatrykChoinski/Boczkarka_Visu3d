@@ -108,3 +108,18 @@ export const relativeMoveDynamics = (d) => ({ ...d, aVel: d.jogAVel, bVel: d.jog
 // Pozycje A i B z ekranu reczny (bManualASetPosition0 / 90 / 180 / M90 / M180, bManualBSetPosition0 / 30 / 45 / 60 / 90)
 export const A_PRESETS = [0, 90, -90, 180, -180];
 export const B_PRESETS = [0, 30, 45, 60, 90];
+
+// Przyciski skosne ekranu MPG (ManualInterpolationST): ruch XY pod stalym katem (bManualXYRightUp 45, LeftUp 135,
+// LeftDown 225, RightDown 315)
+export const DIAGONALS = { ru: 45, lu: 135, ld: 225, rd: 315 };
+export const diagonalDir = (deg) => ({ x: Math.cos(deg * Math.PI / 180), y: Math.sin(deg * Math.PI / 180) });
+
+// Ruch z wychylem (bManualMoveWithTiltUp / Down, ManualInterpolationST): przesuniecie XYZ wzdluz pochylonej tarczy
+// o dist w Z (fManualMoveWithTiltDistance); up - wyjazd z materialu (Z w gore), inaczej w dol:
+//   dx = s sin(A) tan(B) d,  dy = -s cos(A) tan(B) d,  dz = -s d   (s = 1 w gore, -1 w dol; Z w dol dodatnie)
+export function tiltMoveVector(aDeg, bDeg, dist, up) {
+  const s = up ? 1 : -1;
+  const a = aDeg * Math.PI / 180;
+  const t = Math.tan(bDeg * Math.PI / 180);
+  return { x: s * Math.sin(a) * t * dist, y: -s * Math.cos(a) * t * dist, z: -s * dist };
+}
