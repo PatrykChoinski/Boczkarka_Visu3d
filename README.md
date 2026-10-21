@@ -158,6 +158,11 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Gdy laser
   świeci, z modułu do linii na materiale idzie półprzezroczysty wachlarz
   wiązki. W trybach frezu, wiercenia i polerowania moduł jest obok narzędzia.
+- **Suport (#141):** przed przednim końcem prawego murka (od strony operatora)
+  stoi panel operatorski: słupek i pochylona konsola z ekranem HMI, grzybkiem
+  STOP oraz przyciskami. Na płycie stołu, pod kamieniem, leży zielona gumowa
+  mata łapiąca wodę. Oba elementy da się wyłączyć: `frame.panel`,
+  `frame.mat`.
 - **Woda (#141):** dwa niebieskie węże idą z głowicy do dysz po obu stronach
   osłony tarczy (frez, wiercenie, polerowanie: po obu stronach narzędzia).
   Przy włączonych obrotach woda leci z dysz na tarczę (narzędzie) jako struga
@@ -370,7 +375,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
-| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem), `mat` (zielona mata łapiąca wodę na stole) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500, mountAngle: 50}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
 | `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD |

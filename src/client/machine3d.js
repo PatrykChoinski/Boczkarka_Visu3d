@@ -1,4 +1,5 @@
-// Model maszyny (pila mostowa): suport - sciany z prowadnicami, most z wozkiem, stol pod kamieniem;
+// Model maszyny (pila mostowa): suport - sciany z prowadnicami, most z wozkiem, stol pod kamieniem z zielona mata
+// lapiaca wode, panel operatorski przed prawym murkiem;
 // glowica - slup Z, korpus obrotu A, silnik wrzeciona z wychylem B, oslona tarczy (frez / wiertlo / polerka - bez oslony,
 // wrzeciono do kolnierza narzedzia), dwa niebieskie weze z woda do dysz i modul lasera na oslonie (#141).
 // Bryly uproszczone, polozenie wg pozycji osi (shared/geometry.js); stol i rozstaw maszyny wg punktow
@@ -15,6 +16,7 @@ const GREY = 0xe4e6e8;
 const DARK = 0x6f6152;
 const STEEL = 0x7d8790;
 const HOSE = 0x1e5aa8;
+const MAT = 0x2f8f46;
 const NOZZLE = 0x0f2f5c;
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
@@ -57,7 +59,19 @@ export class MachineModel {
     this.bridge = box(YELLOW);
     this.bridgeFace = box(GREY);
     this.carriage = box(YELLOW);
-    this.frame.add(this.wallA, this.wallB, this.railA, this.railB, this.table, this.bridge, this.bridgeFace, this.carriage);
+    // zielona mata gumowa na plycie stolu (pod kamieniem) - lapie wode
+    this.mat = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: MAT, roughness: 0.95 }));
+    // panel operatorski: slupek, pochylona konsola z ekranem HMI, grzybek STOP, przyciski
+    this.panel = new THREE.Group();
+    this.panelPost = box(GREY);
+    this.panelBox = box(0x3b4148, { roughness: 0.5 });
+    this.panelScreen = box(0x0d2238, { roughness: 0.2, metalness: 0.3, emissive: 0x0a2a4a, emissiveIntensity: 0.6 });
+    const knob = (color, r) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 24), new THREE.MeshStandardMaterial({ color, roughness: 0.4 }));
+    this.panelStop = knob(0xd62020, 1);
+    this.panelStopBase = knob(0xf2c400, 1);
+    this.panelBtns = [knob(0x2eaa44, 1), knob(0xf0f0f0, 1), knob(0x1f5fa8, 1)];
+    this.panel.add(this.panelPost, this.panelBox, this.panelScreen, this.panelStopBase, this.panelStop, ...this.panelBtns);
+    this.frame.add(this.wallA, this.wallB, this.railA, this.railB, this.table, this.mat, this.bridge, this.bridgeFace, this.carriage, this.panel);
     // glowica
     this.head = new THREE.Group();
     this.ram = box(YELLOW);
@@ -160,6 +174,37 @@ export class MachineModel {
     this.laserMount = mt;
   }
 
+  // Panel operatorski przed przednim koncem prawego murka (strona operatora - mniejsze c): slupek z podloga,
+  // konsola pochylona o 30 stopni do operatora, ekran HMI, grzybek STOP, przyciski. a - srodek murka wzdluz mostu.
+  updatePanel(cfg, P, a, cl0, floor, alongX) {
+    this.panel.visible = cfg.panel !== false;
+    if (!this.panel.visible) return;
+    const aDir = alongX ? [1, 0, 0] : [0, 1, 0];
+    const cDir = alongX ? [0, 1, 0] : [1, 0, 0];
+    const up = [0, 0, 1];
+    const c = cl0 - 380;                                       // przed murkiem
+    const postTop = floor + 950;
+    const postLo = P(a - 110, c - 90, floor);
+    const postHi = P(a + 110, c + 90, postTop);
+    placeBox(this.panelPost, [Math.min(postLo[0], postHi[0]), Math.min(postLo[1], postHi[1]), floor],
+      [Math.max(postLo[0], postHi[0]), Math.max(postLo[1], postHi[1]), postTop]);
+    // konsola: os z = do operatora i w gore (pochylenie 30 stopni), y - w gore po skosie, x - wzdluz mostu
+    const t = 30 * Math.PI / 180;
+    const face = add(mul(cDir, -Math.sin(t)), mul(up, Math.cos(t)));
+    const slope = cross(face, aDir);
+    const yAxis = dot(slope, up) >= 0 ? slope : mul(slope, -1);
+    const xAxis = cross(yAxis, face);
+    const center = add(P(a, c, postTop + 170), mul(face, -20));
+    orient(this.panelBox, xAxis, yAxis, face, center, [560, 380, 120]);
+    const onFace = (x, y, out) => add(add(add(center, mul(xAxis, x)), mul(yAxis, y)), mul(face, 60 + out));
+    orient(this.panelScreen, xAxis, yAxis, face, onFace(-60, 30, 1), [340, 240, 2]);
+    // przyciski: walce wzdluz normalnej konsoli (os walca three.js = y)
+    const btnAxes = [xAxis, face, cross(xAxis, face)];
+    orient(this.panelStopBase, ...btnAxes, onFace(190, 90, 4), [42, 8, 42]);
+    orient(this.panelStop, ...btnAxes, onFace(190, 90, 22), [34, 28, 34]);
+    this.panelBtns.forEach((b, i) => orient(b, ...btnAxes, onFace(150 + i * 40, -110, 6), [14, 12, 14]));
+  }
+
   // Suport: sciany z prowadnicami, stol, most i wozek
   updateFrame(f, m, cfg, board, ramW, zBridge) {
     const alongX = cfg.bridgeAlong !== 'y';
@@ -187,15 +232,21 @@ export class MachineModel {
     box2(this.railB, [wa1 - wall + 40, cl0, zBridge], [wa1 - 40, cl1, zBridge - 60]);
     // plyta stolu - wielokat z punktow stolu (bez punktow - prostokat)
     const tablePts = isArea(board) ? board : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-    const tableKey = JSON.stringify([tablePts, tableTop]);
+    const matT = cfg.mat === false ? 0 : 10;               // grubosc maty [mm]
+    const tableKey = JSON.stringify([tablePts, tableTop, matT]);
     if (tableKey !== this.tableKey) {
       this.tableKey = tableKey;
       this.table.geometry.dispose();
-      this.table.geometry = prismGeometry(tablePts, tableTop - 80, 79.5);
+      this.table.geometry = prismGeometry(tablePts, tableTop - 80, 79.5 - matT);
       this.table.position.set(0, 0, 0);
       this.table.scale.set(1, 1, 1);
       this.table.quaternion.identity();
+      // mata: wierzch plyty stolu (pod kamieniem, gora maty = spod kamienia)
+      this.mat.geometry.dispose();
+      this.mat.geometry = matT ? prismGeometry(tablePts, tableTop - 0.5 - matT, matT) : new THREE.BufferGeometry();
     }
+    this.mat.visible = matT > 0;
+    this.updatePanel(cfg, P, wa1 - wall / 2, cl0, floor, alongX);
     // most jedzie z osia poprzeczna (Y), wozek z osia wzdluz mostu (X); slup przed mostem
     const posA = alongX ? f.axis[0] : f.axis[1];
     const posC = alongX ? f.axis[1] : f.axis[0];
