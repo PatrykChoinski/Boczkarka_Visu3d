@@ -95,11 +95,11 @@ test('polerowanie: tor jak Polishing (XY, YX, prostokat CCW / CW)', () => {
 });
 
 // Symulacja operacji narzedzia z zapisem sladu: {recorder, end}
-function runOp(mode, values = {}) {
+function runOp(mode, values = {}, common = undefined, id = null) {
   const m = machine({ ...BASE, mode });
-  const op = toolOpsFor(mode)[0];
+  const op = id ? toolOpsFor(mode).find((o) => o.id === id) : toolOpsFor(mode)[0];
   const pb = new ProgramBuilder({ x: 0, y: 0, z: 0, a: 0, b: 90 }, m, DYN);
-  op.build(pb, { ...defaults(op.fields), ...values });
+  op.build(pb, { ...defaults(op.fields), ...values }, common);
   const p = pb.build();
   const rec = new ToolRecorder();
   for (let t = 0; t <= p.duration; t += 0.01) rec.update(p.at(t).pose, m);
@@ -117,9 +117,10 @@ test('wiercenie (DrillST): jeden otwor w punkcie, glebokosc fDrillDepth, wyjazd 
 });
 
 test('frezowanie linii (MillST): przejscia na kolejnych glebokosciach wzdluz linii narzedzia', () => {
-  const { rec } = runOp('mill', { x0: 600, y0: 600, x1: 1600, y1: 600, depth: 10, passes: 2 });
+  // glebokosc z tablicy glebokosci frezu: grubosc materialu 40 (zapas ponizej spodu materialu nie zostawia sladu)
+  const { rec } = runOp('mill', { x0: 600, y0: 600, x1: 1600, y1: 600 }, { depthMode: 'same', passes: 2, reserve: 0 });
   const s = rec.summary();
-  near(s.depth, 10, 0.05);
+  near(s.depth, 40, 0.05);
   const all = rec.passes.flatMap((p) => p.points);
   for (const [, y] of all) near(y, 600);
   near(Math.min(...all.map((p) => p[0])), 600, 2.5);
@@ -133,4 +134,49 @@ test('polerowanie: slad na powierzchni (glebokosc 0) na calym torze', () => {
   near(b[2], 1200 + 60, 2.5);
   near(b[3], 800 + 60, 2.5);
   assert.ok(rec.passes.every((p) => p.polish && p.maxDepth < 0.01));
+});
+
+test('wiercenie: Z wiercenia z fVelocityAxisZDrill (wolniej - dluzej), DrillSimpleST w aktualnym XY od aktualnego Z', () => {
+  const dur = (zVel) => {
+    const m = machine({ ...BASE, mode: 'drill' });
+    const op = toolOpsFor('drill').find((o) => o.id === 'drill');
+    const pb = new ProgramBuilder({ x: 0, y: 0, z: 0, a: 0, b: 90 }, m, DYN);
+    op.build(pb, { ...defaults(op.fields), depth: 30, zVel });
+    const p = pb.build();
+    return p.segments.filter((sg) => sg.step === 'MOVE_DRILL').reduce((t, sg) => t + sg.duration, 0);
+  };
+  assert.ok(dur(0.3) > dur(1.2) * 3);
+  near(dur(0.6), 30 / 10 + 10 / 500, 0.05);              // 0,6 m/min = 10 mm/s, krotki ruch - prawie bez rampy
+  const m = machine({ ...BASE, mode: 'drill' });
+  const op = toolOpsFor('drill').find((o) => o.id === 'drillSimple');
+  const start = { x: 500, y: 400, z: plcToolAxisZ(-5, 90, m), a: 0, b: 90 };
+  const pb = new ProgramBuilder(start, m, DYN);
+  op.build(pb, { ...defaults(op.fields), depth: 25, above: 20 });
+  const p = pb.build();
+  const rec = new ToolRecorder();
+  for (let t = 0; t <= p.duration; t += 0.01) rec.update(p.at(t).pose, m);
+  const end = p.at(p.duration).pose;
+  near(end.x, 500); near(end.y, 400);
+  near(end.z, start.z - 20);
+  near(rec.summary().depth, 20, 0.05);                   // 5 mm nad materialem + 25 mm wiercenia
+});
+
+test('polerowanie: powtorzenia narzedzi, kolejka (aQueueTools), wymiana narzedzia, Z z fHeightPosition', async () => {
+  const { polishingJobs, polishAxisZ } = await import('../src/shared/tools.js');
+  assert.deepEqual(polishingJobs({ queue: false, reps: [2, 0, 1], type: 3 }), [{ tool: 1, type: 3 }, { tool: 1, type: 3 }, { tool: 3, type: 3 }]);
+  assert.deepEqual(polishingJobs({ queue: true, qXY: [1, 0], qYX: [0, 2], qCCW: [1], qCW: [] }),
+    [{ tool: 1, type: 0 }, { tool: 1, type: 2 }, { tool: 2, type: 1 }, { tool: 2, type: 1 }]);
+  const m = machine({ ...BASE, mode: 'polishing' });
+  const op = toolOpsFor('polishing')[0];
+  const pb = new ProgramBuilder({ x: 0, y: 0, z: 0, a: 0, b: 90 }, m, DYN);
+  op.build(pb, { ...defaults(op.fields), queue: false, reps: [1, 1], change: 7, heightMode: false, height: 700 });
+  const p = pb.build();
+  const changes = p.segments.filter((sg) => sg.step === 'CHANGE_TOOL');
+  assert.equal(changes.length, 1);
+  near(changes[0].duration, 7);
+  // Z pracy = fHeightPosition + ActiveTool.Height - (korekta + Ct/2)
+  near(polishAxisZ(700, m), 700 - 60 - 320);
+  const work = p.segments.filter((sg) => sg.step === 'MOVE_POLISHING_X');
+  assert.ok(work.length > 0);
+  for (const sg of work) near(sg.end.z, polishAxisZ(700, m));
 });

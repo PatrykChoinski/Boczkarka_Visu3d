@@ -61,8 +61,19 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [x] Punkty styku z materiałem wg formuł MillST / DrillST / Polishing (testy)
 - [x] Średnice: fParameterMillWidth (frez, wiertło), polerka – parametr wizualizacji
 - [x] Ekrany tylko trybu (operacje frezu, wiercenia, polerowania; automat frezu)
-- [ ] Symulacja ruchu automatu frezu (ProgramAutoMillST) – na razie podgląd toru
+- [x] Symulacja ruchu automatu frezu (ProgramAutoMillST) – #131
 - [ ] Na maszynie: znak ActiveTool.Height i średnica polerki
+
+## #131 / #132 / #133 Frez, polerowanie, wiercenie
+- [x] Ukrywanie pól piły w trybach narzędzi i pól frezu w pile (Parametry, Parametry figury, automat)
+- [x] Frez: MillST (z zjazdem w trakcie ruchu i przejściem czyszczącym, ZFirst), MillArcST, MillCircleST, MillElipseST, MillStripesST (stół), MillBlocksST, EdgesST
+- [x] Tablica głębokości frezu (równe, stały skok z minimalnym ostatnim, jedno)
+- [x] Automat frezu: wszystkie kroki ProgramMillStep, ChangeDepth, bProgramReapitingOver (MillShapeST)
+- [x] Wiercenie: fVelocityAxisZDrill, DrillSimpleST
+- [x] Polerowanie: fVelocityMillMode, bMaterialHeightMode / fHeightPosition + Zapisz Z, aToolRepetitions, aQueueTools, wymiana narzędzia
+- [ ] Na maszynie: pozycje magazynu narzędzi polerskich (PolishingToolChange) – w wizualizacji tylko postój
+- [ ] MillArcST z bManualArcIncludeToolDiameter: kierunek przesunięcia końców w PLC (znak) – sprawdzić na maszynie
+- [ ] MillBlocksST: faza Y w PLC dodaje szerokość frezu także do Y – zostawione jak w PLC
 
 ## #135 Końce cięć w automacie
 - [x] Cięcie zewnętrzne wychodzi za punkt o szerokość tarczy

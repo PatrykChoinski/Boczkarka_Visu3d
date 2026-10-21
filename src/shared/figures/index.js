@@ -13,19 +13,20 @@ import { arcPlan, circlePlan } from '../arcs.js';
 export const FIGURES = [RECTANGLE, ...FIGURES_A, ...FIGURES_B, ...FIGURES_C].sort((a, b) => a.v - b.v);
 export const figureById = (id) => FIGURES.find((f) => f.id === id);
 
-// Zmienne globalne / serwisowe, ktore FiguresGeometricSt podaje figurom (pola "Parametry figury")
+// Zmienne globalne / serwisowe, ktore FiguresGeometricSt podaje figurom (pola "Parametry figury");
+// modes - tryby, w ktorych pole ma znaczenie (#131: w pile ukryte pola frezu i odwrotnie)
 export const FIGURE_CONTEXT_FIELDS = [
   { k: 'internal', label: 'Rodzaj (iManualInternal)', t: 'sel', d: 0, o: INTERNAL },
-  { k: 'additional', label: 'Dodatkowa droga (bManualAdditionalDistance)', t: 'bool', d: false },
-  { k: 'additionalDistance', label: 'Dodatkowa droga [mm] (fManualAdditionalDistance)', t: 'num', d: 50, show: (v) => v.additional },
-  { k: 'rectangleACBD', label: 'Prostokąt w kolejności AC-BD (bServiceRectangleACBD)', t: 'bool', d: false },
-  { k: 'roofCorrectionX', label: 'Korekta daszków X (fParameterRoofCorrectionX)', t: 'num', d: 0 },
-  { k: 'roofCorrectionY', label: 'Korekta daszków Y (fParameterRoofCorrectionY)', t: 'num', d: 0 },
-  { k: 'newStart', label: 'Nowe punkty startu frezu (bServiceMillProgramNewStartPoints)', t: 'bool', d: false },
-  { k: 'newStartX', label: 'Start frezu X względem programu', t: 'num', d: 0, show: (v) => v.newStart },
-  { k: 'newStartY', label: 'Start frezu Y względem programu', t: 'num', d: 0, show: (v) => v.newStart },
-  { k: 'machineNumber', label: 'Numer maszyny (iMachineNumber)', t: 'int', d: 0 },
-  { k: 'bookMinimalRadius', label: 'Książki: promień minimalny (bServiceBookMinimalRadius)', t: 'bool', d: false },
+  { k: 'additional', label: 'Dodatkowa droga (bManualAdditionalDistance)', t: 'bool', d: false, modes: ['saw'] },
+  { k: 'additionalDistance', label: 'Dodatkowa droga [mm] (fManualAdditionalDistance)', t: 'num', d: 50, show: (v) => v.additional, modes: ['saw'] },
+  { k: 'rectangleACBD', label: 'Prostokąt w kolejności AC-BD (bServiceRectangleACBD)', t: 'bool', d: false, modes: ['saw'] },
+  { k: 'roofCorrectionX', label: 'Korekta daszków X (fParameterRoofCorrectionX)', t: 'num', d: 0, modes: ['saw'] },
+  { k: 'roofCorrectionY', label: 'Korekta daszków Y (fParameterRoofCorrectionY)', t: 'num', d: 0, modes: ['saw'] },
+  { k: 'newStart', label: 'Nowe punkty startu frezu (bServiceMillProgramNewStartPoints)', t: 'bool', d: false, modes: ['mill'] },
+  { k: 'newStartX', label: 'Start frezu X względem programu', t: 'num', d: 0, show: (v) => v.newStart, modes: ['mill'] },
+  { k: 'newStartY', label: 'Start frezu Y względem programu', t: 'num', d: 0, show: (v) => v.newStart, modes: ['mill'] },
+  { k: 'machineNumber', label: 'Numer maszyny (iMachineNumber)', t: 'int', d: 0, modes: ['mill'] },
+  { k: 'bookMinimalRadius', label: 'Książki: promień minimalny (bServiceBookMinimalRadius)', t: 'bool', d: false, modes: ['saw'] },
 ];
 
 // Kontekst figury: pola "Parametry figury" + szerokosc tarczy, srednica frezu (fParameterMillWidth), grubosc z parametrow

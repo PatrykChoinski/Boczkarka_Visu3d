@@ -105,7 +105,7 @@
           <label>Program <select id="autoKind">
             <option value="cut">Piła (ProgramAutoCutST)</option>
             <option value="profile">Profile (ProgramAutoProfileST)</option>
-            <option value="mill">Frez (ProgramAutoMillST) – podgląd</option>
+            <option value="mill">Frez (ProgramAutoMillST)</option>
           </select></label>
           <label>Start od kroku <input id="autoFrom" type="number" min="1" step="1" value="1"></label>
           <label>Punkt startowy X <input id="autoOX" type="number" step="any"></label>
@@ -113,7 +113,8 @@
           <div class="saveRow wide" id="autoSaveRow"><button id="autoSaveStart" title="Wpisz aktualną pozycję osi X / Y jako punkt startowy (jak w PLC: bProgramSaveStartPosition, frez: bProgramMillStartPointSave)">Zapisz punkt startowy</button></div>
           <label data-prof>Skok profilu [mm] <input id="autoPJump" type="number" step="any" min="0.1"></label>
           <label data-prof>Skok wygładzania [mm] <input id="autoSJump" type="number" step="any" min="1"></label>
-          <label class="cb wide"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
+          <label class="cb wide" data-modes="saw"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
+          <label class="cb wide" data-modes="mill"><input type="checkbox" id="autoRepeatOver"> Zamknięte kształty w całości na każdej głębokości (bProgramReapitingOver)</label>
           <label class="cb wide" data-prof><input type="checkbox" id="autoSArrays"> Wygładzanie łańcuchem wierszy (bServiceSmoothingArrays)</label>
         </div>
         <details id="figBox" open>
@@ -265,27 +266,31 @@
       </div>
 
       <div class="tab" data-tab="par" hidden>
-        <h3>Tarcza i głowica</h3>
+        <!-- #131-#133: parametry tylko trybu (data-modes) - w pile bez parametrow narzedzi, w trybach narzedzi bez tarczy -->
+        <h3 data-modes="saw">Tarcza i głowica</h3>
+        <h3 data-modes="mill drill polishing">Głowica</h3>
         <div class="grid2">
-          <label>Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
-          <label>Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
+          <label data-modes="saw">Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
+          <label data-modes="saw">Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
           <label>CutTiltDiameter [mm] <input data-m="cutTiltDiameter" type="number" step="any"></label>
-          <label>HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
+          <label data-modes="saw">HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
+          <label data-modes="mill drill polishing">MillTiltDiameter [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
         </div>
-        <h3>Frez, wiertło, polerka <span class="muted">tryby z B 90°</span></h3>
-        <div class="grid2">
-          <label>Średnica frezu i wiertła [mm] (fParameterMillWidth) <input data-m="millWidth" type="number" step="any" min="1"></label>
-          <label>MillTiltDiameter [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
-          <label>Długość frezu [mm] (fParameterMillLength) <input data-m="millLength" type="number" step="any" min="0"></label>
-          <label>Długość wiertła [mm] (fParameterDrillLength) <input data-m="drillLength" type="number" step="any" min="0"></label>
+        <h3 data-modes="mill">Frez <span class="muted">B 90°</span></h3>
+        <h3 data-modes="drill">Wiertło <span class="muted">B 90°</span></h3>
+        <h3 data-modes="polishing">Narzędzie polerskie <span class="muted">B 90°</span></h3>
+        <div class="grid2" data-modes="mill drill polishing">
+          <label data-modes="mill drill">Średnica frezu / wiertła [mm] (fParameterMillWidth) <input data-m="millWidth" type="number" step="any" min="1"></label>
+          <label data-modes="mill">Długość frezu [mm] (fParameterMillLength) <input data-m="millLength" type="number" step="any" min="0"></label>
+          <label data-modes="drill">Długość wiertła [mm] (fParameterDrillLength) <input data-m="drillLength" type="number" step="any" min="0"></label>
           <label>Korekta długości [mm] (fParameterMillCorrection) <input data-m="millCorrection" type="number" step="any"></label>
-          <label>Średnica polerki [mm] (brak w PLC) <input data-m="polishDiameter" type="number" step="any" min="1"></label>
-          <label>Wysokość polerki [mm] (ActiveTool.Height) <input data-m="polishHeight" type="number" step="any"></label>
+          <label data-modes="polishing">Średnica polerki [mm] (brak w PLC) <input data-m="polishDiameter" type="number" step="any" min="1"></label>
+          <label data-modes="polishing">Wysokość polerki [mm] (ActiveTool.Height) <input data-m="polishHeight" type="number" step="any"></label>
         </div>
         <h3>Dynamika</h3>
         <table class="dyn">
           <tr><th></th><th>prędkość<br><small>m/min</small></th><th>przyspieszenie<br><small>m/s²</small></th><th>hamowanie<br><small>m/s²</small></th></tr>
-          <tr><td>Cięcie XY</td><td><input data-d="cutVel" type="number" step="any" min="0.001"></td><td><input data-d="cutAcc" type="number" step="any" min="0.001"></td><td><input data-d="cutDec" type="number" step="any" min="0.001"></td></tr>
+          <tr><td><span data-modes="saw">Cięcie XY</span><span data-modes="mill drill polishing">Praca XY</span></td><td><input data-d="cutVel" type="number" step="any" min="0.001"></td><td><input data-d="cutAcc" type="number" step="any" min="0.001"></td><td><input data-d="cutDec" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Z wyjazd</td><td><input data-d="zUpVel" type="number" step="any" min="0.001"></td><td colspan="2"></td></tr>

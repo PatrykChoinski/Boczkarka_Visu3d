@@ -156,7 +156,7 @@ export const DEFAULTS = {
   tableThickness: 80,
   // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa;
   // mountAngle - modul lasera na oslonie tarczy: kat od gory w strone lasera [deg] (#141)
-  laser: { side: 1, length: 2500, mountAngle: 50 },
+  laser: { side: 1, length: 2500, mountAngle: 40 },     // 40 st. - na gornej krawedzi oslony przy narozniku (zdjecie #141)
   // naped tarczy: czestotliwosc z PLC * freqScale = Hz; obroty na ekranie umowne - visualRps obr/s przy 50 Hz;
   // toolVisualRps - to samo dla frezu / wiertla / polerki (#136); fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
   // (-1: strona -u tarczy schodzi w material - tam celuja dysze wody, jak na zdjeciu w #141)
