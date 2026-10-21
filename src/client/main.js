@@ -161,6 +161,7 @@ function fit() {
 // --- rysowanie i pasek stanu ------------------------------------------------------
 
 const fmt = (v, w, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-').padStart(w);
+const fmtAxis = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
 
 function redraw() {
   const m = state.machine;
@@ -197,6 +198,9 @@ function redraw() {
   $('#hudMachine').textContent = `${toolText}${isBased() ? '' : ' (maszyna niezbazowana)'}, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
 
   const p = state.pose;
+  if (p && !$('.tab[data-tab="pos"]').hidden) {
+    for (const el of $$('[data-act]')) el.value = fmtAxis(p[el.dataset.act]);
+  }
   if (p) {
     const depth = Math.max(0, penetration(headFrame(p, m), m));
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
@@ -1351,13 +1355,6 @@ function bindUi() {
     const d = offlineDynamics();
     if (!validDynamics(d)) return;
     startProgram(gotoProgram(state.pose, readFields('pos'), d));
-  };
-  $('#posSet').onclick = () => {
-    stopProgram();
-    cancelHoming();
-    state.sim.program = null;
-    applyPose(readFields('pos'), offlineMachine());
-    requestDraw();
   };
   $('#posActual').onclick = () => writeFields('pos', state.pose);
 

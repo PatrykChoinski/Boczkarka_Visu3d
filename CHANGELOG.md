@@ -14,6 +14,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
   - jazda „na” kąt (`MCAbsolute`) jedzie z `VelA` / `VelB`. Wcześniej „Jedź o” używało `VelA` / `VelB`.
 - Opcja „Przy pile ON jog z prędkością cięcia” (`bServiceManualRewriteJogSpeed`, `ManualST`): przy włączonej pile jog X / Y z prędkością cięcia (`fVelocitySawMode`), Z z prędkością roboczą (`fVelocityAxisZWork`).
 - Z informacji na ekranie Ręczne usunięte linie „Pozycja” i „Jog” (zostaje interpolacja: prędkość cięcia i strona lasera).
+- Ekran Pozycja: nad polami zadanymi aktualne X / Y / Z / A / B (tylko odczyt, odświeżane na bieżąco, 0,01 mm); usunięty przycisk „Ustaw od razu”.
 - `jogVelocity`, `relativeMoveDynamics`, `JOG_DYN` w `jog.js`.
 - Sprawdzone:
   - `npm test` 113/113 (nowy test w `test/jog.test.js`: prędkość i rampa każdej osi, przepisanie przy pile, jazda o 90° A z prędkością jog);

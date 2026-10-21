@@ -140,3 +140,7 @@ button.hold.pressed { background: var(--accent); border-color: var(--accent); co
 /* Prędkości ruchów ręcznych (#140) */
 table.speeds input { width: 100%; }
 table.speeds td:last-child { width: 48px; }
+
+/* Pozycja: aktualne pozycje osi nad zadanymi (tylko odczyt) */
+.grid2.actual output { display: block; padding: 4px 6px; border: 1px solid #d5dbe1; border-radius: 6px; background: #f3f5f7;
+  font-family: ui-monospace, Consolas, monospace; text-align: right; }

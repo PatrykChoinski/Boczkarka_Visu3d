@@ -201,6 +201,15 @@
 
       <div class="tab" data-tab="pos" hidden>
         <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
+        <h3>Aktualne</h3>
+        <div class="grid2 actual">
+          <label>X [mm] <output data-act="x"></output></label>
+          <label>Y [mm] <output data-act="y"></output></label>
+          <label>Z [mm] <output data-act="z"></output></label>
+          <label>A [°] <output data-act="a"></output></label>
+          <label>B [°] <output data-act="b"></output></label>
+        </div>
+        <h3>Zadane</h3>
         <div class="grid2">
           <label>X [mm] <input data-pos="x" type="number" step="any"></label>
           <label>Y [mm] <input data-pos="y" type="number" step="any"></label>
@@ -210,7 +219,6 @@
         </div>
         <div class="row">
           <button id="posGo" class="primary">Jedź</button>
-          <button id="posSet">Ustaw od razu</button>
           <button id="posActual">Wstaw aktualną</button>
         </div>
       </div>

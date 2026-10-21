@@ -258,10 +258,9 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     lasera, prostopadle, prostopadle odwrotnie. Ruch w XY z prędkością cięcia i
     `Acc` / `Dec`, także w materiale, więc tnie.
   - **Piła ON/OFF**, kierunek FWD / REV i częstotliwość.
-- **Pozycja**: zadane X/Y/Z/A/B.
+- **Pozycja**: u góry aktualne X/Y/Z/A/B (odświeżane na bieżąco, tylko odczyt), pod nimi zadane X/Y/Z/A/B.
   - **Jedź**: animowany dojazd; najpierw Z w górę, jeśli trzeba, potem
     wszystkie osie naraz, każda z własną rampą.
-  - **Ustaw od razu**: przestawia osie bez animacji.
   - **Wstaw aktualną**: wpisuje do pól bieżące położenie osi.
 - **Parametry**: tarcza i głowica oraz dynamika.
 
