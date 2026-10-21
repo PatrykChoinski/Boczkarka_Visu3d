@@ -6,6 +6,16 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Automat: końce cięć zewnętrznych i wewnętrznych (#135)
+- Cięcia proste i skosy w automacie:
+  - koniec zewnętrzny: najniższy punkt tarczy wychodzi za punkt linii o szerokość tarczy. Tak samo jak `fCutOuterAdditionalDistance` w `CutST.GetPositions` (wartość = `fParameterBladeWidth`), dlatego cięcia figur (np. prostokąta) przecinają się w narożnikach na całej głębokości;
+  - koniec wewnętrzny i pół-wewnętrzny: rzaz nie wychodzi za punkt. Bez skosu tak już było. Przy skosie rzaz wychodził ok. 10 mm za punkt (B 45°, grubość 40, tarcza Ø625), bo odsunięcie (`GetSawOffset`) i głębokość maksymalna (`GetMaxZDepth`) były liczone z głębokości pionowej, a cięciwa tarczy na powierzchni zależy od głębokości w płaszczyźnie tarczy (z / cos B). Teraz Visu3D liczy z głębokości w płaszczyźnie tarczy.
+- `cutPlan` (`cutst.js`): nowa opcja `innerSlant`; automat podaje `outerAdd` = szerokość tarczy i `innerSlant`. Operacje z zakładki „Operacja” bez zmian (jak PLC).
+- Uwaga z PLC (bez zmian w PLC): w `CutST` skos wewnętrzny liczy odsunięcie końca z głębokości pionowej, więc na maszynie rzaz przy skosie też może wychodzić za punkt wewnętrzny. Korekta `fParameterInnerCutCorrection` dla B (15 mm) tego przy 45° nie pokrywa.
+- Sprawdzone:
+  - `npm test` 99/99, nowy test w `test/ops.test.js`: zewn., wewn., wewn. początek / koniec, skos zewn. i wewn. 45°;
+  - w przeglądarce prostokąt z figury: pełna głębokość przechodzi przez narożniki.
+
 ### Ekran Bazowanie, tryby frez / wiercenie / polerowanie (#134)
 - Nowa zakładka „Bazowanie” jak `BaseHomingST`:
   - Z do 0, potem A na 0 najkrótszą drogą i B na 0° (piła) albo 90° (frez, wiercenie, polerowanie);

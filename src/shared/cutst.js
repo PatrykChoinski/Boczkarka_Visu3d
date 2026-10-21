@@ -63,7 +63,10 @@ export function cutAngle(c) {
 
 // Plan ciecia (bez ruchu): kat, wychyl, lista przejsc {depth, from: [x, y], to: [x, y]} na linii (powierzchnia)
 // c: {x0, y0, x1, y1, b, internal, reverse, lastCutWithDirection, depth: {...depthTables}, thickness,
-//     innerCorr, innerCorrB, outerAdd}
+//     innerCorr, innerCorrB, outerAdd, innerSlant}
+// outerAdd - wydluzenie koncow zewnetrznych (fCutOuterAdditionalDistance), innerSlant - odsuniecie koncow
+// wewnetrznych przy skosie z glebokosci w plaszczyznie tarczy (z / cos B), zeby rzaz nie wychodzil za punkt
+// (w PLC GetSawOffset liczy z glebokosci pionowej - przy skosie rzaz na gorze wychodzi za punkt)
 export function cutPlan(c, m) {
   const tilt = c.b > 0 && c.b < 90;
   const b = tilt ? c.b : 0;
@@ -75,13 +78,15 @@ export function cutPlan(c, m) {
   const tables = depthTables(c.depth);
   const primary = choosePrimary(c, tables);
   let table = c.table ?? (primary ? tables.primary : tables.secondary);
+  // glebokosc pionowa -> w plaszczyznie tarczy (dzielnik cos B), tylko przy innerSlant i skosie
+  const slant = c.innerSlant && tilt ? Math.cos(b * DEG) : 1;
   if (internal >= 1) {
-    const maxZ = innerMaxDepth(L, m.discDiameter, corr, c.depth.total, c.thickness ?? m.materialThickness);
+    const maxZ = innerMaxDepth(L, m.discDiameter, corr, c.depth.total / slant, (c.thickness ?? m.materialThickness) / slant) * slant;
     table = table.map((_, i) => maxZ / table.length * (i + 1));
   }
   if (!table.length) table = [c.depth.total];
   const n = table.length;
-  const off = (z, k = corr) => sawOffset(z, L, m.discDiameter, k);
+  const off = (z, k = corr) => sawOffset(z / slant, L, m.discDiameter, k);
   const add = internal === 1 ? 0 : (c.outerAdd || 0);
   // punkt startu / konca przejscia z odsunieciem (wewn.) albo wydluzeniem (zewn.)
   const startPt = (o) => {

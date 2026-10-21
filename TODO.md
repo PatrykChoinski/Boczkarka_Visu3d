@@ -63,3 +63,8 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [x] Ekrany tylko trybu (operacje frezu, wiercenia, polerowania; automat frezu)
 - [ ] Symulacja ruchu automatu frezu (ProgramAutoMillST) – na razie podgląd toru
 - [ ] Na maszynie: znak ActiveTool.Height i średnica polerki
+
+## #135 Końce cięć w automacie
+- [x] Cięcie zewnętrzne wychodzi za punkt o szerokość tarczy
+- [x] Wewnętrzne / pół-wewnętrzne nie wychodzą za punkt (też skos - głębokość w płaszczyźnie tarczy)
+- [ ] PLC: odsunięcie skosu wewnętrznego z głębokości pionowej (CutST) - do decyzji

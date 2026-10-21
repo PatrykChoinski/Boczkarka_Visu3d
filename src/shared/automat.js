@@ -58,6 +58,10 @@ const CIRCLE_STEPS = { 25: { inner: false, center: false }, 26: { inner: false, 
 const PROFILE_STEPS = { 8: { convex: true, x: true }, 9: { convex: true, x: false }, 10: { convex: false, x: true }, 11: { convex: false, x: false } };
 const SMOOTH_STEPS = { 15: { convex: true, x: true }, 16: { convex: true, x: false }, 17: { convex: false, x: true }, 18: { convex: false, x: false } };
 
+// Konce ciec prostych w automacie (#135): zewnetrzne wychodza za material o szerokosc tarczy (najnizszy punkt tarczy
+// za punkt linii, jak fCutOuterAdditionalDistance), wewnetrzne / pol-wewnetrzne nie wychodza za punkt (tez przy skosie)
+const OUTER_INNER_ENDS = (m) => ({ outerAdd: m.bladeWidth, innerSlant: true });
+
 // Wiersze programu z tablic PLC
 export function rowsFromArrays(v, count) {
   const n = Math.max(0, Math.min(250, Math.round(Number(count) || 0)));
@@ -138,7 +142,7 @@ export function addAutomat(pb, rows, count, origin, opt, common) {
       const slopes = ls.slope || [Boolean(ls.reverse)];
       for (const rev of slopes) {
         const tilt = Boolean(ls.slope);
-        addCutST(pb, cutParams({ ...l, internal: ls.internal, reverse: rev }, { ...c, tilt, b: tilt ? row.angle : 0 }));
+        addCutST(pb, cutParams({ ...l, internal: ls.internal, reverse: rev }, { ...c, tilt, b: tilt ? row.angle : 0 }, OUTER_INNER_ENDS(m)));
       }
     } else if (st === 2) {
       // przejazd na punkt i+1 z aktualnym A / B, bez zjazdu Z (bGoToPositionNoLastMove)

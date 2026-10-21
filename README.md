@@ -187,6 +187,13 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   głębokość, we/zew i punkt startowy.
   - Krok wiersza i działa od punktu i do i+1: cięcie, przejazd, łuki, okręgi,
     skosy, profile, wygładzanie, zmiana głębokości.
+  - Końce cięć prostych i skosów (#135):
+    - koniec zewnętrzny: najniższy punkt tarczy wychodzi za punkt linii o
+      szerokość tarczy (`fParameterBladeWidth`), żeby cięcia przecinały się
+      w narożnikach na całej głębokości;
+    - koniec wewnętrzny (wewn., wewn. początek / koniec): rzaz nie wychodzi
+      za punkt, także przy skosie. Odsunięcie końca jest liczone z
+      głębokości w płaszczyźnie tarczy (z / cos B), a nie z pionowej jak w PLC.
   - Offline: tabela do edycji i „Przykład”.
   - **Figura – wypełnij bufor jak PLC** (`FiguresGeometricSt`): wybierasz
     figurę i wpisujesz jej pola (jak na ekranach figur w HMI: start

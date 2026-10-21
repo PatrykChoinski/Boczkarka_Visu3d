@@ -189,3 +189,40 @@ test('ciecie proste kat + dlugosc (CutST.GetPositions): koniec z kata, w strone 
   assert.ok(vis('x1', { twoPoint: true }) && !vis('x1', { twoPoint: false }));
   assert.ok(vis('angle', { twoPoint: false }) && !vis('angle', { twoPoint: true }));
 });
+
+// #135: konce ciec prostych w automacie - linia 0 .. 1000 w X od punktu startowego (500, 500)
+function automatEnds(step, angle = 0) {
+  const prog = run((pb) => addAutomat(pb, [{ x: 0, y: 0, step, angle }, { x: 1000, y: 0, step: 0 }], 1, [500, 500], {}, { ...COMMON, thickness: 40 }));
+  const rec = new CutRecorder();
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let t = 0; t <= prog.duration; t += 0.01) {
+    const pose = prog.at(t).pose;
+    rec.update(pose, M);
+    const f = bladeFrame(pose, M);
+    if (penetration(f, M) > 0.05) { lo = Math.min(lo, f.lowest[0] - 500); hi = Math.max(hi, f.lowest[0] - 500); }
+  }
+  let top = [Infinity, -Infinity];
+  for (const c of rec.cuts) for (const r of c.runs()) for (const [s] of r) { const x = c.pointAt(s, 0)[0] - 500; top = [Math.min(top[0], x), Math.max(top[1], x)]; }
+  return { lo, hi, top };
+}
+
+test('automat (#135): ciecie zewnetrzne wychodzi za punkt o szerokosc tarczy, wewnetrzne / pol-wewnetrzne nie wychodza (tez skos)', () => {
+  const bw = M.bladeWidth;
+  const outer = automatEnds(1);
+  near(outer.lo, -bw, 0.2);
+  near(outer.hi, 1000 + bw, 0.2);
+  const inner = automatEnds(5);
+  assert.ok(inner.top[0] >= 0 && inner.top[1] <= 1000, `wewn. rzaz ${inner.top}`);
+  const start = automatEnds(6);           // wewn. poczatek: poczatek w punkcie, koniec zewnetrzny
+  assert.ok(start.top[0] >= 0);
+  near(start.hi, 1000 + bw, 0.2);
+  const end = automatEnds(7);             // wewn. koniec
+  near(end.lo, -bw, 0.2);
+  assert.ok(end.top[1] <= 1000);
+  const slopeOuter = automatEnds(12, 45);
+  near(slopeOuter.lo, -bw, 0.2);
+  near(slopeOuter.hi, 1000 + bw, 0.2);
+  const slopeInner = automatEnds(20, 45);  // skos wewn.: odsuniecie z glebokosci w plaszczyznie tarczy
+  assert.ok(slopeInner.top[0] >= 0 && slopeInner.top[1] <= 1000, `skos wewn. rzaz ${slopeInner.top}`);
+});
