@@ -13,7 +13,7 @@ import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
-import { JogMotion, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
+import { JogMotion, jogVelocity, relativeMoveDynamics, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -161,6 +161,7 @@ function fit() {
 // --- rysowanie i pasek stanu ------------------------------------------------------
 
 const fmt = (v, w, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-').padStart(w);
+const fmtAxis = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
 
 function redraw() {
   const m = state.machine;
@@ -197,6 +198,9 @@ function redraw() {
   $('#hudMachine').textContent = `${toolText}${isBased() ? '' : ' (maszyna niezbazowana)'}, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
 
   const p = state.pose;
+  if (p && !$('.tab[data-tab="pos"]').hidden) {
+    for (const el of $$('[data-act]')) el.value = fmtAxis(p[el.dataset.act]);
+  }
   if (p) {
     const depth = Math.max(0, penetration(headFrame(p, m), m));
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
@@ -841,6 +845,7 @@ function offlineFormsChanged() {
   saveForms();
   updateCutInfo();
   updateAutoInfo();
+  updateManInfo();             // predkosci osi na ekranie Reczne (wspolne z Parametrami)
   if (state.mode === 'offline' && !state.sim.running && state.pose) {
     applyPose(state.pose, offlineMachine());
     requestDraw();
@@ -911,8 +916,6 @@ function stopProgram() {
 
 // --- ruchy reczne offline (ekran Reczne) ------------------------------------------------------
 
-const JOG_DYN = { x: ['jogXVel', 'fastAcc'], y: ['jogYVel', 'fastAcc'], z: ['jogZVel', 'zAcc'], a: ['jogAVel', 'aAcc'], b: ['jogBVel', 'bAcc'] };
-
 function startJog(dir, vel, acc, dec) {
   if (state.mode !== 'offline' || !state.pose || !(vel > 0)) return;
   stopProgram();
@@ -952,12 +955,29 @@ function updateManInfo() {
   const p = state.pose;
   if (!p || $('.tab[data-tab="man"]').hidden) return;
   const d = offlineDynamics();
-  $('#manInfo').innerHTML = `Pozycja: X ${p.x.toFixed(1)}, Y ${p.y.toFixed(1)}, Z ${p.z.toFixed(1)}, A ${p.a.toFixed(1)}°, B ${p.b.toFixed(1)}°`
-    + `<br>Jog: X / Y ${(d.jogXVel * 0.06).toFixed(2)} / ${(d.jogYVel * 0.06).toFixed(2)} m/min, Z ${(d.jogZVel * 0.06).toFixed(2)} m/min, A ${d.jogAVel.toFixed(1)} °/s, B ${d.jogBVel.toFixed(1)} °/s`
-    + `<br>Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
+  syncManualSpeeds();
+  $('#manInfo').innerHTML = `Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
 }
 
+// Prędkości osi na ekranie Ręczne (#140) - te same pola co jog w Parametrach (data-d), wpisane tu przepisywane tam
+function syncManualSpeeds() {
+  for (const el of $$('[data-jogvel]')) {
+    if (el !== document.activeElement) el.value = $(`[data-d="${el.dataset.jogvel}"]`).value;
+  }
+}
+
+// bServiceManualRewriteJogSpeed: przy wlaczonej pile (offline - przycisk Piła ON) jog X / Y z predkoscia ciecia, Z robocza
+const manualRewrite = () => $('#manRewrite').checked && state.saw.manual;
+
 function bindManual() {
+  for (const el of $$('[data-jogvel]')) {
+    el.addEventListener('input', () => {
+      $(`[data-d="${el.dataset.jogvel}"]`).value = el.value;
+      offlineFormsChanged();
+      updateManInfo();
+    });
+  }
+  $('#manRewrite').addEventListener('input', updateManInfo);
   const hold = (btn, start) => {
     btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture?.(e.pointerId); btn.classList.add('pressed'); start(); });
     for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, releaseJog);
@@ -965,9 +985,8 @@ function bindManual() {
   for (const b of $$('[data-jog]')) {
     hold(b, () => {
       const ax = b.dataset.jog;
-      const d = offlineDynamics();
-      const [velKey, accKey] = JOG_DYN[ax];
-      startJog({ [ax]: Number(b.dataset.sign) }, d[velKey], d[accKey]);
+      const { vel, acc } = jogVelocity(ax, offlineDynamics(), manualRewrite());
+      startJog({ [ax]: Number(b.dataset.sign) }, vel, acc);
     });
   }
   for (const b of $$('[data-interp]')) {
@@ -997,7 +1016,8 @@ function bindManual() {
       const val = Number($(`#${ax}Set`).value);
       if (!Number.isFinite(val)) return;
       const target = b.dataset.rel ? state.pose[ax] + val : val;
-      startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: target }, d));
+      // "o" wartosc jak MCRelative - predkosc jog osi; "na" wartosc jak MCAbsolute - VelA / VelB
+      startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: target }, b.dataset.rel ? relativeMoveDynamics(d) : d));
     };
   }
   const sawCfg = state.cfg.offline.saw || { freq: 50, dir: 'FWD' };
@@ -1007,6 +1027,7 @@ function bindManual() {
     state.saw.manual = !state.saw.manual;
     $('#sawToggle').textContent = `${isToolMode(state.machine) ? 'Wrzeciono' : 'Piła'} ${state.saw.manual ? 'OFF' : 'ON'}`;
     $('#sawToggle').classList.toggle('on', state.saw.manual);
+    updateManInfo();
     requestDraw();
   };
   for (const el of [$('#sawFreq'), $('#sawDir'), $('#showLaser')]) el.addEventListener('input', requestDraw);
@@ -1334,13 +1355,6 @@ function bindUi() {
     const d = offlineDynamics();
     if (!validDynamics(d)) return;
     startProgram(gotoProgram(state.pose, readFields('pos'), d));
-  };
-  $('#posSet').onclick = () => {
-    stopProgram();
-    cancelHoming();
-    state.sim.program = null;
-    applyPose(readFields('pos'), offlineMachine());
-    requestDraw();
   };
   $('#posActual').onclick = () => writeFields('pos', state.pose);
 

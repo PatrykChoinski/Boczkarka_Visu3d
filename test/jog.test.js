@@ -55,3 +55,22 @@ test('laser: start na linii ciecia (najnizszy punkt tarczy przy B = 0), dalej wz
   const left = laserLine(pose, m, -1, 1000, () => -450);
   assert.ok(left[left.length - 1][0] < 1000);
 });
+
+test('predkosci ruchow recznych (#140): kazda os z wlasnej fJogVelocity, przepisanie przy pile, jazda "o" kat', async () => {
+  const { jogVelocity, relativeMoveDynamics } = await import('../src/shared/jog.js');
+  const { gotoProgram } = await import('../src/shared/motion.js');
+  const d = { jogXVel: 100, jogYVel: 80, jogZVel: 20, jogAVel: 15, jogBVel: 5, fastAcc: 300, zAcc: 40, aAcc: 60, bAcc: 20, cutVel: 30, zVel: 10,
+    fastVel: 150, aVel: 30, bVel: 10 };
+  assert.deepEqual(['x', 'y', 'z', 'a', 'b'].map((ax) => jogVelocity(ax, d).vel), [100, 80, 20, 15, 5]);
+  assert.deepEqual(['x', 'y', 'z', 'a', 'b'].map((ax) => jogVelocity(ax, d).acc), [300, 300, 40, 60, 20]);
+  // bServiceManualRewriteJogSpeed przy pile: X / Y - fVelocitySawMode, Z - fVelocityAxisZWork, A / B bez zmian
+  assert.deepEqual(['x', 'y', 'z', 'a', 'b'].map((ax) => jogVelocity(ax, d, true).vel), [30, 30, 10, 15, 5]);
+  // jazda o 90 stopni A: z predkoscia jog A (15 deg/s) wolniej niz na A z VelA (30 deg/s)
+  const from = { x: 0, y: 0, z: 0, a: 0, b: 0 };
+  const rel = gotoProgram(from, { ...from, a: 90 }, relativeMoveDynamics(d));
+  const abs = gotoProgram(from, { ...from, a: 90 }, d);
+  assert.ok(rel.duration > abs.duration + 2, `${rel.duration} vs ${abs.duration}`);
+  let maxV = 0;
+  for (let t = 0.01; t < rel.duration; t += 0.01) maxV = Math.max(maxV, (rel.at(t).pose.a - rel.at(t - 0.01).pose.a) / 0.01);
+  assert.ok(Math.abs(maxV - 15) < 0.5, `max ${maxV}`);
+});

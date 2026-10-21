@@ -136,3 +136,11 @@ button.hold.pressed { background: var(--accent); border-color: var(--accent); co
 /* "Zapisz" punktu (#139): przycisk pod polami X / Y punktu */
 .saveRow.wide { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: -2px; }
 .saveRow button { padding: 3px 10px; font-size: 12px; }
+
+/* Prędkości ruchów ręcznych (#140) */
+table.speeds input { width: 100%; }
+table.speeds td:last-child { width: 48px; }
+
+/* Pozycja: aktualne pozycje osi nad zadanymi (tylko odczyt) */
+.grid2.actual output { display: block; padding: 4px 6px; border: 1px solid #d5dbe1; border-radius: 6px; background: #f3f5f7;
+  font-family: ui-monospace, Consolas, monospace; text-align: right; }

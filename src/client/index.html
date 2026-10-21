@@ -175,8 +175,18 @@
           <button id="sawToggle">Piła ON</button>
           <label>Kierunek <select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
           <label>Częstotliwość [Hz] <input id="sawFreq" type="number" step="any" min="0" max="120"></label>
+          <label class="cb wide" title="Przy włączonej pile prędkość jog X / Y = prędkość cięcia, Z = prędkość robocza Z (ManualST)"><input type="checkbox" id="manRewrite"> Przy pile ON jog z prędkością cięcia (bServiceManualRewriteJogSpeed)</label>
         </div>
         <div id="manInfo" class="info"></div>
+        <h3>Prędkości ruchów <span class="muted">fJogXVelocity … fJogBVelocity</span></h3>
+        <table class="jog speeds">
+          <tr><td>X</td><td><input data-jogvel="jogXVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+          <tr><td>Y</td><td><input data-jogvel="jogYVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+          <tr><td>Z</td><td><input data-jogvel="jogZVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+          <tr><td>A</td><td><input data-jogvel="jogAVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
+          <tr><td>B</td><td><input data-jogvel="jogBVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
+        </table>
+        <p class="hint">Prędkości jog i jazdy „o” kąt (jak MCJog / MCRelative w PLC); jazda „na” kąt – prędkość osi A / B z Parametrów (VelA / VelB). Te same wartości co „Jog” w Parametrach.</p>
       </div>
 
       <div class="tab" data-tab="home" hidden>
@@ -191,6 +201,15 @@
 
       <div class="tab" data-tab="pos" hidden>
         <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
+        <h3>Aktualne</h3>
+        <div class="grid2 actual">
+          <label>X [mm] <output data-act="x"></output></label>
+          <label>Y [mm] <output data-act="y"></output></label>
+          <label>Z [mm] <output data-act="z"></output></label>
+          <label>A [°] <output data-act="a"></output></label>
+          <label>B [°] <output data-act="b"></output></label>
+        </div>
+        <h3>Zadane</h3>
         <div class="grid2">
           <label>X [mm] <input data-pos="x" type="number" step="any"></label>
           <label>Y [mm] <input data-pos="y" type="number" step="any"></label>
@@ -200,7 +219,6 @@
         </div>
         <div class="row">
           <button id="posGo" class="primary">Jedź</button>
-          <button id="posSet">Ustaw od razu</button>
           <button id="posActual">Wstaw aktualną</button>
         </div>
       </div>

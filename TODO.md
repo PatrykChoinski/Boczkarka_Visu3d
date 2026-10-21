@@ -94,3 +94,8 @@ Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowsz
 ## #139 Zapisz punkty
 - [x] Przyciski Zapisz przy punktach początkowych / końcowych wszystkich operacji (jak w PLC, 0,01 mm)
 - [x] Zapisz punkt startowy automatu
+
+## #140 Prędkości ruchów ręcznych
+- [x] Prędkość każdej osi na ekranie Ręczne (fJog[XYZAB]Velocity), wspólna z Parametrami
+- [x] Jazda „o” kąt z prędkością jog (MCRelative), „na” kąt z VelA / VelB
+- [x] bServiceManualRewriteJogSpeed (przy pile jog z prędkością cięcia)

@@ -239,21 +239,28 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
 - **Ręczne** (offline, wizualizacja nie steruje maszyną): jak ekran ruchów
   ręcznych w HMI.
+  - **Prędkości ruchów** (#140, na dole ekranu): prędkość każdej osi osobno – X, Y, Z
+    w m/min, A, B w °/s (`fJogXVelocity` … `fJogBVelocity`). To te same
+    wartości co „Jog” w Parametrach, zmiana w jednym miejscu jest widoczna w
+    drugim. Prędkości dotyczą jogu i jazdy „o” kąt (jak `MCJog` /
+    `MCRelative` w PLC). Jazda „na” kąt i przyciski A / B idą z prędkością
+    osi (`VelA` / `VelB`). Opcja „Przy pile ON jog z prędkością cięcia”
+    (`bServiceManualRewriteJogSpeed`): przy włączonej pile X / Y jadą z
+    prędkością cięcia, a Z z prędkością roboczą Z.
   - **Jog X/Y/Z/A/B ±**: oś jedzie, dopóki przycisk jest wciśnięty, z
     prędkością jog (`fJog[XYZAB]Velocity`) i rampą osi; po puszczeniu hamuje.
   - **Obrót A**: 0 / 90 / −90 / 180 / −180°. **Wychył B**: 0 / 30 / 45 / 60 /
     90° (dojazd z prędkością i rampą osi).
   - **Jazda na zadany kąt A / B**: „Jedź na” – absolutnie
-    (`bManualAMoveToPosAbs` / `bManualBMoveToPosAbs`), „Jedź o” – o podany kąt
-    (`…MoveToPosRel`).
+    (`bManualAMoveToPosAbs` / `bManualBMoveToPosAbs`, prędkość `VelA` / `VelB`),
+    „Jedź o” – o podany kąt (`…MoveToPosRel`, prędkość jog osi).
   - **Ruchy interpolowane** względem lasera: wzdłuż lasera, przeciwnie do
     lasera, prostopadle, prostopadle odwrotnie. Ruch w XY z prędkością cięcia i
     `Acc` / `Dec`, także w materiale, więc tnie.
   - **Piła ON/OFF**, kierunek FWD / REV i częstotliwość.
-- **Pozycja**: zadane X/Y/Z/A/B.
+- **Pozycja**: u góry aktualne X/Y/Z/A/B (odświeżane na bieżąco, tylko odczyt), pod nimi zadane X/Y/Z/A/B.
   - **Jedź**: animowany dojazd; najpierw Z w górę, jeśli trzeba, potem
     wszystkie osie naraz, każda z własną rampą.
-  - **Ustaw od razu**: przestawia osie bez animacji.
   - **Wstaw aktualną**: wpisuje do pól bieżące położenie osi.
 - **Parametry**: tarcza i głowica oraz dynamika.
 
