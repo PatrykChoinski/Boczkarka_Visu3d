@@ -6,6 +6,18 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Ręczne: prędkości ruchów dla każdej osi (#140)
+- Ekran Ręczne, sekcja „Prędkości ruchów”: prędkość X, Y, Z [m/min] i A, B [°/s] (`fJogXVelocity` … `fJogBVelocity`).
+  - To te same pola co „Jog” w Parametrach, synchronizowane w obie strony i zapamiętywane z formularzami.
+- Jak w PLC (`SingleAxisMotion`):
+  - jog i jazda „o” kąt (`MCJog` / `MCRelative`) jadą z prędkością jog osi;
+  - jazda „na” kąt (`MCAbsolute`) jedzie z `VelA` / `VelB`. Wcześniej „Jedź o” używało `VelA` / `VelB`.
+- Opcja „Przy pile ON jog z prędkością cięcia” (`bServiceManualRewriteJogSpeed`, `ManualST`): przy włączonej pile jog X / Y z prędkością cięcia (`fVelocitySawMode`), Z z prędkością roboczą (`fVelocityAxisZWork`). Opis prędkości jest w informacji pod ekranem.
+- `jogVelocity`, `relativeMoveDynamics`, `JOG_DYN` w `jog.js`.
+- Sprawdzone:
+  - `npm test` 113/113 (nowy test w `test/jog.test.js`: prędkość i rampa każdej osi, przepisanie przy pile, jazda o 90° A z prędkością jog);
+  - w przeglądarce: zmiana prędkości X na ekranie Ręczne → Parametry i jog X 3 m/min (96 mm w 2 s z rampą), zmiana w Parametrach → ekran Ręczne, opcja przy pile.
+
 ### Przyciski „Zapisz” punktów początkowych / końcowych (#139)
 - Zakładka Operacja, pod polami X / Y każdego punktu: przycisk „Zapisz …” (początek, koniec, start, narożnik, punkt, punkt środkowy łuku, górny wierzchołek elipsy). Tak jak w PLC przepisuje aktualną pozycję osi X / Y zaokrągloną do 0,01 mm (`TO_REAL(TO_DINT(fXActualPosition*100))/100.0`).
   - Zmienne PLC w podpowiedzi przycisku:

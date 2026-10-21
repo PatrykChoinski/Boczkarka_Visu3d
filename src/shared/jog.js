@@ -87,6 +87,24 @@ export function interpolationDir(kind, aDeg, side = 1) {
   }
 }
 
+// Predkosci ruchow recznych osi (#140) jak w PLC (SingleAxisMotion): jog i jazda "o" wartosc (MCJog / MCRelative)
+// z fJog[XYZAB]Velocity, rampa jak dojazd X/Y, os Z, A, B
+export const JOG_DYN = { x: ['jogXVel', 'fastAcc'], y: ['jogYVel', 'fastAcc'], z: ['jogZVel', 'zAcc'], a: ['jogAVel', 'aAcc'], b: ['jogBVel', 'bAcc'] };
+
+// Predkosc i rampa jog osi ax z dynamiki d (mm/s, deg/s); rewrite - bServiceManualRewriteJogSpeed przy wlaczonej pile
+// (ManualST: fJogX/YVelocity := fVelocitySawMode, fJogZVelocity := fVelocityAxisZWork)
+export function jogVelocity(ax, d, rewrite = false) {
+  const [velKey, accKey] = JOG_DYN[ax];
+  let vel = d[velKey];
+  if (rewrite && (ax === 'x' || ax === 'y')) vel = d.cutVel;
+  if (rewrite && ax === 'z') vel = d.zVel;
+  return { vel, acc: d[accKey] };
+}
+
+// Dynamika jazdy na kat A / B: "na" wartosc - MCAbsolute z VelA / VelB (bez zmian), "o" wartosc - MCRelative
+// z fJogA/BVelocity
+export const relativeMoveDynamics = (d) => ({ ...d, aVel: d.jogAVel, bVel: d.jogBVel });
+
 // Pozycje A i B z ekranu reczny (bManualASetPosition0 / 90 / 180 / M90 / M180, bManualBSetPosition0 / 30 / 45 / 60 / 90)
 export const A_PRESETS = [0, 90, -90, 180, -180];
 export const B_PRESETS = [0, 30, 45, 60, 90];

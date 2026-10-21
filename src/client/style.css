@@ -136,3 +136,7 @@ button.hold.pressed { background: var(--accent); border-color: var(--accent); co
 /* "Zapisz" punktu (#139): przycisk pod polami X / Y punktu */
 .saveRow.wide { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: -2px; }
 .saveRow button { padding: 3px 10px; font-size: 12px; }
+
+/* Prędkości ruchów ręcznych (#140) */
+table.speeds input { width: 100%; }
+table.speeds td:last-child { width: 48px; }
