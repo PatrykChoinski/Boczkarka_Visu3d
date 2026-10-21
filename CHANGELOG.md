@@ -7,7 +7,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ## 2026-10-21
 
 ### Ręczne: prędkości ruchów dla każdej osi (#140)
-- Ekran Ręczne, sekcja „Prędkości ruchów”: prędkość X, Y, Z [m/min] i A, B [°/s] (`fJogXVelocity` … `fJogBVelocity`).
+- Ekran Ręczne, sekcja „Prędkości ruchów” na dole ekranu: prędkość X, Y, Z [m/min] i A, B [°/s] (`fJogXVelocity` … `fJogBVelocity`).
   - To te same pola co „Jog” w Parametrach, synchronizowane w obie strony i zapamiętywane z formularzami.
 - Jak w PLC (`SingleAxisMotion`):
   - jog i jazda „o” kąt (`MCJog` / `MCRelative`) jadą z prędkością jog osi;

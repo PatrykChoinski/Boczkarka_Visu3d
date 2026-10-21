@@ -239,7 +239,7 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
 - **Ręczne** (offline, wizualizacja nie steruje maszyną): jak ekran ruchów
   ręcznych w HMI.
-  - **Prędkości ruchów** (#140): prędkość każdej osi osobno – X, Y, Z
+  - **Prędkości ruchów** (#140, na dole ekranu): prędkość każdej osi osobno – X, Y, Z
     w m/min, A, B w °/s (`fJogXVelocity` … `fJogBVelocity`). To te same
     wartości co „Jog” w Parametrach, zmiana w jednym miejscu jest widoczna w
     drugim. Prędkości dotyczą jogu i jazdy „o” kąt (jak `MCJog` /
