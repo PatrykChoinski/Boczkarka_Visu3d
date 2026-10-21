@@ -6,6 +6,18 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### CI: testy na Windows przy każdym pushu / PR, publikacja Pages po testach
+- `.github/workflows/ci.yml` (zastępuje `pages.yml`):
+  - przy każdym pushu (każda gałąź) i pull requeście job `test-windows` na `windows-latest`: `npm ci`, `npm test`, `scripts/smoke-test.mjs`, zrzuty ekranu jako artefakt;
+  - job `deploy-pages` (GitHub Pages) tylko po udanych testach i tylko przy pushu do `master`.
+- `scripts/smoke-test.mjs` (`npm run test:smoke`): test uruchomienia strony w przeglądarce (Chrome, a bez niego Edge, headless przez `playwright-core`, przeglądarka z systemu). Sprawdza:
+  1. serwer bez PLC: widok 3D, symulacja cięcia prostego offline (napis „Cięcie: długość …”);
+  2. serwer z testowym PLC (`test/fake-plc-server.js`, OPC UA): tryb online, „Połączono”, pozycje osi;
+  3. wersję statyczną GitHub Pages pod `/Promasz-Visu3D/`: `static`, tylko offline, brak `api/events`, symulacja cięcia.
+  - Każdy błąd JS, konsoli albo HTTP (poza `favicon.ico`) przerywa test.
+- Nowa zależność deweloperska `playwright-core`.
+- Sprawdzone lokalnie (Windows, Chrome 156): `npm test` i smoke test - wszystkie trzy warianty OK.
+
 ### Wersja na GitHub Pages
 - Visu3D jest dostępne w przeglądarce bez instalacji: <https://patrykchoinski.github.io/Promasz-Visu3D/>. Wersja statyczna, tylko tryb Offline (symulacja), bez PLC.
 - `scripts/build-pages.js` (`npm run build:pages`) buduje `site/`:

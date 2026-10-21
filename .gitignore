@@ -154,3 +154,6 @@ dist/
 
 # GitHub Pages: wersja statyczna (scripts/build-pages.js)
 site/
+
+# test uruchomienia strony (scripts/smoke-test.mjs): zrzuty ekranu
+test-results/

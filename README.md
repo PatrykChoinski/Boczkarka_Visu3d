@@ -11,10 +11,9 @@ opisuje [CHANGELOG.md](CHANGELOG.md).
 **Podgląd w przeglądarce (GitHub Pages):** <https://patrykchoinski.github.io/Promasz-Visu3D/>. To wersja statyczna, bez
 serwera VizuApp, więc działa tylko tryb Offline: symulacja operacji, automatu,
 ruchów ręcznych i bazowania, bez połączenia z PLC. Jest publikowana
-automatycznie po każdym pushu do `master` (workflow
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml): testy,
-`scripts/build-pages.js`, publikacja). Formularze zapamiętuje przeglądarka
-odwiedzającego.
+automatycznie po każdym pushu do `master`, ale tylko gdy przejdą testy (workflow
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Formularze zapamiętuje
+przeglądarka odwiedzającego.
 
 Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
 mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
@@ -63,7 +62,8 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
 | `scripts/build-client.js` | budowa strony do `public/` |
 | `scripts/build-pages.js` | wersja statyczna na GitHub Pages do `site/` (strona + `api/config` z `static: true`, tylko offline) |
-| `.github/workflows/pages.yml` | publikacja na GitHub Pages po pushu do `master` |
+| `.github/workflows/ci.yml` | CI: przy każdym pushu i PR testy na Windows (`npm test` + uruchomienie strony), po nich przy pushu do `master` publikacja na GitHub Pages |
+| `scripts/smoke-test.mjs` | test uruchomienia strony w przeglądarce (Chrome / Edge headless): serwer bez PLC, z testowym PLC, wersja Pages |
 | `test/` | testy (`node --test`) i `fake-plc-server.js` (OPC UA udające CODESYS) |
 | `config.json` | ustawienia (adres OPC UA, port strony, wartości początkowe offline) |
 | `vizu.ps1` | uruchamianie z PLC (jak `D:\Calc\calc.ps1`) |
@@ -405,15 +405,30 @@ wychyle najniższy punkt krawędzi czoła.
 
 ## Rozwój i testy
 
-Wymagany Node.js 20+ (sprawdzone na 24).
+Wymagany Node.js 20+ (sprawdzone na 24; `npm test` z wzorcem plików potrzebuje 21+, CI używa 22).
 
 ```powershell
 npm ci
 npm test                 # geometria, ruch, operacje, automat, jog / laser, OPC UA (testowy serwer), SSE
+npm run test:smoke       # uruchomienie strony w Chrome / Edge headless (jak w CI), zrzuty w test-results/
 npm run offline          # strona bez PLC: http://localhost:8128
 npm run fake-plc         # udawany CODESYS na opc.tcp://localhost:4840 ...
 npm start                # ... i strona z danymi z niego (tryb Online)
 ```
+
+**CI (GitHub Actions, `.github/workflows/ci.yml`)**: przy każdym pushu (każda
+gałąź) i pull requeście na `windows-latest`:
+1. `npm ci`;
+2. `npm test`;
+3. `scripts/smoke-test.mjs`. Buduje stronę i wersję statyczną, a potem w Chrome headless sprawdza trzy warianty:
+   - serwer bez PLC: widok 3D i symulacja cięcia offline;
+   - serwer z testowym PLC przez OPC UA: tryb online, połączenie i pozycje osi;
+   - wersję statyczną pod `/Promasz-Visu3D/`: tylko offline, bez `api/events`, symulacja cięcia.
+
+   Każdy błąd JS, konsoli albo HTTP na stronie przerywa test. Zrzuty ekranu są w artefakcie `zrzuty-strony`.
+
+Dopiero gdy testy przejdą, push do `master` publikuje stronę na GitHub Pages
+(job `deploy-pages`).
 
 **Porównanie figur z PLC** (`scripts/compare-figures-plc.mjs`): dla każdej
 figury i trzech wariantów (domyślne, wewnętrzne, dodatkowa droga) wpisuje pola
