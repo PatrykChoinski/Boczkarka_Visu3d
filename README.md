@@ -1,4 +1,12 @@
-# VizuApp – wizualizacja cięcia (#128)
+# Promasz Visu3D – wizualizacja cięcia (VizuApp)
+
+Wizualizacja 3D piły mostowej **Promasz – Piła Jednosuportowa** (zgłoszenie
+[#128 „Wizu Cięć maszyny”](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
+w repo głównym). To repo jest podpięte jako submoduł `Visu3D` w
+[Induprogress/Promasz_PilaJednosuportowa](https://github.com/Induprogress/Promasz_PilaJednosuportowa),
+obok submodułów `PLC` i `HMI`. Wcześniej aplikacja była w HMI
+(`HMI/VizuApp`) i stamtąd została przeniesiona razem z historią. Zmiany
+opisuje [CHANGELOG.md](CHANGELOG.md).
 
 Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
 mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
@@ -26,7 +34,8 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/geometry.js` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth` |
 | `src/shared/cuts.js` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
 | `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
-| `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne |
+| `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne, jednostki (m/min, m/s²) |
+| `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
 | `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
@@ -191,6 +200,8 @@ leży na linii na górnej powierzchni materiału. Korekty wychyłu
 nie są jeszcze uwzględnione.
 
 ## Rozwój i testy
+
+Wymagany Node.js 20+ (sprawdzone na 24).
 
 ```powershell
 npm ci
