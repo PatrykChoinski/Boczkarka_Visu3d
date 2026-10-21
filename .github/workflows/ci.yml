@@ -1,0 +1,70 @@
+# CI Visu3D: przy kazdym pushu i pull requescie testy na Windows (jak na maszynie):
+#   npm test (geometria, ruch, operacje, OPC UA z testowym PLC, ...) i test uruchomienia strony w przegladarce
+#   (scripts/smoke-test.mjs: serwer bez PLC, serwer z testowym PLC przez OPC UA, wersja statyczna GitHub Pages).
+# Po udanych testach push do master publikuje wersje statyczna na GitHub Pages (https://<konto>.github.io/<repo>/).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-windows:
+    name: Testy i uruchomienie strony (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22    # node --test z wzorcem "test/*.test.js" wymaga Node >= 21
+          cache: npm
+      - run: npm ci
+      - name: Testy jednostkowe (npm test)
+        run: npm test
+      - name: Uruchomienie strony w przegladarce (Chrome headless)
+        run: node scripts/smoke-test.mjs
+      - name: Zrzuty ekranu ze sprawdzenia strony
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zrzuty-strony
+          path: test-results/
+          if-no-files-found: ignore
+
+  deploy-pages:
+    name: Publikacja GitHub Pages
+    needs: test-windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/build-pages.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
