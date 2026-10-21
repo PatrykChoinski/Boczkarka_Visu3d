@@ -47,6 +47,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
 | `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
 | `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
+| `src/shared/figpics.js`, `src/client/img/figures/` | rysunki poglądowe figur z literami (#138) – obrazki z HMI, schematy SVG |
 | `src/shared/figures/` | figury automatu 1:1 z PLC (`FiguresGeometricSt`, `Get…Positions`): `rectangle.js`, `groupA.js` (trójkąty, trapezy, krzyż, wielokąt), `groupB.js` (daszki, blat, schody, książki, ćwierćwałek), `groupC.js` (figury frezu i wiercenia), rejestr `index.js` |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
@@ -282,6 +283,22 @@ tryb i bazowanie są czytane z PLC (`bModeSaw` / `bModeMill` / `bModeDrill` /
 zbazowana piła. Ślad frezu i wiertła jest rysowany jako rowek / otwór o
 średnicy narzędzia, polerka zostawia jasny ślad na powierzchni. Rzazy piły
 zostają po zmianie trybu.
+
+### Rysunki figur w automacie (#138)
+
+W sekcji „Figura” zakładki Automat pod wyborem figury jest rysunek poglądowy z literami wymiarów, tak jak na
+ekranach figur w HMI (DIAScreen), a przy polach figury – te same litery (A, B, H, R, D, W, X, Y …):
+- obrazki są wyciągnięte z projektu HMI (`HMI/PilaJednosuportowaINNER.dpa`, bank `[Picture]`; `PictureOffset`
+  elementu ekranu = przesunięcie rekordu BMP od początku banku) do `src/client/img/figures`;
+- wariant obrazka jak w HMI: typ trapezu (`iTrapezoidType`), blatu (`iWorktopType`), książki (`iBookType`),
+  ćwierćwałka (`iQuaterRoundType`); daszki składane z 4 przycisków ścian (`bRoof1..4Wall`, zielona = ściana
+  cięta pod kątem) z położeniem i obrotem (`nAngle`) jak na ekranie;
+- litery: tekst obok pola na ekranie figury → zmienna PLC (np. A = `fFigureLength`, W = `fCrossWidth2`,
+  A..H = `aWorktopLenghts[0..7]`);
+- figury, które w HMI nie mają obrazka (Narożniki, Dziury, Ociekacz, Frez stół, Naroża L, Indukcja, Wielokąt),
+  mają schemat SVG w tym samym stylu; wielokąt rysuje się z wpisanych punktów.
+
+Mapa figur, obrazków i liter: `src/shared/figpics.js`; testy `test/figpics.test.js`.
 
 ### Obroty narzędzi (#136)
 

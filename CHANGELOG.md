@@ -6,6 +6,15 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Rysunki poglądowe figur w automacie (#138)
+- Sekcja „Figura” (zakładka Automat): pod wyborem figury rysunek z literami wymiarów jak na ekranach figur w HMI, przy polach te same litery (A, B, H, R, D, W, X, Y …), rysunek odświeżany na bieżąco z polami.
+- Obrazki wyciągnięte z projektu DIAScreen `HMI/PilaJednosuportowaINNER.dpa`: sekcja `[Picture]` to nagłówek `DOP-100IMAGE1.0` i rekordy (u32 rozmiar + `BITMAPINFOHEADER` + piksele BGRA 32 bpp), `PictureOffset` stanu elementu = przesunięcie rekordu od początku banku. 36 obrazków z ekranów 130–154 w `src/client/img/figures` (przycięte, białe tło), kopiowane przez `build-client.js` do `public/img`.
+- Warianty jak w HMI: trapez wg `iTrapezoidType` (7), blat wg `iWorktopType` (7), książka wg `iBookType`, ćwierćwałek wg `iQuaterRoundType`; daszki z 4 przycisków ścian `bRoof1..4Wall` (zielona = cięta pod kątem) z położeniem i obrotem `nAngle` z ekranu (w HMI ściana 1 – dół – ma 180° jak ściana 3, odwzorowane 1:1).
+- Litery z ekranów: tekst obok pola → zmienna PLC (np. A = `fFigureLength`, B = `fFigureWidth`, H = `fFigureHeight`, R = `fFigureRadius`, W = `fCrossWidth2`, H serca = `fHeartHeightPart`, D..D5 książki, A..H blatu = `aWorktopLenghts[0..7]`).
+- Figury bez obrazka w HMI (Narożniki, Dziury, Ociekacz, Frez stół, Naroża L, Indukcja – brak ekranu, Wielokąt) – schemat SVG w stylu HMI z literami; wielokąt z wpisanych punktów (numery wierzchołków).
+- `src/shared/figpics.js` (mapa figur, obrazków i liter), `test/figpics.test.js`: każda figura ma rysunek i pliki istnieją, litery odpowiadają polom figur, warianty typów dają różne obrazki, ściany daszków.
+- Sprawdzone: `npm test` 109/109; w przeglądarce trapez, blat (zmiana typu), daszki (wyłączona ściana), litery przy polach; schematy SVG w headless Edge.
+
 ### Automat: końce cięć zewnętrznych i wewnętrznych (#135)
 - Cięcia proste i skosy w automacie:
   - koniec zewnętrzny: najniższy punkt tarczy wychodzi za punkt linii o szerokość tarczy. Tak samo jak `fCutOuterAdditionalDistance` w `CutST.GetPositions` (wartość = `fParameterBladeWidth`), dlatego cięcia figur (np. prostokąta) przecinają się w narożnikach na całej głębokości;

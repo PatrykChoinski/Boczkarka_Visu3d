@@ -132,3 +132,15 @@ button.hold.pressed { background: var(--accent); border-color: var(--accent); co
 #homeModes button small { color: var(--muted, #6b7280); font-size: 11px; }
 #homeModes button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 #homeModes button.active small { color: #e6eefc; }
+
+/* #138 rysunek figury z literami (jak ekrany figur w HMI) */
+.figPic { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 6px 0 8px; text-align: center; }
+.figPic img, .figPic svg { max-width: 100%; max-height: 210px; display: inline-block; }
+.figPic .roof { position: relative; display: inline-block; }
+.figPic .roof img { position: absolute; max-height: none; max-width: none; }
+.figPic .roof b { position: absolute; font: 700 22px Arial, Helvetica, sans-serif; transform: translate(-50%, -50%); }
+.figPic .src { color: var(--muted); font-size: 11px; margin-top: 4px; }
+.lt { display: flex; align-items: center; }
+label.cb .lt { display: inline-flex; }
+.letter { display: inline-block; flex: none; min-width: 24px; padding: 0 5px; margin-right: 6px; border-radius: 4px;
+  background: #22262b; color: #fff; font-weight: 700; text-align: center; }
