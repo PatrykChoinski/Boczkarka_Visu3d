@@ -1,11 +1,19 @@
 // Zmienne PLC (symbol config, jak w HMI): klucz w aplikacji -> "GVL.zmienna".
 // Wymagane sa pozycje osi i parametry tarczy / materialu, reszta opcjonalna.
 export const VARIABLES = {
-  x: 'HMI2.fXActualPosition',
-  y: 'HMI2.fYActualPosition',
-  z: 'HMI2.fZActualPosition',
-  a: 'HMI2.fAActualPosition',
-  b: 'HMI2.fBActualPosition',
+  // pozycje OSI (MCActualPosition*.Position, Settings/ActualPosition: fX/Y/ZRealPosition). Nie fX/Y/ZActualPosition -
+  // to punkt narzedzia (os - przesuniecie glowicy wg A / B, Z + srednica tarczy / 2 ...), a wizualizacja liczy z osi
+  x: 'HMI2.fXRealPosition',
+  y: 'HMI2.fYRealPosition',
+  z: 'HMI2.fZRealPosition',
+  a: 'HMI2.fAActualPosition',       // MCActualPositionA.Position (os)
+  b: 'HMI2.fBActualPosition',       // MCActualPositionB.Position albo enkoder (Encoders)
+  // aktualne predkosci osi (Settings/VelocityAcceleration): MCActualVelocity*.Velocity * 60 / 1000 - X / Y / Z w m/min,
+  // A w °/s * 0.06. fBActualVelocity w PLC liczona z osi A (blad) - predkosc B z roznicy pozycji
+  xActVel: 'HMI2.fXActualVelocity',
+  yActVel: 'HMI2.fYActualVelocity',
+  zActVel: 'HMI2.fZActualVelocity',
+  aActVel: 'HMI2.fAActualVelocity',
   discDiameter: 'HMI.fParameterDiscDiameter',
   bladeWidth: 'HMI.fParameterBladeWidth',
   cutTiltDiameter: 'HMI.fParameterCutTiltDiameter',

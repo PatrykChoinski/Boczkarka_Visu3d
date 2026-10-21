@@ -46,6 +46,8 @@ const state = {
   manContinuous: true, manToggle: null, points: {},
   // bity serwisowe HMI.bService... (ekran Ustawienia, service.js)
   service: serviceDefaults(),
+  // aktualne predkosci osi (mm/s, °/s): offline z programu / jogu, online z PLC albo z roznicy pozycji
+  axisVel: { x: 0, y: 0, z: 0, a: 0, b: 0 }, velTrack: { p: null, t: 0 },
   // logowanie (#145): enabled - serwer ma users.json; level 0 niezalogowany, 1 Operator, 2 Serwis, 3 Admin
   auth: { enabled: false, users: [], user: null, level: 0, token: null, timeoutMin: 30, lastActivity: 0, lastPing: 0 },
   extent: null,
@@ -233,6 +235,11 @@ function redraw() {
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
     if (state.mode === 'offline') line += `  v ${fmt(state.sim.velocity * 0.06, 6, 2)} m/min`;
     $('#pos').textContent = line;
+    // predkosci osi pod pozycjami: X / Y / Z w m/min, A / B w °/s (te same kolumny co pozycje)
+    const av = state.axisVel;
+    const tiny = (x, eps) => (Math.abs(x) < eps ? 0 : x);
+    $('#vel').textContent = `vX${fmt(tiny(av.x * 0.06, 0.005), 8, 2)}  vY${fmt(tiny(av.y * 0.06, 0.005), 8, 2)}`
+      + `  vZ${fmt(tiny(av.z * 0.06, 0.005), 7, 2)}  vA${fmt(tiny(av.a, 0.05), 6, 1)}°  vB${fmt(tiny(av.b, 0.05), 5, 1)}°  m/min, °/s`;
   }
 
   const conn = $('#conn');
@@ -337,6 +344,40 @@ function requestDraw() {
   requestAnimationFrame(() => { drawQueued = false; redraw(); });
 }
 
+// --- aktualne predkosci osi (pod pozycjami w stopce) ------------------------------------------
+
+function zeroAxisVelocity() {
+  for (const ax of AXES) state.axisVel[ax] = 0;
+}
+
+// Symulacja: pochodna programu ruchu w czasie maszyny (srodek ostatnich 20 ms)
+function axisVelocityFromProgram(prog, t) {
+  const h = 0.02;
+  const t0 = Math.max(0, t - h);
+  if (t - t0 < 1e-6) { zeroAxisVelocity(); return; }
+  const p0 = prog.at(t0).pose;
+  const p1 = prog.at(t).pose;
+  for (const ax of AXES) state.axisVel[ax] = (p1[ax] - p0[ax]) / (t - t0);
+}
+
+// Online: predkosci z PLC (HMI2.f[XYZA]ActualVelocity: X / Y / Z w m/min, A w °/s * 0.06 - przeliczone na mm/s, °/s);
+// os bez zmiennej (B - w PLC liczona z osi A) z roznicy pozycji miedzy kolejnymi odczytami (wygladzone)
+const PLC_ACT_VEL = { x: 1000 / 60, y: 1000 / 60, z: 1000 / 60, a: 1 / 0.06 };
+
+function onlineAxisVelocity(v) {
+  const tr = state.velTrack;
+  const t = performance.now() / 1000;
+  const p = state.pose;
+  const fresh = tr.p && t - tr.t > 1e-3 && t - tr.t < 1;
+  for (const ax of AXES) {
+    const plc = v[`${ax}ActVel`];
+    if (typeof plc === 'number' && PLC_ACT_VEL[ax]) state.axisVel[ax] = plc * PLC_ACT_VEL[ax];
+    else state.axisVel[ax] = fresh ? 0.5 * state.axisVel[ax] + 0.5 * (p[ax] - tr.p[ax]) / (t - tr.t) : 0;
+  }
+  tr.p = { ...p };
+  tr.t = t;
+}
+
 // --- tryb online -------------------------------------------------------------------
 
 function onlineValues(v) {
@@ -360,6 +401,7 @@ function onlineValues(v) {
     stoneChanged();
   }
   applyPose({ x: v.x, y: v.y, z: v.z, a: v.a, b: v.b }, m);
+  onlineAxisVelocity(v);
   refreshOnlineAuto();
   $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra materiału Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
   requestDraw();
@@ -1024,6 +1066,7 @@ function simFrame(now) {
   for (let t = sim.t + SIM_STEP; t < tEnd; t += SIM_STEP) recordPose(sim.program.at(t).pose, m);
   res = sim.program.at(tEnd);
   sim.t = tEnd;
+  axisVelocityFromProgram(sim.program, tEnd);
   sim.step = res.step;
   if (sim.index !== res.index) markAutoRow(res.index ?? -1);
   sim.label = res.label;
@@ -1033,6 +1076,7 @@ function simFrame(now) {
   if (res.done) {
     sim.running = false;
     sim.velocity = 0;
+    zeroAxisVelocity();
     markAutoRow(-1);
     if (state.tool.homing) finishHoming();
   }
@@ -1043,6 +1087,7 @@ function simFrame(now) {
 function stopProgram() {
   state.sim.running = false;
   state.sim.velocity = 0;
+  if (!state.jog) zeroAxisVelocity();
   requestDraw();
 }
 
@@ -1051,10 +1096,31 @@ function stopProgram() {
 
 const SERVICE_ICON = { saw: 'saw', auto: 'auto', mill: 'mill', man: 'hand' };
 
-// Podekrany Ustawien: Stol i kamien / Bity serwisowe (Serwis)
+// Podekrany Ustawien: Stol i kamien / Bity serwisowe (Serwis); zmienne PLC tylko w trybie PLC
 function showSetPage(name) {
   for (const b of $$('#setPages [data-set]')) b.classList.toggle('active', b.dataset.set === name);
-  for (const p of $$('[data-setpage]')) p.hidden = p.dataset.setpage !== name;
+  for (const p of $$('[data-setpage]')) p.hidden = p.dataset.setpage !== name || (p.id === 'plcVarsBox' && state.mode !== 'online');
+  if (!$('#plcVarsBox').hidden) refreshPlcVars();
+}
+
+// Diagnostyka podpiecia zmiennych PLC: kazda zmienna z konfiguracji - znaleziona w OPC UA, typ, ostatnia wartosc
+let plcVarsTimer = null;
+async function refreshPlcVars() {
+  clearTimeout(plcVarsTimer);
+  const box = $('#plcVarsBox');
+  if (box.hidden || $('.tab[data-tab="stone"]').hidden || state.mode !== 'online') return;
+  try {
+    const r = await (await fetch('api/variables')).json();
+    const found = r.variables.filter((v) => v.found).length;
+    $('#plcVarsInfo').innerHTML = `${r.status}. Znalezione: <b>${found}/${r.variables.length}</b>`
+      + (found < r.variables.length ? ' – <span style="color:var(--bad)">brakujących nie ma w symbol configu PLC albo mają inną nazwę</span>' : '');
+    $('#plcVars').innerHTML = '<tr><th></th><th>Zmienna PLC</th><th>Typ</th><th>Wartość</th></tr>' + r.variables.map((v) => `<tr class="${v.found ? '' : 'bad'}">
+      <td>${icon(v.found ? 'plc' : 'warn')}</td><td title="${v.key}${v.node ? ` – ${v.node}` : ''}">${v.name}${v.required ? ' <b>*</b>' : ''}</td>
+      <td>${v.dataType ?? ''}</td><td>${v.value === null ? '–' : String(v.value)}</td></tr>`).join('');
+  } catch {
+    $('#plcVarsInfo').textContent = 'Brak diagnostyki zmiennych (serwer VizuApp bez /api/variables)';
+  }
+  plcVarsTimer = setTimeout(refreshPlcVars, 1000);
 }
 
 function renderServiceBits() {
@@ -1269,8 +1335,9 @@ function jogFrame(now) {
     if (i < n - 1) recordPose(p, m);
   }
   state.sim.velocity = jog.dir.x || jog.dir.y || jog.dir.z ? jog.v : 0;
+  for (const ax of AXES) state.axisVel[ax] = (jog.dir[ax] || 0) * jog.v;
   applyPose(p, m);
-  if (jog.done) { state.jog = null; state.sim.velocity = 0; }
+  if (jog.done) { state.jog = null; state.sim.velocity = 0; zeroAxisVelocity(); }
   redraw();
   updateManInfo();
   if (state.jog) requestAnimationFrame(jogFrame);
@@ -1515,6 +1582,7 @@ function setMode(mode) {
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
   state.tool.key = '';
   toolModeChanged();
+  showSetPage($('#setPages .active')?.dataset.set || 'area');
   $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
   $('#stonePlc').hidden = mode === 'offline';
@@ -1551,6 +1619,7 @@ function showTab(name) {
   for (const x of $$('.tabs button')) x.classList.toggle('active', x.dataset.tab === name);
   setPanelTitle(name);
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
+  if (name === 'stone') showSetPage($('#setPages .active')?.dataset.set || 'area');
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
   if (name === 'cnc') updateCncInfo();

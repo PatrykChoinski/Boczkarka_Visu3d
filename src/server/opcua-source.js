@@ -6,7 +6,7 @@
 
 import { EventEmitter } from 'node:events';
 import {
-  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType,
+  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType,
 } from 'node-opcua-client';
 import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
 
@@ -20,6 +20,8 @@ export class OpcUaSource extends EventEmitter {
     this.connected = false;
     this.values = {};
     this.resolved = {};       // klucz -> NodeId (po polaczeniu)
+    this.missing = [];        // klucze bez wezla w OPC UA (zmienna nie ma w symbol configu / zla nazwa)
+    this.dataTypes = {};      // klucz -> typ danych z serwera OPC UA (diagnostyka /api/variables)
     this.active = true;       // czytanie tylko, gdy ktos oglada strone
     this.stopped = false;
   }
@@ -58,7 +60,11 @@ export class OpcUaSource extends EventEmitter {
           ? { type: UserTokenType.UserName, userName: this.cfg.username, password: this.cfg.password || '' }
           : undefined);
         const nodes = await this.resolve(session);
-        this.setStatus(`Połączono (${this.cfg.endpoint})`, true);
+        await this.readDataTypes(session, nodes);
+        const total = Object.keys(this.cfg.variables).length;
+        const miss = this.missing.map((k) => this.cfg.variables[k]);
+        this.setStatus(`Połączono (${this.cfg.endpoint}), zmienne ${total - miss.length}/${total}`
+          + (miss.length ? `, brak: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}` : ''), true);
         await this.poll(session, nodes);
       } catch (err) {
         this.setStatus(`Brak połączenia: ${err.message || err}`, false);
@@ -116,10 +122,38 @@ export class OpcUaSource extends EventEmitter {
     } else {
       nodes = await this.browseVariables(session, variables);
     }
+    this.missing = Object.keys(variables).filter((k) => !(k in nodes));
     const missing = REQUIRED.filter((k) => !(k in nodes));
     if (missing.length) throw new Error('brak zmiennych w OPC UA: ' + missing.map((k) => variables[k]).join(', '));
     this.resolved = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.toString()]));
     return nodes;
+  }
+
+  // Typy danych wezlow (DataType) - do diagnostyki podpiecia zmiennych
+  async readDataTypes(session, nodes) {
+    const keys = Object.keys(nodes);
+    this.dataTypes = {};
+    try {
+      const dvs = await session.read(keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.DataType })));
+      keys.forEach((k, i) => {
+        if (!dvs[i].statusCode.isGood()) return;
+        // typ wbudowany (ns=0;i=11 -> Double), typy uzytkownika (enumy, struktury PLC) - NodeId
+        const id = dvs[i].value.value;
+        this.dataTypes[k] = id?.namespace === 0 && DataType[id.value] ? DataType[id.value] : id?.toString();
+      });
+    } catch { /* bez typow - diagnostyka tylko z wartosci */ }
+  }
+
+  // Diagnostyka (/api/variables): kazda zmienna z konfiguracji - wezel OPC UA, typ, ostatnia wartosc
+  variablesReport() {
+    return Object.entries(this.cfg.variables).map(([key, name]) => {
+      const v = this.values[key];
+      return {
+        key, name, node: this.resolved[key] ?? null, found: key in this.resolved, required: REQUIRED.includes(key),
+        dataType: this.dataTypes[key] ?? null,
+        value: Array.isArray(v) ? `[${v.length}] ${v.slice(0, 4).map((x) => (typeof x === 'number' ? +x.toFixed(3) : x)).join(', ')}${v.length > 4 ? ' …' : ''}` : v ?? null,
+      };
+    });
   }
 
   // Dzieci wezla: {nazwa: {nodeId, nodeClass}} (z kontynuacja przy duzych GVL)

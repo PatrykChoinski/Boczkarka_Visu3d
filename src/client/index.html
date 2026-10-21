@@ -102,6 +102,12 @@
           <h3>Bity serwisowe <span class="muted">HMI.bService…</span></h3>
           <div id="serviceBits"></div>
         </div>
+        <!-- diagnostyka podpiecia zmiennych PLC (OPC UA, /api/variables) - tryb PLC, od poziomu Serwis -->
+        <div id="plcVarsBox" data-setpage="svc" data-level="2" hidden>
+          <h3>Zmienne PLC <span class="muted">OPC UA – węzeł, typ, wartość</span></h3>
+          <p class="hint" id="plcVarsInfo"></p>
+          <div class="tableWrap"><table class="plcVars" id="plcVars"></table></div>
+        </div>
       </div>
 
       <div class="tab" data-tab="cut" hidden>
@@ -326,6 +332,7 @@
 
   <footer>
     <div id="pos" class="mono"></div>
+    <div id="vel" class="mono vel" title="Aktualne prędkości osi: X, Y, Z [m/min], A, B [°/s]"></div>
     <div class="statusline"><span id="conn"></span><span id="step"></span></div>
   </footer>
   <script src="app.js"></script>

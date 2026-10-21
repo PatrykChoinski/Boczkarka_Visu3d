@@ -147,6 +147,11 @@ async function main() {
       await page.screenshot({ path: path.join(OUT, 'online.png') });
       assertNoErrors('serwer online', errors);
       log(`OK serwer online: ${conn}, pozycja ${await page.textContent('#pos')}`);
+      // podpiecie zmiennych: kazda zmienna z konfiguracji znaleziona w OPC UA, z typem i wartoscia
+      const vars = await (await fetch(`http://127.0.0.1:${PORT_ONLINE}/api/variables`)).json();
+      const missing = vars.variables.filter((v) => !v.found || !v.dataType || v.value === null).map((v) => v.name);
+      if (missing.length) throw new Error(`zmienne PLC bez wezla / typu / wartosci: ${missing.join(', ')}`);
+      log(`OK zmienne PLC: ${vars.variables.length}/${vars.variables.length} z typem i wartością`);
       await context.close();
     }
 

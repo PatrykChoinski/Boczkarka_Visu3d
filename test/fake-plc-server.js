@@ -102,10 +102,15 @@ export function plcTimeline(mode = 'saw') {
   const period = p1.duration + p2.duration;
   return (t) => {
     t %= period;
-    const r = t < p1.duration ? p1.at(t) : p2.at(t - p1.duration);
+    const at = (tt) => (tt < p1.duration ? p1.at(tt) : p2.at(tt - p1.duration));
+    const r = at(t);
     const step = STEP_CODES[r.step] ?? (t < p1.duration ? 50 : 100);
+    // aktualne predkosci osi jak HMI2.f[XYZA]ActualVelocity: mm/s (°/s) * 60 / 1000
+    const h = 0.02;
+    const r0 = at(Math.max(0, t - h)).pose;
+    const actVel = Object.fromEntries(['x', 'y', 'z', 'a'].map((ax) => [`${ax}ActVel`, t >= h ? (r.pose[ax] - r0[ax]) / h * 0.06 : 0]));
     return {
-      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
+      ...r.pose, ...actVel, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu

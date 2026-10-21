@@ -7,6 +7,7 @@
 // GET /api/events    strumien SSE: {status, connected} i {values}
 // GET /api/health    "ok" (vizu.ps1 sprawdza, czy serwer juz dziala)
 // POST /api/login, POST /api/logout, GET /api/session - logowanie (#145, auth.js; uzytkownicy z users.json)
+// GET /api/variables zmienne PLC: nazwa, wezel OPC UA, typ, ostatnia wartosc (diagnostyka podpiecia)
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -113,6 +114,9 @@ export function createServer(cfg, source, auth = null) {
     } else if (url.pathname === '/api/config') {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(clientConfig(cfg, source, auth)));
+    } else if (url.pathname === '/api/variables') {
+      json(res, 200, { connected: Boolean(source?.connected), status: source ? source.status : 'Bez PLC (--no-plc)',
+        variables: source ? source.variablesReport() : [] });
     } else if (['/api/login', '/api/logout', '/api/session'].includes(url.pathname)) {
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
