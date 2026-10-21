@@ -99,3 +99,17 @@ Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowsz
 - [x] Prędkość każdej osi na ekranie Ręczne (fJog[XYZAB]Velocity), wspólna z Parametrami
 - [x] Jazda „o” kąt z prędkością jog (MCRelative), „na” kąt z VelA / VelB
 - [x] bServiceManualRewriteJogSpeed (przy pile jog z prędkością cięcia)
+
+# TODO – #138 rysunki poglądowe figur w automacie
+
+Gałąź `develop/RysunkiFigurAutomat` (Visu3D i repo główne), od najnowszego `master` / `main`.
+
+- [x] Ekrany figur w DIAScreen (130–155): litera obok pola → zmienna PLC (np. A = `fFigureLength`, W = `fCrossWidth2`, A..H = `aWorktopLenghts[0..7]`)
+- [x] Obrazki z projektu DIAScreen: bank `[Picture]` w `.dpa` (rekordy BMP 32 bpp, `PictureOffset` = przesunięcie od początku banku) → `src/client/img/figures` (36 plików)
+- [x] Warianty jak w HMI: `iTrapezoidType` (7), `iWorktopType` (7), `iBookType` (2), `iQuaterRoundType` (2), daszki – 4 przyciski ścian `bRoof1..4Wall` z obrotem `nAngle`
+- [x] Figury bez obrazka w HMI (Narożniki, Dziury, Ociekacz, Frez stół, Naroża L, Indukcja, Wielokąt) – schemat SVG w stylu HMI z literami
+- [x] Litery przy polach figury (A, B, H, R, D, W, X, Y …) i rysunek zmieniany na bieżąco z polami
+- [x] Test `test/figpics.test.js` (każda figura ma rysunek, pliki istnieją, litery = pola, warianty)
+- [x] Sprawdzenie w przeglądarce: trapez, blat (typ), daszki (ściany), schematy SVG (headless Edge)
+- [ ] Na maszynie / HMI: porównać daszki – w HMI ściana 1 (dół) ma `nAngle` 180 jak ściana 3 (góra), odwzorowane 1:1
+- [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit na gałęzi develop, push, merge do `master`

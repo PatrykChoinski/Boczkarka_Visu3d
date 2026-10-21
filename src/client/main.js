@@ -15,6 +15,7 @@ import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../sh
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, jogVelocity, relativeMoveDynamics, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
+import { figurePicture, fieldLetter } from '../shared/figpics.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -526,7 +527,49 @@ function showFig() {
   const kinds = { cut: 'piła – ProgramAutoCutST', profile: 'profile – ProgramAutoProfileST', mill: 'frez – ProgramAutoMillST, tylko podgląd' };
   $('#figHint').textContent = `Jak w PLC: FigureType.${fig.id} (${fig.v}), ${fig.plc}; program: ${kinds[fig.kind] || fig.kind}`;
   renderGroup($('#figFields'), 'fig', fig.fields, state.forms.figs?.[fig.id] || defaults(fig.fields));
+  // litery wymiarow przy polach (jak tekst obok pola na ekranie figury w HMI)
+  for (const f of fig.fields) {
+    const letter = fieldLetter(fig.id, f);
+    const label = fieldEl('fig', f.k)?.closest('label');
+    if (!letter || !label) continue;
+    // litera i opis w jednym wierszu (etykieta jest kolumna: opis nad polem)
+    const text = label.firstChild?.nodeType === Node.TEXT_NODE ? label.firstChild : null;
+    const row = document.createElement('span');
+    row.className = 'lt';
+    row.innerHTML = `<span class="letter">${letter}</span>`;
+    if (text) row.append(text.textContent);
+    if (text) text.remove();
+    label.prepend(row);
+  }
+  for (const el of $$('#figFields [data-g]')) el.addEventListener('input', showFigPicture);
+  showFigPicture();
   $('#figInfo').textContent = '';
+}
+
+// #138 rysunek pogladowy figury (obrazki z HMI, wariant wg pol figury; bez obrazka w HMI - schemat SVG)
+function showFigPicture() {
+  const fig = currentFig();
+  const pic = figurePicture(fig.id, readGroup('fig', fig.fields));
+  const box = $('#figPic');
+  if (!pic) { box.hidden = true; return; }
+  box.hidden = false;
+  let html = '';
+  if (pic.img) html = `<img src="${pic.img}" alt="${fig.name}">`;
+  else if (pic.svg) html = pic.svg;
+  else if (pic.roof) {
+    const [w, h] = pic.size;
+    const k = Math.min(1, 320 / (w + 70));
+    html = `<div class="roof" style="width:${(w + 70) * k}px;height:${(h + 50) * k}px">`
+      + pic.roof.map((r) => {
+        // obraz w ukladzie przed obrotem (przy 90 / 270 zamienione boki), srodek w srodku przycisku
+        const side = r.angle === 90 || r.angle === 270;
+        const [iw, ih] = side ? [r.h, r.w] : [r.w, r.h];
+        return `<img src="img/figures/roof_wall${r.wall}_${r.on ? 1 : 0}.png" alt="ściana ${r.wall}" style="left:${(r.x + r.w / 2) * k}px;top:${(r.y + r.h / 2) * k}px;`
+          + `width:${iw * k}px;height:${ih * k}px;transform:translate(-50%,-50%) rotate(${r.angle || 0}deg)">`;
+      }).join('')
+      + pic.labels.map((l) => `<b style="left:${l.x * k}px;top:${l.y * k}px">${l.t}</b>`).join('') + '</div>';
+  }
+  box.innerHTML = `${html}<div class="src">Rysunek poglądowy – ekran HMI ${pic.screen}</div>`;
 }
 
 // "Wypelnij bufor": figura jak FiguresGeometricSt, bufor jak GetDemoProgram (aProgram* := aFigure*)

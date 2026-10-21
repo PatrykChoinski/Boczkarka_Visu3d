@@ -1,4 +1,4 @@
-// Budowa strony: src/client -> public/ (app.js z three.js w jednym pliku, index.html, style.css)
+// Budowa strony: src/client -> public/ (app.js z three.js w jednym pliku, index.html, style.css, img/)
 import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,4 +19,6 @@ await build({
   legalComments: 'none',
 });
 for (const f of ['index.html', 'style.css']) fs.copyFileSync(path.join(root, 'src/client', f), path.join(out, f));
+// obrazki (rysunki figur z HMI - #138)
+fs.cpSync(path.join(root, 'src/client/img'), path.join(out, 'img'), { recursive: true });
 console.log('public/ gotowe');
