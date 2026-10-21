@@ -6,6 +6,12 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### G-kod / CNC 3D w trybie frezu (#124)
+- Nowa zakładka „G-kod” (tylko tryb frezu po bazowaniu, jak moduł CNC w PLC): wczytanie pliku `.nc`, punkt początkowy G54 (pola, „= aktualna”, „bez promienia” jak `bSetG54_*` w CNCInfo; online `HMI.G54_X / Y / Z` z PLC), podsumowanie programu (ruchy, długości posuwu i szybkich, szacowany czas, zakres X / Y / Z, uwagi parsera, ostrzeżenie o głębokości większej niż grubość kamienia).
+- Parser `gcode.js` (G0 / G1 / G2 / G3, I / J i R, G90 / G91, G20 / G21, G53 jak w PLC, F, M03 / M05 / M30), program ruchu `cnc.js` (X = G54_X + X, Y = G54_Y − Y, Z = G54_Z + Z, limity 200 mm/s XY i 20 mm/s Z, ciągła ścieżka), mapa wysokości `heightmap.js` – z poprzedniego commita „GCode”, teraz podłączone.
+- Materiał jako mapa wysokości w widoku 3D (`view3d.setHeightMap`, kolor wg głębokości, siatka do ok. 400 tys. punktów), tor programu (`setCncPath`: G1 pomarańczowy, G0 niebieski przerywany). Start – animacja, „Wynik od razu” – cały program bez animacji, „Wyczyść materiał”. Próbki programu CNC idą na mapę wysokości zamiast osobnych śladów narzędzia (54 tys. linii nie robi tysięcy rowków).
+- Sprawdzone: `npm test` (nowy `test/cnc.test.js`: parser na fragmencie przykładowego pliku, łuki I / J i R, G91 / G20, G54 → osie, mapa wysokości – szerokość rowka i spód, program ruchu – koniec, głębokość i prędkość Z, animacja = tor, przykładowy plik bez uwag z zakresem X −25…307,3, Y −412…25, Z do 57,4). W przeglądarce: tryb frezu, plik Madonny (wczytanie 0,2 s, „Wynik od razu” 1,7 s, siatka 399 × 504 co 1 mm, 1461 cm²), relief z mapy wysokości zgodny z plikiem.
+
 ### Węże z wodą, osłona tarczy, odbojnik, moduł lasera i panel operatorski (#141)
 - Osłona tarczy (osłonka na wodę) wg zdjęcia w zgłoszeniu, zamiast półokrągłej żółtej: kanciasta, jasna aluminiowa płyta (`GUARD_OUTLINE`, `GUARD_HUB_HOLE` w `water.js`).
   - Wymiary zmierzone na zdjęciu w promieniach tarczy: środek piasty i promień tarczy w pikselach, skrót perspektywy z okrągłego wybrania.

@@ -121,3 +121,20 @@ Gałąź `develop/RysunkiFigurAutomat` (Visu3D i repo główne), od najnowszego 
 - [x] Osłona większa od tarczy, zielony odbojnik wody pod przednim narożnikiem osłony
 - [x] Osłona tarczy i dysze wg zdjęcia w #141, dużo wody z rozbryzgiem wg filmu
 - [ ] Na maszynie: kierunek obrotu FWD (saw.fwdSign -1), położenie modułu lasera (laser.mountAngle), trzecia (dolna) dysza
+
+# TODO – #124 G-kod / CNC 3D (tylko tryb frezu)
+
+Gałąź `develop/WizuGCode` (Visu3D i repo główne). Przykładowy plik: `Dodatkowe Programy/madonna_frez_fi25mm_fixed.nc` (54 485 linii, G00 / G01, frez fi 25).
+
+- [x] Parser G-kodu jak preprocesor CNC w PLC (`gcode.js`): G0 / G1 / G2 / G3 (I / J, R z ostrzeżeniem), G90 / G91, G20 / G21, G53 (reszta linii pomijana), F, M03 / M05 / M30
+- [x] Pozycje osi z G54 jak CNCInfo / preprocesor (`cnc.js`): X = G54_X + X, Y = G54_Y − Y, Z = G54_Z + Z; limity 200 mm/s XY, 20 mm/s Z
+- [x] Mapa wysokości materiału (`heightmap.js`): czoło frezu obniża powierzchnię
+- [x] Zakładka „G-kod” tylko w trybie frezu po bazowaniu: wczytanie pliku `.nc`, podsumowanie (ruchy, zakres, długości, czas, ostrzeżenia)
+- [x] Punkt początkowy G54 X / Y / Z: pola, „= aktualna” i „bez promienia” (+ fParameterMillWidth / 2) jak bSetG54_*; online G54 z PLC (HMI.G54_X / Y / Z)
+- [x] Start (animacja z prędkościami z pliku) i „Wynik od razu” (cały program na mapie wysokości)
+- [x] Widok 3D: powierzchnia mapy wysokości (kolor wg głębokości), tor programu (G1 / G0)
+- [x] Testy: parser na fragmencie pliku, G54 → osie, mapa wysokości (frez schodzi na zadaną głębokość), program z przykładowego pliku
+- [x] Sprawdzenie w przeglądarce na przykładowym pliku (wczytanie 0,2 s, „Wynik od razu” 1,7 s, siatka 399 × 504 co 1 mm; relief Madonny z mapy wysokości – zgodny z plikiem)
+- [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit (bez push)
+- [ ] Na maszynie: porównanie z rzeczywistym frezowaniem (G54, kierunek Y, głębokość)
+- [ ] Animacja w panelu widoczna tylko przy oknie na wierzchu (requestAnimationFrame) – sprawdzić na panelu operatorskim

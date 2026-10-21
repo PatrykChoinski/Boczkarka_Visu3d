@@ -359,6 +359,27 @@ zbazowana piła. Ślad frezu i wiertła jest rysowany jako rowek / otwór o
 średnicy narzędzia, polerka zostawia jasny ślad na powierzchni. Rzazy piły
 zostają po zmianie trybu.
 
+### G-kod / CNC 3D (#124, tylko tryb frezu)
+
+Zakładka „G-kod” (widoczna w trybie frezu po bazowaniu) wczytuje program `.nc` i pokazuje, co frez zrobi
+w materiale – jak moduł CNC w PLC:
+- **Parser** (`src/shared/gcode.js`) jak preprocesor PLC: G0 / G1 (domyślnie G1), G2 / G3 z I / J (R liczone, ale
+  z ostrzeżeniem – PLC go nie obsługuje), G90 / G91, G20 / G21, G53 (reszta linii pomijana, jak w PLC), F w mm/min,
+  M03 / M05, koniec na M30, komentarze `( )` i `;`.
+- **Punkt początkowy G54** = pozycja osi (`HMI.G54_X / Y / Z`, CNCInfo): X osi = G54_X + X, Y osi = G54_Y − Y
+  (odwrócona oś Y), Z osi = G54_Z + Z (Z w głąb). Przyciski „= aktualna” i „bez promienia” (+ `fParameterMillWidth / 2`)
+  jak `bSetG54_*`. Online G54 czytane z PLC. A i B bez zmian (frez B 90° po bazowaniu).
+- **Ruch**: przed programem Z w górę o wyjazd nad materiał, potem ruchy z pliku – posuw F, G0 z prędkością dojazdu,
+  ścieżka ograniczona jak `limitDyn` w PLC (200 mm/s XY, 20 mm/s Z), kolejne bloki bez zatrzymania.
+- **Materiał**: mapa wysokości (`src/shared/heightmap.js`) w obszarze programu – płaskie czoło frezu o średnicy
+  `fParameterMillWidth` obniża powierzchnię (nie niżej niż spód kamienia), kolor wg głębokości. „Start” – animacja
+  (tempo jak w innych programach), „Wynik od razu” – cały program bez animacji (przykładowy plik 54 tys. linii ≈ 2 s),
+  „Wyczyść materiał”. Online – gdy plik jest wczytany, ruchy z PLC wycinają mapę wysokości.
+- Tor programu w widoku: G1 pomarańczowy, G0 niebieski przerywany. Podsumowanie: ruchy, długości, szacowany czas,
+  zakres X / Y / Z, ostrzeżenie, gdy program schodzi głębiej niż grubość kamienia.
+
+Przykładowy plik: `Dodatkowe Programy/madonna_frez_fi25mm_fixed.nc` (repo główne, frez Ø25). Testy: `test/cnc.test.js`.
+
 ### Rysunki figur w automacie (#138)
 
 W sekcji „Figura” zakładki Automat pod wyborem figury jest rysunek poglądowy z literami wymiarów, tak jak na

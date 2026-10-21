@@ -97,6 +97,12 @@ export class View3D {
     this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
     this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
     this.planKey = '';
+    // CNC 3D (#124): powierzchnia mapy wysokosci materialu i tor programu G-kodu
+    this.cncGroup = new THREE.Group();
+    this.scene.add(this.cncGroup);
+    this.hmMesh = null;
+    this.hmVersion = -1;
+    this.cncPathKey = null;
 
     // warstwy ciec: kamien i stol (ciecie w stol - innym kolorem)
     const kerf = (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -211,6 +217,93 @@ export class View3D {
       disposeGroup(entry.group);
       entry.rev = pass.rev;
       buildToolPass(entry.group, pass, pass.polish ? null : sl.wallMat, pass.polish ? this.polishMat : sl.kerfMat);
+    }
+  }
+
+  // --- CNC 3D (#124): mapa wysokosci i tor G-kodu --------------------------------------------
+
+  // Powierzchnia materialu z mapy wysokosci (HeightMap): siatka nx x ny, kolor wg glebokosci (gora - kolor kamienia,
+  // najglebiej - ciemny). Geometria budowana raz na mape, potem tylko Z i kolory przy zmianie (version).
+  setHeightMap(hm) {
+    if (!hm) {
+      if (this.hmMesh) { this.cncGroup.remove(this.hmMesh); this.hmMesh.geometry.dispose(); this.hmMesh = null; }
+      this.hmVersion = -1;
+      return;
+    }
+    if (!this.hmMesh || this.hmMesh.userData.hm !== hm) {
+      if (this.hmMesh) { this.cncGroup.remove(this.hmMesh); this.hmMesh.geometry.dispose(); }
+      const { nx, ny } = hm;
+      const pos = new Float32Array(nx * ny * 3);
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = (j * nx + i) * 3;
+          pos[k] = hm.x0 + i * hm.res;
+          pos[k + 1] = hm.y0 + j * hm.res;
+        }
+      }
+      const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+      let n = 0;
+      for (let j = 0; j < ny - 1; j++) {
+        for (let i = 0; i < nx - 1; i++) {
+          const a = j * nx + i;
+          idx[n++] = a; idx[n++] = a + 1; idx[n++] = a + nx;
+          idx[n++] = a + 1; idx[n++] = a + nx + 1; idx[n++] = a + nx;
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      this.hmMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1,
+      }));
+      this.hmMesh.userData.hm = hm;
+      this.hmMesh.frustumCulled = false;
+      this.cncGroup.add(this.hmMesh);
+      this.hmVersion = -1;
+    }
+    if (hm.version === this.hmVersion) return;
+    this.hmVersion = hm.version;
+    const geo = this.hmMesh.geometry;
+    const pos = geo.attributes.position.array;
+    const col = geo.attributes.color.array;
+    const depth = Math.max(1, hm.top - hm.bottom);
+    const top = new THREE.Color(COLORS.material);
+    const deep = new THREE.Color(0x4a3a2c);
+    const c = new THREE.Color();
+    for (let k = 0; k < hm.z.length; k++) {
+      const z = hm.z[k];
+      pos[k * 3 + 2] = z + 0.2;
+      c.copy(top).lerp(deep, Math.min(1, (hm.top - z) / depth) ** 0.7);
+      col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
+
+  // Tor programu: [{kind: 'rapid' | 'feed', pts: [[x, y, z], ...]}] (swiat, czubek narzedzia); null - brak
+  setCncPath(paths, key) {
+    if (key === this.cncPathKey) return;
+    this.cncPathKey = key;
+    for (const o of [...this.cncGroup.children]) {
+      if (o === this.hmMesh) continue;
+      this.cncGroup.remove(o);
+      o.geometry?.dispose();
+    }
+    if (!paths) return;
+    this.cncFeedMat ??= new THREE.LineBasicMaterial({ color: 0xe07b00, transparent: true, opacity: 0.55 });
+    this.cncRapidMat ??= new THREE.LineDashedMaterial({ color: 0x1f5fa8, dashSize: 10, gapSize: 8, transparent: true, opacity: 0.7 });
+    for (const p of paths) {
+      if (p.pts.length < 2) continue;
+      const arr = new Float32Array(p.pts.length * 3);
+      p.pts.forEach((q, i) => { arr[i * 3] = q[0]; arr[i * 3 + 1] = q[1]; arr[i * 3 + 2] = q[2]; });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const line = new THREE.Line(geo, p.kind === 'rapid' ? this.cncRapidMat : this.cncFeedMat);
+      if (p.kind === 'rapid') line.computeLineDistances();
+      line.frustumCulled = false;
+      this.cncGroup.add(line);
     }
   }
 
