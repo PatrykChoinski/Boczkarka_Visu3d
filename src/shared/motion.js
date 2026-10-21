@@ -167,8 +167,14 @@ function pathSegment(poses, vel, acc, dec, step) {
     end: copyPose(poses[poses.length - 1]),
     poseAt(t) {
       const s = prof.L > 0 ? prof.s(t) : L;
-      let i = 1;
-      while (i < cum.length - 1 && cum[i] < s) i++;
+      // pierwszy punkt z cum[i] >= s (wyszukiwanie binarne - dlugie sciezki, np. G-kod)
+      let lo = 1;
+      let hi = cum.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (cum[mid] < s) lo = mid + 1; else hi = mid;
+      }
+      const i = lo;
       const seg = cum[i] - cum[i - 1];
       const k = seg > 0 ? Math.min(1, Math.max(0, (s - cum[i - 1]) / seg)) : 1;
       const p = {};
