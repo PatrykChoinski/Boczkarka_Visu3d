@@ -25,7 +25,11 @@ const inPlane = (f, angleDeg, dist) => add(f.center, add(mul(f.d, -Math.cos(angl
 // druga krawedz |s| 0.81, dol t -0.57 / -0.40; okragle wybranie wokol piasty (widac nakretke). Na zdjeciu patrzymy na
 // zewnetrzna sciane oslony (nakretka piasty), wiec lewa strona zdjecia to -u: skos oslony i dysze sa od strony -u.
 // Punkty [s, t] w modelu: s wzdluz u, t w gore w plaszczyznie tarczy.
-export const GUARD_OUTLINE = [[-0.96, -0.40], [-0.96, -0.07], [-0.27, 0.87], [0.81, 0.87], [0.81, -0.57], [0.0, -0.57], [0.0, -0.40]];
+// Oslona musi byc wieksza od tarczy (tarcza wychodzi tylko dolem): proporcje ze zdjecia powiekszone tak, ze
+// wszystkie krawedzie nad dolem oslony sa poza obwodem tarczy (|s| krawedzi pionowych > 1, skos > 1 od srodka).
+export const GUARD_OUTLINE = [[-1.08, -0.45], [-1.08, 0.25], [-0.5, 1.1], [1.05, 1.1], [1.05, -0.62], [0.0, -0.62], [0.0, -0.45]];
+// odbojnik wody (zdjecie: plyta pod przednim dolnym narozem oslony od strony skosu, do stolu) - zielona guma
+export const FLAP = { s: -1.08, width: 60, thickness: 8, maxDrop: 0.8 };
 export const GUARD_HUB_HOLE = 0.24;                       // promien wybrania wokol piasty [promienie tarczy]
 // grubosc oslony wzdluz normalnej tarczy: od strony silnika (-) i od zewnatrz (+) [mm poza polowa szerokosci tarczy]
 export const GUARD_SIDES = { inner: 40, outer: 80 };
@@ -65,20 +69,20 @@ export function waterLayout(pose, m, spin = 1) {
   }
   const bw2 = m.bladeWidth / 2;
   const face = bw2 + GUARD_SIDES.outer;                    // zewnetrzna sciana oslony
-  manifold = inGuard(f, [0.85, -0.55], face - 30);
-  supply = [top, inGuard(f, [1.3, 0.6], face - 20), inGuard(f, [1.3, -0.3], face - 30), manifold];
+  manifold = inGuard(f, [0.97, -0.66], face - 30);
+  supply = [top, inGuard(f, [1.35, 0.6], face - 20), inGuard(f, [1.35, -0.3], face - 30), manifold];
   // gorne dysze: weze wychodza z rozdzielacza na zewnatrz, petla i skosem przed sciana oslony do dysz przy piascie
   [[[0.22, 0.04], 0], [[0.29, -0.08], 22]].forEach(([tip, dz]) => {
     const o = face + 18 + dz;
     const nozzle = inGuard(f, tip, o);
-    hoses.push([add(manifold, mul(f.normal, 20 + dz)), inGuard(f, [1.15, -0.62], o), inGuard(f, [1.22, -0.42], o),
+    hoses.push([add(manifold, mul(f.normal, 20 + dz)), inGuard(f, [1.25, -0.72], o), inGuard(f, [1.32, -0.48], o),
       inGuard(f, [0.9, -0.22], o), inGuard(f, [0.55, -0.06 + tip[1] * 0.5], o), nozzle]);
     nozzles.push(nozzle);
     targets.push(inGuard(f, [-0.62, -0.62], bw2 + 0.5));
   });
   // dolna dysza: z rozdzielacza w dol pod tarcze, przy dolnej czesci tarczy
   const low = inGuard(f, [0.15, -0.75], bw2 + 30);
-  hoses.push([add(manifold, mul(f.normal, -10)), inGuard(f, [0.55, -0.72], bw2 + 40), inGuard(f, [0.35, -0.82], bw2 + 35), low]);
+  hoses.push([add(manifold, mul(f.normal, -10)), inGuard(f, [0.6, -0.78], bw2 + 40), inGuard(f, [0.35, -0.84], bw2 + 35), low]);
   nozzles.push(low);
   targets.push(inGuard(f, [-0.3, -0.7], bw2 + 0.5));
   // woda na poczatek tarczy (#141, film): obwod po stronie, ktora przy danym obrocie schodzi w material (spin +1 - strona
@@ -232,4 +236,23 @@ export function laserMount(pose, m, side = 1, mountAngle = 50) {
   const edge = guardRadius(dir) * f.radius;
   const pos = inPlane(f, side * mountAngle, edge + 40);
   return { pos, u: mul(f.u, side), normal: f.normal, up: norm(sub(pos, f.center)) };
+}
+
+// Odbojnik wody (#141, zdjecie): zielona gumowa plyta w poprzek rzazu pod przednim dolnym narozem oslony (strona -u),
+// wisi od dolnej krawedzi oslony do powierzchni materialu (najwyzej FLAP.maxDrop promienia ponizej oslony).
+// -> {center, x (w poprzek - normalna), y (w gore w plaszczyznie tarczy), z (wzdluz u), size: [szer., wys., grubosc]}
+export function guardFlap(pose, m) {
+  const f = headFrame(pose, m);
+  if (isToolMode(m)) return null;
+  const R = f.radius;
+  const up = mul(f.d, -1);
+  const tTop = GUARD_OUTLINE[0][1] * R;                       // dol oslony przy przedniej krawedzi
+  const tMat = (topZ(m) + 2 - f.center[2]) / Math.max(up[2], 0.2);  // powierzchnia materialu w plaszczyznie tarczy
+  const tBot = Math.min(tTop - 20, Math.max(tMat, tTop - FLAP.maxDrop * R));
+  const bw2 = m.bladeWidth / 2;
+  const n0 = -(bw2 + GUARD_SIDES.inner + FLAP.width / 2);
+  const n1 = bw2 + GUARD_SIDES.outer + FLAP.width / 2;
+  const sMid = FLAP.s * R + FLAP.thickness / 2;
+  const center = add(add(add(f.center, mul(f.u, sMid)), mul(up, (tTop + tBot) / 2)), mul(f.normal, (n0 + n1) / 2));
+  return { center, x: f.normal, y: up, z: mul(f.u, -1), size: [n1 - n0, tTop - tBot, FLAP.thickness] };
 }

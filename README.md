@@ -160,14 +160,17 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   wiązki. W trybach frezu, wiercenia i polerowania moduł jest obok narzędzia.
 - **Suport (#141):** przed przednim końcem prawego murka (od strony operatora)
   stoi panel operatorski: słupek i pochylona konsola z ekranem HMI, grzybkiem
-  STOP oraz przyciskami. Na płycie stołu, pod kamieniem, leży zielona gumowa
-  mata łapiąca wodę. Oba elementy da się wyłączyć: `frame.panel`,
-  `frame.mat`.
+  STOP oraz przyciskami. Można go wyłączyć: `frame.panel`.
 - **Osłona tarczy i woda (#141, wg zdjęcia i filmu w zgłoszeniu):**
   - **Osłona tarczy** (osłonka na wodę) to kanciasta, jasna aluminiowa płyta
-    z wymiarami zmierzonymi na zdjęciu (w promieniach tarczy): pionowa
-    krawędź na 0,96, skos, płaska góra na 0,87, druga krawędź na 0,81, dół na
-    −0,57 / −0,40. Ma okrągłe wybranie wokół piasty, w którym widać nakrętkę.
+    o kształcie ze zdjęcia: pionowa krawędź, skos, płaska góra, druga
+    krawędź, dół na dwóch wysokościach. Jest większa od tarczy, więc tarcza
+    wychodzi tylko pod dolną krawędzią osłony. Wymiary w promieniach tarczy:
+    pionowa krawędź 1,08, góra 1,10, druga krawędź 1,05, dół −0,62 / −0,45.
+    Ma okrągłe wybranie wokół piasty, w którym widać nakrętkę.
+  - **Odbojnik wody** jest jak płyta na zdjęciu, tylko zielony: gumowa płyta
+    w poprzek rzazu pod przednim dolnym narożnikiem osłony (od strony skosu).
+    Wisi od osłony do powierzchni materiału, najwyżej 0,8 promienia.
   - **Woda jak na zdjęciu:**
     - wszystko jest po zewnętrznej stronie osłony;
     - stalowy oplatany przewód schodzi do srebrnego rozdzielacza przy dolnym
@@ -396,7 +399,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
-| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem), `mat` (zielona mata łapiąca wodę na stole) |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500, mountAngle: 50}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
 | `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD (−1: strona −u tarczy schodzi w materiał - tam leci woda z dysz) |

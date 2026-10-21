@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { machine, bladeFrame, toolFrame, topZ, sub, dot } from '../src/shared/geometry.js';
-import { waterLayout, waterDrops, waterSpray, laserMount, guardRadius, GUARD_OUTLINE } from '../src/shared/water.js';
+import { waterLayout, waterDrops, waterSpray, laserMount, guardRadius, guardFlap, GUARD_OUTLINE } from '../src/shared/water.js';
 
 const M = machine({ discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40 });
 const len = (p) => Math.hypot(...p);
@@ -25,9 +25,9 @@ test('woda pila wg zdjecia w #141: trzy dysze po zewnetrznej stronie oslony - dw
     // dolna: przy dolnej czesci tarczy, ponizej oslony
     const [sl, tl] = st(w.nozzles[2]);
     assert.ok(Math.abs(sl) < 0.3 && tl < -0.6, `dolna dysza: ${sl}, ${tl}`);
-    // rozdzielacz przy dolnym tylnym rogu oslony
+    // rozdzielacz przy dolnym rogu oslony (strona +u)
     const [sm, tm] = st(w.manifold);
-    assert.ok(Math.abs(sm - 0.85) < 1e-9 && Math.abs(tm + 0.55) < 1e-9);
+    assert.ok(Math.abs(sm - 0.97) < 1e-9 && Math.abs(tm + 0.66) < 1e-9);
     // woda na poczatek tarczy (film): obwod od strony -u (tam celuja dysze), pod oslona, na scianie tarczy
     for (const t of w.targets) {
       const off = dot(sub(t, f.center), f.normal);
@@ -39,11 +39,35 @@ test('woda pila wg zdjecia w #141: trzy dysze po zewnetrznej stronie oslony - dw
   }
 });
 
-test('oslona tarczy wg zdjecia: gora 0.87, pionowa krawedz 0.96 (strona -u), druga 0.81, dol 0.57 / 0.40 promienia', () => {
-  near3(guardRadius([0, 1]), 0.87);
-  near3(guardRadius([1, 0]), 0.81);
-  near3(guardRadius([0, -1]), 0.57);
-  assert.ok(Math.abs(GUARD_OUTLINE[0][0] + 0.96) < 1e-9 && Math.abs(GUARD_OUTLINE[0][1] + 0.40) < 1e-9, 'pionowa krawedz - dol');
+test('oslona tarczy wieksza od tarczy: tarcza wychodzi tylko dolem, proporcje ze zdjecia', () => {
+  // kazdy kierunek nad dolem oslony (t > -0.42) - krawedz oslony dalej niz obwod tarczy
+  for (let a = -25; a <= 205; a += 0.5) {
+    const r = a * Math.PI / 180;
+    assert.ok(guardRadius([Math.cos(r), Math.sin(r)]) > 1.02, `tarcza przecina oslone przy ${a} st.`);
+  }
+  near3(guardRadius([0, 1]), 1.1);
+  near3(guardRadius([1, 0]), 1.05);
+  near3(guardRadius([-1, 0]), 1.08);
+  assert.ok(guardRadius([0, -1]) < 0.7, 'pod oslona tarcza odslonieta');
+});
+
+test('odbojnik wody: zielona plyta w poprzek rzazu pod przednim narozem oslony, do powierzchni materialu', () => {
+  for (const z of [0, 250]) {
+    const pose = { x: 800, y: 600, z, a: 30, b: 0 };
+    const f = bladeFrame(pose, M);
+    const fl = guardFlap(pose, M);
+    // w poprzek rzazu: szerzej niz oslona, po obu stronach tarczy
+    assert.ok(fl.size[0] > M.bladeWidth + 120);
+    assert.ok(Math.abs(dot(fl.x, f.normal) - 1) < 1e-9);
+    // pod przednim narozem (strona -u)
+    assert.ok(dot(sub(fl.center, f.center), f.u) < -f.radius);
+    // dol plyty nie nizej niz material, gora przy dolnej krawedzi oslony
+    const bottom = fl.center[2] - fl.size[1] / 2;
+    const top = fl.center[2] + fl.size[1] / 2;
+    assert.ok(bottom >= topZ(M) - 1e-6, `dol odbojnika ${bottom} vs material ${topZ(M)}`);
+    assert.ok(Math.abs(top - (f.center[2] + GUARD_OUTLINE[0][1] * f.radius)) < 1e-6);
+  }
+  assert.equal(guardFlap({ x: 0, y: 0, z: 0, a: 0, b: 90 }, machine({ ...M, mode: 'mill' })), null);
 });
 
 test('woda frez / wiertlo: dysze przy narzedziu, woda na czolo', () => {

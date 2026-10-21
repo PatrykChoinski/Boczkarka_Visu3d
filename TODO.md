@@ -117,6 +117,7 @@ Gałąź `develop/RysunkiFigurAutomat` (Visu3D i repo główne), od najnowszego 
 ## #141 Woda i laser
 - [x] Dwa niebieskie węże z wodą, woda z dysz na tarczę / narzędzie przy obrotach (online yWaterCut / yWaterMill)
 - [x] Moduł lasera na osłonie tarczy, wiązka do linii lasera
-- [x] Panel operatorski przed prawym murkiem, zielona mata łapiąca wodę na stole
+- [x] Panel operatorski przed prawym murkiem (zielona mata na stole usunięta)
+- [x] Osłona większa od tarczy, zielony odbojnik wody pod przednim narożnikiem osłony
 - [x] Osłona tarczy i dysze wg zdjęcia w #141, dużo wody z rozbryzgiem wg filmu
 - [ ] Na maszynie: kierunek obrotu FWD (saw.fwdSign -1), położenie modułu lasera (laser.mountAngle), trzecia (dolna) dysza

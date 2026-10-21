@@ -75,10 +75,12 @@ export class View3D {
     this.laserFanMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false });
     // woda z dysz na tarcze (krople)
     this.water = new THREE.Group();
-    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x3f93e8, size: 16, transparent: true, opacity: 0.9, depthWrite: false }));
+    const dropTex = roundTexture();
+    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x3f93e8, size: 16, map: dropTex, alphaTest: 0.05,
+      transparent: true, opacity: 0.9, depthWrite: false }));
     this.waterDrops.frustumCulled = false;
     // mgla wodna przy rozbryzgu (duze, prawie przezroczyste punkty)
-    this.waterMist = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x9fd0ff, size: 110, transparent: true, opacity: 0.22, depthWrite: false }));
+    this.waterMist = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x9fd0ff, size: 110, map: dropTex, transparent: true, opacity: 0.22, depthWrite: false }));
     this.waterMist.frustumCulled = false;
     // mokra plama na materiale wzdluz ciecia (polysk)
     this.waterWet = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x9fb3c4, roughness: 0.08, metalness: 0.35,
@@ -590,6 +592,20 @@ function disposeGroup(group) {
     // wlasny material sprite'a znacznika (tekstura z canvas)
     if (obj.isSprite) { obj.material.map?.dispose(); obj.material.dispose(); }
   }
+}
+
+// Okragla, miekka kropla (tekstura punktow wody i mgly - bez kwadratow)
+function roundTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.75)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
 }
 
 // --- znaczniki planu: tekstury z canvas ----------------------------------------

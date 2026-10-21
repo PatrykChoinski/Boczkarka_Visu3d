@@ -146,9 +146,8 @@ export const DEFAULTS = {
   materialMinSize: [1200, 800],
   // model maszyny (pila mostowa) w widoku - wg punktow stolu, niezalezny od kamienia: most wzdluz osi
   // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu, spod mostu bridgeZ mm nad Z = 0,
-  // dlugosc slupa Z, wysokosc stolu (do podlogi); panel - panel operatorski przed prawym murkiem, mat - zielona mata
-  // lapiaca wode na stole (#141)
-  frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700, panel: true, mat: true },
+  // dlugosc slupa Z, wysokosc stolu (do podlogi); panel - panel operatorski przed prawym murkiem (#141)
+  frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700, panel: true },
   // plyta stolu pod kamieniem [mm] - ciecie w stol rysowane na czerwono do tej glebokosci
   tableThickness: 80,
   // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa;

@@ -6,10 +6,13 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
-### Węże z wodą, moduł lasera, panel operatorski i mata (#141)
+### Węże z wodą, osłona tarczy, odbojnik, moduł lasera i panel operatorski (#141)
 - Osłona tarczy (osłonka na wodę) wg zdjęcia w zgłoszeniu, zamiast półokrągłej żółtej: kanciasta, jasna aluminiowa płyta (`GUARD_OUTLINE`, `GUARD_HUB_HOLE` w `water.js`).
   - Wymiary zmierzone na zdjęciu w promieniach tarczy: środek piasty i promień tarczy w pikselach, skrót perspektywy z okrągłego wybrania.
-  - Pionowa krawędź 0,96, skos do (0,27; 0,87), płaska góra 0,87, druga krawędź 0,81, dół −0,57 / −0,40, okrągłe wybranie wokół piasty.
+  - Kształt ze zdjęcia (pionowa krawędź, skos, płaska góra, druga krawędź, dół na dwóch wysokościach, okrągłe wybranie wokół piasty) powiększony tak, żeby osłona była większa od tarczy: tarcza wychodzi tylko pod dolną krawędzią, a każda krawędź powyżej jest co najmniej 1,02 promienia od środka.
+  - Wymiary w promieniach tarczy: pionowa krawędź 1,08, skos do (0,5; 1,1), góra 1,1, druga krawędź 1,05, dół −0,62 / −0,45.
+- Odbojnik wody jak płyta na zdjęciu, tylko zielony (`guardFlap`, `FLAP`): gumowa płyta w poprzek rzazu (szersza niż osłona) pod przednim dolnym narożnikiem osłony od strony skosu. Wisi od dolnej krawędzi osłony do powierzchni materiału, najwyżej 0,8 promienia.
+- Krople i mgła wody rysowane jako okrągłe, miękkie punkty.
   - Na zdjęciu widać zewnętrzną ścianę (nakrętkę), więc skos osłony jest od strony −u.
 - Woda wg zdjęcia, wszystko po zewnętrznej stronie osłony:
   - stalowy oplatany przewód z głowicy do srebrnego rozdzielacza przy dolnym rogu osłony;
@@ -27,10 +30,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
   - Online: woda zależy od zaworów `IOVars.yWaterCut` (piła) i `IOVars.yWaterMill` (frez, wiercenie). Gdy PLC nie podaje tych zmiennych, woda leci przy obrotach.
   - Pasek stanu: „woda” / „woda (frez)”.
 - Moduł lasera (obudowa i okienko, które świeci na czerwono przy włączonym laserze) jest zamontowany na krawędzi osłony tarczy od strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Przy włączonym laserze półprzezroczysty wachlarz wiązki prowadzi od modułu do linii lasera na materiale.
-- Suport: panel operatorski przed przednim końcem prawego murka (słupek, konsola pochylona o 30° do operatora, ekran HMI, grzybek STOP na żółtej podstawie, przyciski zielony / biały / niebieski) i zielona gumowa mata łapiąca wodę na płycie stołu pod kamieniem; wyłączane w configu (`frame.panel`, `frame.mat`).
+- Suport: panel operatorski przed przednim końcem prawego murka (słupek, konsola pochylona o 30° do operatora, ekran HMI, grzybek STOP na żółtej podstawie, przyciski zielony / biały / niebieski); wyłączany w configu (`frame.panel`). Zielona mata na stole, dodana wcześniej w tym zgłoszeniu, została usunięta.
 - Geometria w `src/shared/water.js` (`waterLayout`, `waterDrops`, `laserMount`, `headDims`), rysowanie w `machine3d.js` (węże, dysze, moduł) i `view3d.js` (`setWater`, wachlarz w `setLaser`). Testowy PLC podaje `waterMill` w trybach narzędzi.
 - Sprawdzone:
-  - `npm test` 122/122 (nowy `test/water.test.js`: trzy dysze wg zdjęcia, rozdzielacz, wymiary osłony, trafienie w początek tarczy tuż nad materiałem, rozbryzg za tarczą w kierunku obrotu i tylko w rzazie pod powierzchnią, woda na czoło narzędzia, moduł lasera na krawędzi osłony);
+  - `npm test` 123/123 (nowy `test/water.test.js`: trzy dysze wg zdjęcia, rozdzielacz, osłona większa od tarczy, odbojnik do powierzchni materiału, trafienie w początek tarczy tuż nad materiałem, rozbryzg za tarczą w kierunku obrotu i tylko w rzazie pod powierzchnią, woda na czoło narzędzia, moduł lasera na krawędzi osłony);
   - porównanie obok siebie ze zdjęciem z #141 i klatką z filmu (118 s);
   - `scripts/smoke-test.mjs` OK;
   - w przeglądarce piła i frez z włączonymi obrotami i laserem.
