@@ -16,6 +16,7 @@ import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../sh
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
+import { installIcons, icon } from './icons.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -470,10 +471,10 @@ function saveHtml(group, sv) {
   // sam Z (polerowanie: bSaveZ - aktualna pozycja osi Z jako fHeightPosition)
   if (sv.z) {
     const tz = `Wpisz aktualną pozycję osi Z jako ${sv.name}${sv.plc ? ` (jak w PLC: ${sv.plc})` : ''}`;
-    return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.z}"><button data-save-z="${sv.z}" title="${tz}">Zapisz ${sv.name}</button></div>`;
+    return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.z}"><button data-save-z="${sv.z}" title="Zapisz ${sv.name}: ${tz}">${icon('save')}${icon('arrowDown')}Z</button></div>`;
   }
   const title = `Wpisz aktualną pozycję osi X / Y jako ${sv.name}${sv.plc ? ` (jak w PLC: ${sv.plc})` : ''}`;
-  return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.y}"><button data-save-x="${sv.x}" data-save-y="${sv.y}" title="${title}">Zapisz ${sv.name}</button></div>`;
+  return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.y}"><button data-save-x="${sv.x}" data-save-y="${sv.y}" title="Zapisz ${sv.name}: ${title}">${icon('save')}${icon('here')}</button></div>`;
 }
 
 // "Zapisz": aktualna pozycja osi X / Y (albo Z) do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
@@ -989,9 +990,17 @@ function startProgram(program, homing = null) {
   state.sim.label = null;
   state.sim.index = null;
   state.sim.lastFrame = performance.now();
-  for (const b of $$('.pauseBtn')) b.textContent = 'Pauza';
+  setPauseButtons(true);
   requestAnimationFrame(simFrame);
   ensureSpin();
+}
+
+// Pauza / Wznow: ikona i podpowiedz
+function setPauseButtons(running) {
+  for (const b of $$('.pauseBtn')) {
+    b.innerHTML = icon(running ? 'pause' : 'play');
+    b.title = running ? 'Pauza' : 'Wznów';
+  }
 }
 
 function simFrame(now) {
@@ -1045,7 +1054,8 @@ function authChanged() {
   const a = state.auth;
   $('#authBox').hidden = !a.enabled;
   $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
-  $('#loginBtn').textContent = a.user ? 'Wyloguj' : 'Zaloguj';
+  $('#loginBtn').innerHTML = icon(a.user ? 'logout' : 'login');
+  $('#loginBtn').title = a.user ? `Wyloguj (${a.user})` : 'Zaloguj';
   if (state.forms) {
     showOp();
     showFig();
@@ -1380,7 +1390,8 @@ function manualAction(act) {
 // TRYB CIĄGŁY (czerwony) / TRYB SKOK (niebieski) jak przelacznik bManualContinousMode w HMI
 function renderContinuous() {
   const b = $('#manContinuous');
-  b.textContent = state.manContinuous ? 'TRYB CIĄGŁY' : 'TRYB SKOK';
+  b.innerHTML = icon(state.manContinuous ? 'continuous' : 'step', 'big');
+  b.title = state.manContinuous ? 'Tryb ciągły – ruch, dopóki przycisk jest wciśnięty (bManualContinousMode)' : 'Tryb skok – ruch o SKOK [mm]';
   b.classList.toggle('on', state.manContinuous);
 }
 
@@ -1487,8 +1498,15 @@ function setMode(mode) {
   requestDraw();
 }
 
+// Tytul panelu: ikona i nazwa ekranu z przycisku w lewym menu
+function setPanelTitle(name) {
+  const tb = $(`.tabs [data-tab="${name}"]`);
+  if (tb) $('#panelTitle').innerHTML = `${tb.innerHTML}<span>${tb.title}</span>`;
+}
+
 function showTab(name) {
   for (const x of $$('.tabs button')) x.classList.toggle('active', x.dataset.tab === name);
+  setPanelTitle(name);
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
@@ -1504,7 +1522,7 @@ function buildPointTables() {
     for (let i = 0; i < MAX_APEX; i++) {
       html += `<tr data-row="${i}"><td>${i + 1}</td>`
         + [0, 1, 2].map((c) => `<td><input type="number" step="any" data-pt="${name}" data-i="${i}" data-c="${c}"></td>`).join('')
-        + `<td><button data-save="${name}" data-i="${i}" title="Aktualna pozycja osi X, Y, Z">Poz.</button></td></tr>`;
+        + `<td><button data-save="${name}" data-i="${i}" title="Wstaw aktualną pozycję osi X, Y, Z">${icon('here')}</button></td></tr>`;
     }
     table.innerHTML = html;
   }
@@ -1865,6 +1883,7 @@ function updateTabs() {
   for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
   for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
   const active = $('.tabs button.active');
+  if (active && !active.hidden) setPanelTitle(active.dataset.tab);
   // zakladka zniknela (tryb, bazowanie, wylogowanie): online automat, potem Stol i kamien, inaczej pierwsza widoczna
   if (!active || active.hidden) {
     const visible = [...$$('.tabs button')].filter((t) => !t.hidden).map((t) => t.dataset.tab);
@@ -1889,9 +1908,10 @@ function toolModeChanged() {
   for (const el of $$('[data-modes]')) el.hidden = !el.dataset.modes.split(/\s+/).includes(mode.id);
   if (state.forms) applyVisibility('figctx', FIGURE_CONTEXT_FIELDS);
   const drive = mode.id === 'saw' ? 'Piła' : 'Wrzeciono';
-  $('#sawTitle').textContent = drive;
-  $('#sawStart').textContent = `START ${drive === 'Piła' ? 'PIŁY' : 'WRZECIONA'}`;
-  $('#sawStop').textContent = `STOP ${drive === 'Piła' ? 'PIŁY' : 'WRZECIONA'}`;
+  $('#sawTitle').innerHTML = icon(mode.id === 'saw' ? 'saw' : { mill: 'mill', drill: 'drill', polishing: 'polish' }[mode.id], 'big');
+  $('#sawTitle').title = drive;
+  $('#sawStart').title = `Start: ${drive.toLowerCase()} (bManualMainDriveOn)`;
+  $('#sawStop').title = `Stop: ${drive.toLowerCase()} (bManualMainDriveOff)`;
   renderHoming();
   if (state.mode === 'offline' && state.pose && !state.sim.running) applyPose(state.pose, offlineMachine());
   requestDraw();
@@ -2031,7 +2051,7 @@ function bindUi() {
     const sim = state.sim;
     if (!sim.program || sim.t >= sim.program.duration) return;
     sim.running = !sim.running;
-    for (const b of $$('.pauseBtn')) b.textContent = sim.running ? 'Pauza' : 'Wznów';
+    setPauseButtons(sim.running);
     if (sim.running) { sim.lastFrame = performance.now(); requestAnimationFrame(simFrame); }
     requestDraw();
   };
@@ -2053,7 +2073,9 @@ function bindUi() {
   };
   $('#posActual').onclick = () => writeFields('pos', state.pose);
 
-  $('#homeModes').innerHTML = MODES.map((x) => `<button data-home="${x.id}">${x.name} <small>B ${x.homeB}°</small></button>`).join('');
+  // tryby bazowania: piktogram narzedzia i B po bazowaniu (nazwa w podpowiedzi)
+  const MODE_ICON = { saw: 'saw', mill: 'mill', drill: 'drill', polishing: 'polish' };
+  $('#homeModes').innerHTML = MODES.map((x) => `<button data-home="${x.id}" title="${x.name}">${icon(MODE_ICON[x.id], 'big')}<small>B ${x.homeB}°</small></button>`).join('');
   for (const b of $$('[data-home]')) b.onclick = () => { state.tool.target = b.dataset.home; renderHoming(); };
   $('#homeStart').onclick = () => startHoming(state.tool.target || state.tool.mode);
   // automat: punkt startowy z aktualnej pozycji (bProgramSaveStartPosition / bProgramMillStartPointSave)
@@ -2072,6 +2094,7 @@ function bindUi() {
 }
 
 async function init() {
+  installIcons();
   view = new View3D($('#view'));
   state.cfg = await (await fetch('api/config')).json();
   buildPointTables();

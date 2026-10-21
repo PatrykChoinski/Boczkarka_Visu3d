@@ -153,7 +153,30 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 
 Przyciski ekranów (Stół i kamień, Operacja, Automat, G-kod, Pozycja, Parametry,
 Bazowanie) są w kolumnie po lewej stronie jak menu HMI (`Menu_Lewo`), panel
-wybranego ekranu – po prawej.
+wybranego ekranu – po prawej, z tytułem (ikona i nazwa ekranu).
+
+**Ikony zamiast napisów.** Przyciski mają piktogramy zamiast napisów (łatwiej
+przetłumaczyć aplikację na inne języki), opis jest w podpowiedzi po najechaniu
+(atrybut `title`). Ikony to własne rysunki SVG w `src/client/icons.js`, bez
+zewnętrznych bibliotek i czcionek (panel może nie mieć internetu). Teksty
+zostały tam, gdzie ikona nie wystarczy: etykiety pól z nazwami zmiennych PLC,
+podpowiedzi i komunikaty.
+
+| Ikona | Znaczenie |
+|---|---|
+| procesor / monitor (PLC / SIM) | tryb online z PLC / symulacja offline |
+| dłoń | okno Ruchy ręczne |
+| prędkościomierz | tempo symulacji, prędkości jog |
+| sylwetka, strzałka do / z drzwi | użytkownik, zaloguj / wyloguj |
+| warstwy, tarcza z rzazem, lista z ▶, `</>`, celownik, suwaki, dom | ekrany: Stół i kamień, Operacja, Automat, G-kod, Pozycja, Parametry, Bazowanie |
+| sześcian, kwadrat z krzyżem, przód, bok, ramka, lupy | widok: izometria, góra, przód, bok, dopasuj, przybliż / oddal |
+| tarcza, most, przerywany tor, celownik, linijka, laser, gumka | warstwy: głowica, suport, plan, XY, odległości, laser; wyczyść |
+| ▶ / ❚❚ / ośmiokąt | start, pauza / wznów, stop |
+| dyskietka + pinezka | zapisz aktualną pozycję (punkt, start) |
+| pinezka A / B / C, strzałka nad blokiem | punkty ręczne, nad materiał |
+| strzałka ciągła / strzałka między kreskami | tryb ciągły / skok |
+| obrót, wychył | oś obrotu (C / A), oś wychyłu B |
+| piła, frez, wiertło, polerka | tryby po bazowaniu |
 
 - **Online (PLC) / Offline**: przełącznik trybu.
 - **Izometria / Góra / Przód / Bok / Dopasuj / + / −**: widok. Obracanie
