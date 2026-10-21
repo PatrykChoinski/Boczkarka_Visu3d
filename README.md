@@ -37,8 +37,10 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 
 | Plik | Co to |
 |---|---|
-| `src/shared/geometry.js` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth` |
+| `src/shared/geometry.js` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth`; frez / wiertło / polerka wg `MillST`, `DrillST`, `Polishing` |
 | `src/shared/cuts.js` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
+| `src/shared/tools.js` | tryby po bazowaniu (`BaseHomingST`), program bazowania, operacje frezu, wiercenia i polerowania |
+| `src/shared/toolcuts.js` | zapis śladu narzędzia na wrzecionie (rowki, otwory, polerowana powierzchnia) |
 | `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
 | `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne, jednostki (m/min, m/s²) |
 | `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
@@ -244,6 +246,36 @@ m/s², np. 150 mm/s = 9 m/min, a 300 mm/s² = 0,3 m/s². W PLC
 rampa trwa 0,5 s. „Pobierz z PLC” działa, gdy jest połączenie z PLC.
 Formularze są zapamiętywane w przeglądarce.
 
+### Bazowanie i tryby (#134)
+
+Zakładka „Bazowanie” działa jak `BaseHomingST`: Z jedzie do 0, A na 0 najkrótszą
+drogą, a B na 0° (piła) albo 90° (frez, wiercenie, polerowanie). Po
+zakończeniu (`END_PROCEDURE`) maszyna jest zbazowana w wybranym trybie i
+narzędzie w widoku zamienia się na narzędzie trybu:
+
+| Tryb | Narzędzie | Średnica / długość |
+|---|---|---|
+| Piła | tarcza (jak dotąd) | `fParameterDiscDiameter`, `fParameterBladeWidth` |
+| Frez | frez (chwyt + część robocza) | `fParameterMillWidth`, `fParameterMillLength` + `fParameterMillCorrection` |
+| Wiercenie | koronka (rura) | `fParameterMillWidth` (to samo co frez), `fParameterDrillLength` + `fParameterMillCorrection` |
+| Polerowanie | talerz na uchwycie | średnica z Parametrów (w PLC nie ma takiej zmiennej), długość `fParameterMillCorrection − ActiveTool.Height` |
+
+Widoczne ekrany zależą od trybu i bazowania. „Stół i kamień”, „Pozycja”,
+„Parametry” i „Bazowanie” są zawsze. „Operacja”, „Automat” i „Ręczne” są
+tylko po bazowaniu i tylko te, które dotyczą trybu:
+
+- piła: wszystkie operacje piły, automat cięcia i profili;
+- frez: frezowanie linii (`MillST`), automat frezu (`ProgramAutoMillST`, figury frezu, podgląd);
+- wiercenie: wiercenie (`DrillST`);
+- polerowanie: polerowanie (`Polishing` – XY, YX, prostokąt CCW / CW).
+
+Przerwanie bazowania (Stop, inny ruch) zostawia maszynę niezbazowaną. Online
+tryb i bazowanie są czytane z PLC (`bModeSaw` / `bModeMill` / `bModeDrill` /
+`bModePolishing`, `bSystemBased`); bez tych zmiennych przyjmowana jest
+zbazowana piła. Ślad frezu i wiertła jest rysowany jako rowek / otwór o
+średnicy narzędzia, polerka zostawia jasny ślad na powierzchni. Rzazy piły
+zostają po zmianie trybu.
+
 ## Konfiguracja (`config.json` obok `vizu.ps1`)
 
 | Klucz | Domyślnie | Opis |
@@ -260,7 +292,7 @@ Formularze są zapamiętywane w przeglądarce.
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm) |
 | `saw` | `{freqScale: 0.01, visualRps: 1.5, fwdSign: 1}` | napęd tarczy: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz); kierunek dla FWD |
-| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}` |
+| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}`; `mode` - tryb po bazowaniu na starcie (`saw`, `mill`, `drill`, `polishing`) |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
 
@@ -269,10 +301,12 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 | X, Y, Z, A, B | `HMI2.fXActualPosition` … `HMI2.fBActualPosition` |
 | tarcza | `HMI.fParameterDiscDiameter`, `HMI.fParameterBladeWidth` |
 | głowica | `HMI.fParameterCutTiltDiameter`, `HMI.fParameterHeadRotationDiameter` |
+| frez, wiertło, polerka | `HMI.fParameterMillWidth`, `HMI.fParameterMillTiltDiameter`, `HMI.fParameterMillLength`, `HMI.fParameterDrillLength`, `HMI.fParameterMillCorrection`, `ToolChangeGVL.ActiveTool.Height` |
+| bazowanie, tryb | `HMI2.bSystemBased`, `HMI2.bModeSaw`, `HMI2.bModeMill`, `HMI2.bModeDrill`, `HMI2.bModePolishing` |
 | materiał | `HMI.fCutMaterialHeight` (Z górnej powierzchni), `HMI.fParameterMaterialThickness` |
 | stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut` |
 | laser, napęd tarczy | `IOVars.yLaser`, `Communication.iMainDriveFreqAct`, `Communication.bMainDriveRunFWD`, `Communication.bMainDriveRunREV` |
-| automat | `HMI2.aProgramXPosition/YPosition/NextStep/Radius/Angle/Depth/DepthEnd/Length/OutIn`, `HMI.fProgramStartPositionX/Y`, `HMI2.iProgramCutNumber`, `HMI2.iActualNumberOfProgramCuts` (i odpowiedniki profili) |
+| automat | `HMI2.aProgramXPosition/YPosition/NextStep/Radius/Angle/Depth/DepthEnd/Length/OutIn`, `HMI.fProgramStartPositionX/Y`, `HMI2.iProgramCutNumber`, `HMI2.iActualNumberOfProgramCuts` (i odpowiedniki profili oraz frezu: `iProgramMillNumber`, `iActualNumberOfProgramMills`, `bProgramMillStart`) |
 | stół, kamień | `HMI.aCuttingBoardX/Y/Z`, `HMI.iCuttingBoardApexNumber`, `HMI.aCuttingRockX/Y/Z`, `HMI.iCuttingRockApexNumber` |
 | dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `fVelocityAxisZApproach`, `VelA`, `DecA`, `VelB`, `DecB`, `fJog[XYZAB]Velocity` |
 
@@ -287,6 +321,15 @@ cięcia, na zadanej głębokości. Przy cięciu pod kątem (z `fBX/YOffset`) rza
 leży na linii na górnej powierzchni materiału. Korekty wychyłu
 (`fParameterTiltCorrection`, `fStatusAxisTiltCorrection`, `fBladeWidthTilt`)
 nie są jeszcze uwzględnione.
+
+Frez, wiertło i polerka (B 90°): oś wychyłu jest odsunięta od osi A o
+`-MillTiltDiameter/2`, kołnierz narzędzia leży `CutTiltDiameter/2` od osi
+wychyłu wzdłuż osi wrzeciona, a czoło narzędzia dalej o długość narzędzia.
+Testy (`test/tools.test.js`) sprawdzają, że dla pozycji z formuł
+`MillST.GetPositions` / `GetNextDepth`, `DrillST` i `Polishing` środek czoła
+leży w zadanym punkcie, na zadanej głębokości (także frez pod kątem B).
+Punkt styku z materiałem (czerwona kulka) to przy B 90° środek czoła, a przy
+wychyle najniższy punkt krawędzi czoła.
 
 ## Rozwój i testy
 

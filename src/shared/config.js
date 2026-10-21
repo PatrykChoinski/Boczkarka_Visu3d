@@ -12,6 +12,19 @@ export const VARIABLES = {
   headRotationDiameter: 'HMI.fParameterHeadRotationDiameter',
   materialHeight: 'HMI.fCutMaterialHeight',
   materialThickness: 'HMI.fParameterMaterialThickness',
+  // narzedzia na wrzecionie (frez / wiertlo - fParameterMillWidth, polerka - ActiveTool.Height)
+  millWidth: 'HMI.fParameterMillWidth',
+  millTiltDiameter: 'HMI.fParameterMillTiltDiameter',
+  millLength: 'HMI.fParameterMillLength',
+  drillLength: 'HMI.fParameterDrillLength',
+  millCorrection: 'HMI.fParameterMillCorrection',
+  polishHeight: 'ToolChangeGVL.ActiveTool.Height',
+  // bazowanie (BaseHomingST) i tryb pracy
+  systemBased: 'HMI2.bSystemBased',
+  modeSaw: 'HMI2.bModeSaw',
+  modeMill: 'HMI2.bModeMill',
+  modeDrill: 'HMI2.bModeDrill',
+  modePolishing: 'HMI2.bModePolishing',
   cutStep: 'HMI2.CutStep',
   cutStart: 'HMI2.bCutStart',
   sawRunning: 'Communication.bMainDriveRunning',
@@ -65,6 +78,9 @@ export const VARIABLES = {
   progProfCount: 'HMI2.iProgramProfilesNumber',
   progCutIndex: 'HMI2.iActualNumberOfProgramCuts',
   progProfIndex: 'HMI2.iActualNumberOfProgramProfiles',
+  progMillCount: 'HMI2.iProgramMillNumber',
+  progMillIndex: 'HMI2.iActualNumberOfProgramMills',
+  progMillStart: 'HMI2.bProgramMillStart',
   progCutStart: 'HMI2.bProgramCutStart',
   progProfStart: 'HMI2.bProgramProfilesStart',
   progOuterInner: 'HMI.bServiceCutProgramOuterInner',
@@ -75,12 +91,13 @@ export const VARIABLES = {
 
 // Zmienne czytane rzadziej (co slowEvery odczytow) - duze tablice i ustawienia programu
 export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
-  'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
+  'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progMillCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
   'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount'];
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
-export const MACHINE_KEYS = ['discDiameter', 'bladeWidth', 'cutTiltDiameter', 'headRotationDiameter', 'materialHeight', 'materialThickness'];
+export const MACHINE_KEYS = ['discDiameter', 'bladeWidth', 'cutTiltDiameter', 'headRotationDiameter', 'materialHeight', 'materialThickness',
+  'millWidth', 'millTiltDiameter', 'millLength', 'drillLength', 'millCorrection', 'polishHeight'];
 export const DYNAMICS_KEYS = ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'fastAcc', 'zVel', 'zAcc', 'zUpVel', 'aVel', 'aAcc', 'bVel', 'bAcc',
   'jogXVel', 'jogYVel', 'jogZVel', 'jogAVel', 'jogBVel'];
 
@@ -139,7 +156,13 @@ export const DEFAULTS = {
   saw: { freqScale: 0.01, visualRps: 1.5, fwdSign: 1 },
   // tryb offline: wartosci poczatkowe formularzy (mm; m/min, m/s2; deg/s, deg/s2)
   offline: {
-    machine: { discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40 },
+    machine: {
+      discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40,
+      // narzedzia: MillTiltDiameter ~ CutTiltDiameter - HeadRotationDiameter (ta sama os wychylu co przy tarczy)
+      millWidth: 50, millTiltDiameter: 100, millLength: 250, drillLength: 250, millCorrection: 0, polishDiameter: 120, polishHeight: -60,
+    },
+    // tryb po bazowaniu na starcie (saw | mill | drill | polishing) - ekran Bazowanie
+    mode: 'saw',
     // stol i kamien: punkty XYZ jak aCuttingBoard / aCuttingRock (pozycje osi), count = liczba wierzcholkow;
     // gora materialu offline jak w PLC: Z min punktow stolu - grubosc
     board: { count: 4, points: [[0, 0, 490], [3500, 0, 490], [3500, 3000, 490], [0, 3000, 490]] },

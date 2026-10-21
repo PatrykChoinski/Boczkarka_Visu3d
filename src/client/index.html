@@ -56,6 +56,7 @@
         <button data-tab="man" data-offline>Ręczne</button>
         <button data-tab="pos" data-offline>Pozycja</button>
         <button data-tab="par" data-offline>Parametry</button>
+        <button data-tab="home">Bazowanie</button>
       </nav>
 
       <div class="tab" data-tab="stone">
@@ -166,13 +167,23 @@
           <button class="hold" data-interp="perp">Prostopadle</button>
           <button class="hold" data-interp="perpBack">Prostopadle odwrotnie</button>
         </div>
-        <h3>Piła <span class="muted">napęd główny</span></h3>
+        <h3><span id="sawTitle">Piła</span> <span class="muted">napęd główny</span></h3>
         <div class="grid2">
           <button id="sawToggle">Piła ON</button>
           <label>Kierunek <select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
           <label>Częstotliwość [Hz] <input id="sawFreq" type="number" step="any" min="0" max="120"></label>
         </div>
         <div id="manInfo" class="info"></div>
+      </div>
+
+      <div class="tab" data-tab="home" hidden>
+        <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Operacja / Automat / Ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
+        <div class="row presets" id="homeModes"></div>
+        <div class="row">
+          <button id="homeStart" class="primary">Bazuj</button>
+          <button class="stopBtn" id="homeStop">Stop</button>
+        </div>
+        <div id="homeInfo" class="info"></div>
       </div>
 
       <div class="tab" data-tab="pos" hidden>
@@ -199,6 +210,16 @@
           <label>CutTiltDiameter [mm] <input data-m="cutTiltDiameter" type="number" step="any"></label>
           <label>HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
         </div>
+        <h3>Frez, wiertło, polerka <span class="muted">tryby z B 90°</span></h3>
+        <div class="grid2">
+          <label>Średnica frezu i wiertła [mm] (fParameterMillWidth) <input data-m="millWidth" type="number" step="any" min="1"></label>
+          <label>MillTiltDiameter [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
+          <label>Długość frezu [mm] (fParameterMillLength) <input data-m="millLength" type="number" step="any" min="0"></label>
+          <label>Długość wiertła [mm] (fParameterDrillLength) <input data-m="drillLength" type="number" step="any" min="0"></label>
+          <label>Korekta długości [mm] (fParameterMillCorrection) <input data-m="millCorrection" type="number" step="any"></label>
+          <label>Średnica polerki [mm] (brak w PLC) <input data-m="polishDiameter" type="number" step="any" min="1"></label>
+          <label>Wysokość polerki [mm] (ActiveTool.Height) <input data-m="polishHeight" type="number" step="any"></label>
+        </div>
         <h3>Dynamika</h3>
         <table class="dyn">
           <tr><th></th><th>prędkość<br><small>m/min</small></th><th>przyspieszenie<br><small>m/s²</small></th><th>hamowanie<br><small>m/s²</small></th></tr>
@@ -219,7 +240,7 @@
           <button id="fromPlc">Pobierz z PLC</button>
           <button id="defaults">Domyślne</button>
         </div>
-        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB (w PLC mm/s i mm/s² - przeliczane na m/min i m/s²) oraz parametry tarczy i kamienia.</p>
+        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB (w PLC mm/s i mm/s² - przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia.</p>
       </div>
     </aside>
   </main>

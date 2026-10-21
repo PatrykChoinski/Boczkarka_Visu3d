@@ -1,10 +1,11 @@
 // Widok 3D (three.js): material, tarcza z obrotem A i wychylem B (obroty tarczy), wyciety rzaz
-// (w kamieniu i w stole - na czerwono), laser.
+// (w kamieniu i w stole - na czerwono), laser; w trybach frez / wiercenie / polerowanie narzedzie na wrzecionie
+// i jego slad (rowki, otwory, polerowana powierzchnia).
 // Uklad swiata: x = X, y = Y, z = -Z (do gory), jak w shared/geometry.js.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { bladeFrame, topZ } from '../shared/geometry.js';
+import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
 
 const COLORS = {
@@ -25,6 +26,12 @@ const COLORS = {
   laser: 0xffd400,
   spoke: 0x16365f,
   tooth: 0xd62728,
+  mill: 0x9aa4ad,
+  millEdge: 0x1f5fa8,
+  drill: 0x8fa6c1,
+  polish: 0x3a3f44,
+  polished: 0xf3f6f9,
+  holder: 0x5c6670,
 };
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
@@ -52,10 +59,11 @@ export class View3D {
     this.materialGroup = new THREE.Group();
     this.cutsGroup = new THREE.Group();
     this.bladeGroup = this.buildBlade();
+    this.toolGroup = this.buildTool();
     this.machineModel = new MachineModel();
     this.planGroup = new THREE.Group();
     this.laserGroup = new THREE.Group();
-    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group, this.planGroup, this.laserGroup);
+    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.toolGroup, this.machineModel.group, this.planGroup, this.laserGroup);
     this.laserMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 });
     this.laserKey = '';
     this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
@@ -68,6 +76,8 @@ export class View3D {
       stone: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.kerf) },
       table: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.tableWall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.tableKerf) },
     };
+    this.polishMat = new THREE.MeshStandardMaterial({ color: COLORS.polished, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.75,
+      side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 });
     this.extentKey = '';
     this.bladeKey = '';
     this.viewName = 'iso';
@@ -151,6 +161,31 @@ export class View3D {
     }
   }
 
+  // Slad narzedzia (ToolRecorder): przejscie frezu - rowek o szerokosci srednicy (sciany, dno, pasek na gorze),
+  // otwor wiertla - walec, polerka - jasny pasek na powierzchni; slot jak w setCuts
+  setToolCuts(recorder, slot = 'stone') {
+    const sl = this.cutSlots[slot];
+    if (sl.toolVersion === recorder.version) return;
+    sl.toolVersion = recorder.version;
+    sl.toolMeshes ??= new Map();
+    const alive = new Set(recorder.passes);
+    for (const [pass, entry] of sl.toolMeshes) {
+      if (!alive.has(pass)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); sl.toolMeshes.delete(pass); }
+    }
+    for (const pass of recorder.passes) {
+      let entry = sl.toolMeshes.get(pass);
+      if (entry && entry.rev === pass.rev) continue;
+      if (!entry) {
+        entry = { group: new THREE.Group(), rev: -1 };
+        sl.toolMeshes.set(pass, entry);
+        this.cutsGroup.add(entry.group);
+      }
+      disposeGroup(entry.group);
+      entry.rev = pass.rev;
+      buildToolPass(entry.group, pass, pass.polish ? null : sl.wallMat, pass.polish ? this.polishMat : sl.kerfMat);
+    }
+  }
+
   // --- plan (linie / tor operacji, kroki automatu) --------------------------------
 
   // items: [{path: [[x, y] | null, ...], active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa
@@ -227,9 +262,9 @@ export class View3D {
     return g;
   }
 
-  // spin - kat obrotu tarczy [rad] (szprychy)
+  // spin - kat obrotu tarczy [rad] (szprychy); w trybach narzedzi tarcza ukryta (setTool)
   setBlade(pose, m, visible, spin = 0) {
-    this.bladeGroup.visible = Boolean(visible && pose);
+    this.bladeGroup.visible = Boolean(visible && pose && !isToolMode(m));
     if (!this.bladeGroup.visible) return;
     const f = bladeFrame(pose, m);
     const r = f.radius;
@@ -264,6 +299,65 @@ export class View3D {
     this.axisA.computeLineDistances();
     this.lowest.position.copy(v3(f.lowest));
     this.lowest.scale.setScalar(Math.max(4, r * 0.02));
+  }
+
+  // --- narzedzie na wrzecionie (frez, wiertlo, polerka) ---------------------------
+
+  buildTool() {
+    const g = new THREE.Group();
+    const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.4, ...extra });
+    // walce three.js maja os Y; czesci ustawiane w setTool
+    this.toolBody = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1), std(COLORS.mill));
+    this.toolShank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32, 1), std(COLORS.holder));
+    this.toolTube = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1, true), std(COLORS.drill, { side: THREE.DoubleSide }));
+    this.toolPad = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1), std(COLORS.polish, { metalness: 0.1, roughness: 0.8 }));
+    this.toolFace = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.millEdge }));
+    this.toolMark = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
+    this.toolAxisA = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: COLORS.axis, dashSize: 12, gapSize: 8 }));
+    this.toolLowest = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.lowest }));
+    g.add(this.toolBody, this.toolShank, this.toolTube, this.toolPad, this.toolFace, this.toolMark, this.toolAxisA, this.toolLowest);
+    g.visible = false;
+    return g;
+  }
+
+  // Narzedzie trybu m.mode: frez - chwyt + czesc robocza, wiertlo - koronka (rura), polerka - talerz na uchwycie;
+  // spin - kat obrotu wrzeciona [rad] (znacznik na obwodzie czola)
+  setTool(pose, m, visible, spin = 0) {
+    this.toolGroup.visible = Boolean(visible && pose && isToolMode(m));
+    if (!this.toolGroup.visible) return;
+    const f = toolFrame(pose, m);
+    const r = Math.max(f.radius, 1);
+    const len = Math.max(f.length, 1);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v3(f.normal));
+    const at = (k) => v3(f.flange.map((c, i) => c + f.normal[i] * k));   // punkt na osi narzedzia k mm od kolnierza
+    const place = (mesh, k0, k1, rad) => {
+      mesh.visible = true;
+      mesh.quaternion.copy(q);
+      mesh.scale.set(rad, Math.max(k1 - k0, 0.5), rad);
+      mesh.position.copy(at((k0 + k1) / 2));
+    };
+    for (const part of [this.toolBody, this.toolShank, this.toolTube, this.toolPad]) part.visible = false;
+    if (m.mode === 'drill') {
+      const shank = Math.min(60, len * 0.25);
+      place(this.toolShank, 0, shank, Math.min(r * 0.5, 30));
+      place(this.toolTube, shank, len, r);
+    } else if (m.mode === 'polishing') {
+      const pad = Math.min(30, len);
+      place(this.toolShank, 0, len - pad, Math.min(r * 0.35, 40));
+      place(this.toolPad, len - pad, len, r);
+    } else {
+      const cut = Math.min(len, Math.max(40, len * 0.35));
+      place(this.toolShank, 0, len - cut, Math.min(r * 0.7, 25));
+      place(this.toolBody, len - cut, len, r);
+    }
+    // obwod czola i znacznik obrotu (od osi do obwodu czola)
+    const rim = (t) => v3(f.tip.map((c, i) => c + r * (Math.cos(t) * f.d[i] + Math.sin(t) * f.u[i])));
+    this.toolFace.geometry.setFromPoints(Array.from({ length: 64 }, (_, i) => rim((i / 64) * Math.PI * 2)));
+    this.toolMark.geometry.setFromPoints([v3(f.tip), rim(spin), rim(spin + 0.2)]);
+    this.toolAxisA.geometry.setFromPoints([v3(f.axis), v3([f.axis[0], f.axis[1], f.axis[2] + 400])]);
+    this.toolAxisA.computeLineDistances();
+    this.toolLowest.position.copy(v3(f.lowest));
+    this.toolLowest.scale.setScalar(Math.max(4, r * 0.08));
   }
 
   // glowica i suport (pila mostowa)
@@ -316,6 +410,49 @@ export function prismGeometry(points, z0, h) {
   const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
   geo.translate(0, 0, z0);
   return geo;
+}
+
+// Przejscie narzedzia: punkty [x, y, glebokosc] pod gora pass.top; wallMat null - tylko slad na powierzchni (polerka)
+function buildToolPass(group, pass, wallMat, topMat) {
+  const r = pass.radius;
+  const pts = pass.points;
+  const zTop = pass.top + (pass.polish ? 0.4 : 0.3);
+  const bottom = (p) => pass.top - p[2];
+  // konce przejscia i otwor (jeden punkt): krazek na gorze, sciana walca, dno
+  const caps = pts.length === 1 ? [pts[0]] : [pts[0], pts[pts.length - 1]];
+  for (const p of caps) {
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 40), topMat);
+    disc.position.set(p[0], p[1], zTop);
+    group.add(disc);
+    if (wallMat && p[2] > 0.05) {
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(r, r, p[2], 40, 1, true), wallMat);
+      wall.rotation.x = Math.PI / 2;
+      wall.position.set(p[0], p[1], pass.top - p[2] / 2);
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(r, 40), wallMat);
+      floor.position.set(p[0], p[1], bottom(p) + 0.05);
+      group.add(wall, floor);
+    }
+  }
+  if (pts.length < 2) return;
+  // przesuniecie w lewo od toru o promien (w kazdym punkcie)
+  const side = pts.map((p, i) => {
+    const q = pts[Math.min(i + 1, pts.length - 1)];
+    const o = pts[Math.max(i - 1, 0)];
+    const l = Math.hypot(q[0] - o[0], q[1] - o[1]) || 1;
+    return [-(q[1] - o[1]) / l * r, (q[0] - o[0]) / l * r];
+  });
+  const ribbon = (z, mat) => group.add(stripMesh(pts.map((p, i) => [
+    [p[0] + side[i][0], p[1] + side[i][1], z(p)], [p[0] - side[i][0], p[1] - side[i][1], z(p)]]), mat));
+  ribbon(() => zTop, topMat);
+  if (!wallMat) return;
+  ribbon((p) => bottom(p) + 0.05, wallMat);
+  for (const sign of [1, -1]) {
+    group.add(stripMesh(pts.map((p, i) => {
+      const x = p[0] + sign * side[i][0];
+      const y = p[1] + sign * side[i][1];
+      return [[x, y, pass.top], [x, y, bottom(p)]];
+    }), wallMat));
+  }
 }
 
 function stripMesh(strip, material) {

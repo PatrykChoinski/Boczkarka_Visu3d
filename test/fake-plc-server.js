@@ -3,7 +3,9 @@
 // Drzewo jak w CODESYS: Objects/DeviceSet/AX-8/Resources/Application/GlobalVars/<GVL>/<zmienna>,
 // NodeId "|var|AX-8.Application.<GVL>.<zmienna>"; pozycje osi z programu ciecia (tryb offline) w petli.
 //
-//   node test/fake-plc-server.js [--port 4840]     potem: npm start  (tryb Online)
+//   node test/fake-plc-server.js [--port 4840] [--mode saw|mill|drill|polishing]     potem: npm start  (tryb Online)
+//   --mode - tryb po bazowaniu (bModeSaw / Mill / Drill / Polishing, bSystemBased); frez / wiercenie / polerowanie
+//   w petli wykonuje operacje narzedzia (shared/tools.js) zamiast ciec pila
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,13 +14,17 @@ import { OPCUAServer } from 'node-opcua-server';
 import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
 import { machine } from '../src/shared/geometry.js';
-import { cutProgram, depthTable } from '../src/shared/motion.js';
+import { cutProgram, depthTable, ProgramBuilder } from '../src/shared/motion.js';
+import { MODES, toolOpsFor } from '../src/shared/tools.js';
+import { defaults } from '../src/shared/ops.js';
 import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays']);
-const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn']);
+const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
+  'progMillStart', 'systemBased', 'modeSaw', 'modeMill', 'modeDrill', 'modePolishing']);
+const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn',
+  'progMillCount', 'progMillIndex']);
 // tablice: dlugosc (aCuttingBoard / Rock [0..7], tablice programu automatu [0..249])
 const ARRAYS = {
   boardX: MAX_APEX, boardY: MAX_APEX, boardZ: MAX_APEX, rockX: MAX_APEX, rockY: MAX_APEX, rockZ: MAX_APEX,
@@ -46,24 +52,35 @@ const PROGRAM = {
   progAngle: progColumn('angle'), progDepth: progColumn('depth'), progDepthEnd: progColumn('depthEnd'),
   progLength: progColumn('length'), progOutIn: progColumn('outIn'),
   progOriginX: 500, progOriginY: 400, progCutCount: PROG_ROWS.length - 1, progProfCount: 0, progProfIndex: 0,
-  progCutStart: true, progProfStart: false, progOuterInner: false, profileJump: 5, smoothingJump: 100, smoothingArrays: false,
+  progCutStart: true, progProfStart: false, progMillCount: 0, progMillIndex: 0, progMillStart: false, progOuterInner: false, profileJump: 5, smoothingJump: 100, smoothingArrays: false,
 };
 
 const STEP_CODES = { MoveToStartPosition: 10, StartCutDepth: 20, StartSingleCut: 50, StartLastCut: 60, StartMoveAboveMaterial: 70, CutFinish: 100 };
 
-// Petla dwoch ciec (proste i z wychylem) - wartosci wszystkich zmiennych w czasie t [s]
-export function plcTimeline() {
-  const m = machine(DEFAULTS.offline.machine);
+// Petla dwoch ciec (proste i z wychylem) albo operacji narzedzia trybu - wartosci wszystkich zmiennych w czasie t [s]
+export function plcTimeline(mode = 'saw') {
+  const m = machine({ ...DEFAULTS.offline.machine, mode });
   const dyn = { ...dynamicsToInternal(DEFAULTS.offline.dynamics), cutVel: 150, cutAcc: 300, cutDec: 300 };   // szybciej - krotki test
-  const p1 = cutProgram({ x: 0, y: 0, z: 0, a: 0, b: 0 }, { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, above: 20, depths: depthTable(30, 2) }, m, dyn);
-  const p2 = cutProgram(p1.at(p1.duration).pose, { x0: 300, y0: 450, x1: 900, y1: 800, b: 45, above: 20, depths: depthTable(24, 2) }, m, dyn);
+  let p1;
+  let p2;
+  if (mode === 'saw') {
+    p1 = cutProgram({ x: 0, y: 0, z: 0, a: 0, b: 0 }, { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, above: 20, depths: depthTable(30, 2) }, m, dyn);
+    p2 = cutProgram(p1.at(p1.duration).pose, { x0: 300, y0: 450, x1: 900, y1: 800, b: 45, above: 20, depths: depthTable(24, 2) }, m, dyn);
+  } else {
+    const op = toolOpsFor(mode)[0];
+    const pb = new ProgramBuilder({ x: 0, y: 0, z: 0, a: 0, b: 90 }, m, dyn);
+    op.build(pb, defaults(op.fields));
+    p1 = pb.build();
+    p2 = { duration: 2, at: () => p1.at(p1.duration) };
+  }
+  const flags = Object.fromEntries(MODES.map((x) => [x.flag, x.id === mode]));
   const period = p1.duration + p2.duration;
   return (t) => {
     t %= period;
     const r = t < p1.duration ? p1.at(t) : p2.at(t - p1.duration);
-    const step = STEP_CODES[r.step];
+    const step = STEP_CODES[r.step] ?? (t < p1.duration ? 50 : 100);
     return {
-      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
+      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: step === 20 || step === 50 || step === 60,
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu
       laser: step === 50 || step === 60, sawFreq: step !== 100 ? 5000 : 0, sawFwd: step !== 100, sawRev: false,
@@ -71,7 +88,7 @@ export function plcTimeline() {
   };
 }
 
-export async function startFakePlc(port) {
+export async function startFakePlc(port, mode = 'saw') {
   const server = new OPCUAServer({
     port,
     resourcePath: '',
@@ -86,7 +103,7 @@ export async function startFakePlc(port) {
   const obj = (parent, name) => ns.addObject({ componentOf: parent, browseName: name });
   const deviceSet = ns.addObject({ organizedBy: space.rootFolder.objects, browseName: 'DeviceSet' });
   const globalVars = obj(obj(obj(obj(deviceSet, DEVICE), 'Resources'), 'Application'), 'GlobalVars');
-  const timeline = plcTimeline();
+  const timeline = plcTimeline(mode);
   const t0 = Date.now();
   let cache = { at: -1, values: null };
   const values = () => {
@@ -96,8 +113,15 @@ export async function startFakePlc(port) {
   };
   const gvls = {};
   for (const [key, varPath] of Object.entries(VARIABLES)) {
-    const [gvl, name] = varPath.split('.');
-    gvls[gvl] ??= obj(globalVars, gvl);
+    // "GVL.zmienna" albo "GVL.struktura.pole" - struktura jako obiekt (jak w CODESYS)
+    const parts = varPath.split('.');
+    const name = parts.pop();
+    let parent = globalVars;
+    for (let i = 0; i < parts.length; i++) {
+      const key2 = parts.slice(0, i + 1).join('.');
+      gvls[key2] ??= obj(parent, parts[i]);
+      parent = gvls[key2];
+    }
     const type = BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
     const array = ARRAYS[key];
     const value = () => {
@@ -106,7 +130,7 @@ export async function startFakePlc(port) {
       return new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(v) : Number(v) });
     };
     ns.addVariable({
-      componentOf: gvls[gvl],
+      componentOf: parent,
       browseName: name,
       nodeId: `s=|var|${DEVICE}.Application.${varPath}`,
       dataType: type,
@@ -120,8 +144,8 @@ export async function startFakePlc(port) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { values: args } = parseArgs({ options: { port: { type: 'string', default: '4840' } } });
+  const { values: args } = parseArgs({ options: { port: { type: 'string', default: '4840' }, mode: { type: 'string', default: 'saw' } } });
   const port = Number(args.port);
-  await startFakePlc(port);
-  console.log(`Testowy serwer OPC UA (udaje CODESYS): opc.tcp://localhost:${port}`);
+  await startFakePlc(port, args.mode);
+  console.log(`Testowy serwer OPC UA (udaje CODESYS): opc.tcp://localhost:${port}, tryb ${args.mode}`);
 }

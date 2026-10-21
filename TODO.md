@@ -54,3 +54,12 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [x] Cięcie proste: dwa punkty / kąt i długość (jak CutST.GetPositions), pola chowane wg zaznaczonej opcji
 - [x] Figury w automacie – wypełnianie bufora jak FiguresGeometricSt (wszystkie FigureType poza PROFILES; frez – podgląd)
 - [x] Ręczne: jazda na zadany kąt A i B (absolutnie / o kąt)
+
+## #134 Bazowanie
+- [x] Ekran Bazowanie jak BaseHomingST (Z 0, A 0 najkrótszą drogą, B 0 / 90), tryb online z bMode* / bSystemBased
+- [x] Narzędzia frez / wiertło / polerka z B 90°, zamiana narzędzia po bazowaniu
+- [x] Punkty styku z materiałem wg formuł MillST / DrillST / Polishing (testy)
+- [x] Średnice: fParameterMillWidth (frez, wiertło), polerka – parametr wizualizacji
+- [x] Ekrany tylko trybu (operacje frezu, wiercenia, polerowania; automat frezu)
+- [ ] Symulacja ruchu automatu frezu (ProgramAutoMillST) – na razie podgląd toru
+- [ ] Na maszynie: znak ActiveTool.Height i średnica polerki

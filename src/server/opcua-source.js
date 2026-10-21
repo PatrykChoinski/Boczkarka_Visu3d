@@ -157,11 +157,19 @@ export class OpcUaSource extends EventEmitter {
     const gvls = appKids.GlobalVars ? await this.children(session, appKids.GlobalVars.nodeId) : appKids;
     const cache = {};
     const nodes = {};
+    // "GVL.zmienna" albo "GVL.struktura.pole" (np. ToolChangeGVL.ActiveTool.Height)
     for (const [key, path] of Object.entries(variables)) {
-      const [gvl, name] = path.split('.');
+      const [gvl, ...names] = path.split('.');
       if (!gvls[gvl]) continue;
-      cache[gvl] ??= await this.children(session, gvls[gvl].nodeId);
-      if (cache[gvl][name]) nodes[key] = cache[gvl][name].nodeId;
+      let parent = gvl;
+      let kids = cache[gvl] ??= await this.children(session, gvls[gvl].nodeId);
+      for (let i = 0; i < names.length && kids; i++) {
+        const node = kids[names[i]];
+        if (!node) { kids = null; break; }
+        if (i === names.length - 1) { nodes[key] = node.nodeId; break; }
+        parent += `.${names[i]}`;
+        kids = cache[parent] ??= await this.children(session, node.nodeId);
+      }
     }
     return nodes;
   }

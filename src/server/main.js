@@ -38,6 +38,7 @@ export function loadConfig(file) {
     board: { ...DEFAULTS.offline.board, ...(user.offline?.board || {}) },
     rock: { ...DEFAULTS.offline.rock, ...(user.offline?.rock || {}) },
     saw: { ...DEFAULTS.offline.saw, ...(user.offline?.saw || {}) },
+    mode: user.offline?.mode || DEFAULTS.offline.mode,
   };
   return cfg;
 }

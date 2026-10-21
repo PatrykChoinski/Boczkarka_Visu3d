@@ -18,7 +18,7 @@ import { machine } from '../src/shared/geometry.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIA = 'C:/Program Files/Delta Industrial Automation/DIAStudio/DIADesigner-AX 1.10/CODESYS/Common/DIADesigner-AX.exe';
-const M = machine({ discDiameter: 625, bladeWidth: 4, materialThickness: 40 });
+const M = machine({ discDiameter: 625, bladeWidth: 4, materialThickness: 40, millWidth: 20 });
 const COMMON = { ...defaults(COMMON_FIELDS), bladeWidth: M.bladeWidth };
 const CASES = [
   { name: 'domyslne', ctx: {} },
@@ -30,7 +30,8 @@ const OUT_VARS = ['aFigureXPosition', 'aFigureYPosition', 'aFigureIndex', 'aFigu
 const LABEL_VAR = /\(([A-Za-z][A-Za-z0-9_]*)[^)]*\)\s*$/;
 // parametry stale dla obu stron (jak kontekst figur w aplikacji)
 const FIXED = [['fParameterBladeWidth', 'real', M.bladeWidth], ['fParameterMaterialThickness', 'real', M.materialThickness],
-  ['bServiceBlocksReverse', 'bool', COMMON.blocksReverse], ['fParameterZMoveAboveMaterial', 'real', COMMON.above], ['bModeMill', 'bool', false]];
+  ['bServiceBlocksReverse', 'bool', COMMON.blocksReverse], ['fParameterZMoveAboveMaterial', 'real', COMMON.above], ['bModeMill', 'bool', false],
+  ['fParameterMillWidth', 'real', M.millWidth]];
 
 const kindOf = (f) => (f.t === 'bool' ? 'bool' : f.t === 'num' ? 'real' : 'int');
 

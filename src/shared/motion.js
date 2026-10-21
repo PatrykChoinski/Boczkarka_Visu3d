@@ -7,7 +7,7 @@
 //   os Z - fVelocityAxisZWork, DecZ
 //   os A / B - VelA / VelB [deg/s], DecA / DecB [deg/s2]
 
-import { plcAxisXY, plcAxisZ, lineAngle } from './geometry.js';
+import { plcAxisXY, plcAxisZ, workAxisZ, lineAngle } from './geometry.js';
 
 export const AXES = ['x', 'y', 'z', 'a', 'b'];
 
@@ -271,10 +271,10 @@ export function gotoProgram(from, target, dyn) {
 }
 
 // Najwyzsza (najmniejsza) pozycja Z potrzebna, zeby przy kazdym wychyle miedzy b0 i b1
-// najnizszy punkt tarczy byl "above" mm nad materialem
+// najnizszy punkt tarczy (narzedzia w trybie frezu / wiercenia / polerowania) byl "above" mm nad materialem
 export function safeZ(b0, b1, above, m) {
   let z = Infinity;
-  for (let i = 0; i <= 60; i++) z = Math.min(z, plcAxisZ(-above, b0 + (b1 - b0) * i / 60, m));
+  for (let i = 0; i <= 60; i++) z = Math.min(z, workAxisZ(-above, b0 + (b1 - b0) * i / 60, m));
   return z;
 }
 

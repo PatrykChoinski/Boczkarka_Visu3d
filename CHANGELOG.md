@@ -6,6 +6,41 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Ekran Bazowanie, tryby frez / wiercenie / polerowanie (#134)
+- Nowa zakładka „Bazowanie” jak `BaseHomingST`:
+  - Z do 0, potem A na 0 najkrótszą drogą i B na 0° (piła) albo 90° (frez, wiercenie, polerowanie);
+  - po zakończeniu narzędzie w widoku zamienia się na narzędzie trybu;
+  - przerwane bazowanie zostawia maszynę niezbazowaną;
+  - online tryb i bazowanie są czytane z PLC (`bModeSaw` / `bModeMill` / `bModeDrill` / `bModePolishing`, `bSystemBased`).
+- Narzędzia na wrzecionie (`toolFrame` w `geometry.js`) liczone odwrotnie do formuł `MillST.GetPositions` / `GetNextDepth`, `DrillST` i `Polishing`:
+  - oś narzędzia `fParameterMillTiltDiameter/2` od osi A;
+  - czoło `CutTiltDiameter/2` + długość narzędzia od osi wychyłu;
+  - punkt styku z materiałem to środek czoła przy B 90°, przy wychyle najniższy punkt krawędzi;
+  - laser startuje z osi narzędzia.
+- Każde narzędzie ma swoją średnicę:
+  - frez i wiertło: `fParameterMillWidth` (jedno narzędzie w PLC);
+  - polerka: parametr wizualizacji, bo PLC nie ma średnicy polerki.
+  - Długości: `fParameterMillLength` / `fParameterDrillLength` + `fParameterMillCorrection`, polerka `fParameterMillCorrection − ActiveTool.Height`.
+  - Parametry są w zakładce „Parametry”, a online pochodzą z PLC.
+  - Parametr figur „Szerokość frezu” usunięty, bo figury biorą `fParameterMillWidth` z parametrów maszyny. `bModeMill` w figurach jest teraz brany z trybu.
+- Ekrany tylko trybu (Operacja / Automat / Ręczne dopiero po bazowaniu):
+  - piła: jak dotąd;
+  - frez: frezowanie linii (`MillST`) i automat frezu z figurami frezu (online `iProgramMillNumber` / `iActualNumberOfProgramMills` / `bProgramMillStart`);
+  - wiercenie: wiercenie (`DrillST`);
+  - polerowanie: polerowanie (`Polishing`, tor XY / YX / prostokąt CCW / CW jak `MOVE_POLISHING_X/Y` + `CHECK_END_LINE`).
+- Ślad narzędzia (`toolcuts.js`, `view3d.setToolCuts`):
+  - frez: rowek o średnicy narzędzia (ściany, dno, pasek na górze);
+  - wiertło: otwór;
+  - polerka: jasny ślad na powierzchni;
+  - w stole na czerwono jak przy pile. Rzazy piły zostają po zmianie trybu.
+- Głowica w trybie narzędzia jest bez osłony tarczy, z wrzecionem do kołnierza narzędzia. Napęd w „Ręczne” i na pasku stanu nazywa się „Wrzeciono”.
+- OPC UA czyta też pola struktur (`ToolChangeGVL.ActiveTool.Height`). Testowy PLC ma opcję `--mode saw|mill|drill|polishing`, w której robi operację narzędzia w pętli.
+- Uwaga z PLC: `Polishing.END_MOVE_ABOVE_MATERIAL` liczy Z bez `ActiveTool.Height` (w odróżnieniu od dojazdu). Visu3D wyjeżdża nad materiał z uwzględnieniem wysokości narzędzia, żeby polerka nie wchodziła w kamień.
+- Sprawdzone:
+  - `npm test` 98/98, w tym nowy `test/tools.test.js`: czoło narzędzia w punkcie z formuł PLC dla frezu, wiertła i polerki (A 0 / 37 / −90 / 180, z korektą i bez), frez pod kątem B 60 / 45, bazowanie, tory polerowania, wiercenie, frezowanie linii.
+  - W przeglądarce offline: bazowanie piła → frez → wiercenie → polerowanie, zamiana narzędzia i zakładek, frezowanie linii, otwór, polerowanie.
+  - Online z testowym PLC w trybie frezu: tryb, bazowanie i `ActiveTool.Height` z PLC, zakładki trybu.
+
 ### Figury w automacie – wypełnianie bufora jak PLC (#128)
 - Zakładka Automat, sekcja „Figura”: wybór figury i jej pola (jak ekrany figur w HMI), „Wypełnij bufor”. Działa tak jak PLC:
   - `FiguresGeometricSt` przekazuje pola figury do bloku `Get…Positions`;

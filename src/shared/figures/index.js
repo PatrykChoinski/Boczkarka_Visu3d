@@ -19,7 +19,6 @@ export const FIGURE_CONTEXT_FIELDS = [
   { k: 'additional', label: 'Dodatkowa droga (bManualAdditionalDistance)', t: 'bool', d: false },
   { k: 'additionalDistance', label: 'Dodatkowa droga [mm] (fManualAdditionalDistance)', t: 'num', d: 50, show: (v) => v.additional },
   { k: 'rectangleACBD', label: 'Prostokąt w kolejności AC-BD (bServiceRectangleACBD)', t: 'bool', d: false },
-  { k: 'millWidth', label: 'Szerokość frezu [mm] (fParameterMillWidth)', t: 'num', d: 20 },
   { k: 'roofCorrectionX', label: 'Korekta daszków X (fParameterRoofCorrectionX)', t: 'num', d: 0 },
   { k: 'roofCorrectionY', label: 'Korekta daszków Y (fParameterRoofCorrectionY)', t: 'num', d: 0 },
   { k: 'newStart', label: 'Nowe punkty startu frezu (bServiceMillProgramNewStartPoints)', t: 'bool', d: false },
@@ -29,14 +28,16 @@ export const FIGURE_CONTEXT_FIELDS = [
   { k: 'bookMinimalRadius', label: 'Książki: promień minimalny (bServiceBookMinimalRadius)', t: 'bool', d: false },
 ];
 
-// Kontekst figury: pola "Parametry figury" + szerokosc tarczy / grubosc / wyjazd z parametrow i wspolnych ustawien
+// Kontekst figury: pola "Parametry figury" + szerokosc tarczy, srednica frezu (fParameterMillWidth), grubosc z parametrow
+// maszyny, wyjazd ze wspolnych ustawien, bModeMill z trybu po bazowaniu
 export function figureContext(v, m, common) {
   return {
     ...CONTEXT_DEFAULTS, ...v,
     bladeWidth: m.bladeWidth, materialThickness: m.materialThickness,
     blocksReverse: common.blocksReverse ?? CONTEXT_DEFAULTS.blocksReverse,
     zAbove: common.above ?? CONTEXT_DEFAULTS.zAbove,
-    modeMill: false,
+    millWidth: m.millWidth ?? CONTEXT_DEFAULTS.millWidth,
+    modeMill: m.mode === 'mill',
   };
 }
 

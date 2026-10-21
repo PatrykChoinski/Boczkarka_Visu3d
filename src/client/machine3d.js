@@ -1,10 +1,11 @@
 // Model maszyny (pila mostowa): suport - sciany z prowadnicami, most z wozkiem, stol pod kamieniem;
-// glowica - slup Z, korpus obrotu A, silnik wrzeciona z wychylem B, oslona tarczy.
+// glowica - slup Z, korpus obrotu A, silnik wrzeciona z wychylem B, oslona tarczy (frez / wiertlo / polerka - bez oslony,
+// wrzeciono do kolnierza narzedzia).
 // Bryly uproszczone, polozenie wg pozycji osi (shared/geometry.js); stol i rozstaw maszyny wg punktow
 // stolu (aCuttingBoard), niezalezne od kamienia; reszta wymiarow z frame w configu.
 
 import * as THREE from 'three';
-import { bladeFrame, add, mul, dot, topZ } from '../shared/geometry.js';
+import { headFrame, isToolMode, add, mul, dot, topZ } from '../shared/geometry.js';
 import { isArea, bounds } from '../shared/area.js';
 import { prismGeometry } from './view3d.js';
 
@@ -72,8 +73,9 @@ export class MachineModel {
     this.head.visible = Boolean(pose && showHead);
     this.frame.visible = Boolean(pose && showFrame);
     if (!pose) return;
-    const f = bladeFrame(pose, m);
-    const r = f.radius;
+    const tool = isToolMode(m);
+    const f = headFrame(pose, m);
+    const r = Math.max(m.discDiameter / 2, 150);    // wielkosc glowicy wg tarczy - bez zmiany przy zamianie narzedzia
     const zPivot = -pose.z;                 // wysokosc osi wychylu
     const zBridge = cfg.bridgeZ;            // spod mostu (nad Z = 0)
     const ramW = Math.max(160, r * 0.45);
@@ -96,9 +98,11 @@ export class MachineModel {
       const xAxis = f.u;
       const zAxis = cross(xAxis, yAxis);
       orient(this.motor, xAxis, yAxis, zAxis, add(f.pivot, mul(away, motorLen / 2 - motorR * 0.5)), [motorR, motorLen, motorR]);
-      const hubToPivot = Math.max(1, Math.hypot(...[0, 1, 2].map((i) => f.center[i] - f.pivot[i])));
+      const spindleEnd = tool ? f.flange : f.center;
+      const hubToPivot = Math.max(1, Math.hypot(...[0, 1, 2].map((i) => spindleEnd[i] - f.pivot[i])));
       orient(this.spindle, xAxis, yAxis, zAxis, add(f.pivot, mul(f.normal, hubToPivot / 2)), [motorR * 0.3, hubToPivot + 20, motorR * 0.3]);
       // oslona: polowa walca o osi wrzeciona, nad srodkiem tarczy (lokalne z > 0 = w gore w plaszczyznie tarczy)
+      this.guard.visible = !tool;
       const upInPlane = mul(f.d, -1);
       const flip = dot(zAxis, upInPlane) >= 0 ? 1 : -1;
       orient(this.guard, mul(xAxis, flip), yAxis, mul(zAxis, flip), add(f.center, mul(f.normal, -m.bladeWidth / 2 - 10)),

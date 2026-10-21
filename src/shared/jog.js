@@ -4,7 +4,7 @@
 //   interpolacja:   kierunek w XY (wzdluz lasera, przeciwnie, prostopadle, prostopadle odwrotnie)
 
 import { AXES } from './motion.js';
-import { bladeFrame } from './geometry.js';
+import { headFrame } from './geometry.js';
 
 export class JogMotion {
   // dir - wektor kierunku na osiach, np. {x: 1} albo {x: 0.6, y: 0.8} (normalizowany), vel / acc / dec > 0
@@ -58,11 +58,11 @@ export function laserDirection(aDeg, side = 1) {
 }
 
 // Linia lasera na powierzchni: od miejsca, gdzie plaszczyzna tarczy przecina powierzchnie pod srodkiem
-// tarczy, wzdluz kierunku lasera; surfaceZ(x, y) - wysokosc powierzchni w ukladzie swiata (kamien / stol)
+// tarczy (frez / wiertlo / polerka - od osi narzedzia), wzdluz kierunku lasera; surfaceZ(x, y) - wysokosc
+// powierzchni w ukladzie swiata (kamien / stol)
 export function laserLine(pose, m, side, length, surfaceZ, step = 25) {
-  const f = bladeFrame(pose, m);
-  const t = (f.center[2] - surfaceZ(f.center[0], f.center[1])) / Math.max(f.cosB, 0.05);
-  const p0 = f.point(0, t);
+  const f = headFrame(pose, m);
+  const p0 = f.kind === 'tool' ? f.tip : f.point(0, (f.center[2] - surfaceZ(f.center[0], f.center[1])) / Math.max(f.cosB, 0.05));
   const [dx, dy] = laserDirection(pose.a, side);
   const n = Math.max(2, Math.ceil(length / step) + 1);
   const pts = [];

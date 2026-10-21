@@ -1,18 +1,20 @@
 // VizuApp - strona: tryb Online (pozycje z PLC przez serwer, SSE) i Offline (zadane ciecie / pozycja,
 // animacja z predkosciami i przyspieszeniami jak w napedach, ruchy reczne), laser, obroty tarczy,
-// ciecie w stol.
+// ciecie w stol, bazowanie (tryb pila / frez / wiercenie / polerowanie - narzedzie i ekrany wg trybu).
 
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
-import { machine as makeMachine, bladeFrame, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { machine as makeMachine, headFrame, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { CutRecorder } from '../shared/cuts.js';
+import { ToolRecorder } from '../shared/toolcuts.js';
+import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor } from '../shared/tools.js';
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
-import { OPS, COMMON_FIELDS, defaults, parseField, opById } from '../shared/ops.js';
+import { OPS, COMMON_FIELDS, defaults, parseField } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
-import { FIGURES, figureById, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
+import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -26,6 +28,11 @@ const state = {
   machine: makeMachine(),
   recorder: new CutRecorder(),
   tableRecorder: new CutRecorder(),   // ciecie w stol (pod kamieniem) - na czerwono
+  toolRecorder: new ToolRecorder(),   // slad frezu / wiertla / polerki w kamieniu
+  toolTableRecorder: new ToolRecorder(),
+  // tryb po bazowaniu (offline - ekran Bazowanie; online - bModeSaw / Mill / Drill / Polishing i bSystemBased z PLC),
+  // homing - docelowy tryb bazowania w toku
+  tool: { mode: 'saw', based: true, homing: null, key: '' },
   extent: null,
   extentProvisional: true,
   stoneKey: '',
@@ -56,17 +63,24 @@ function tableMachine(m) {
   return { ...m, materialHeight: m.materialHeight + m.materialThickness, materialThickness: state.cfg.tableThickness || 80 };
 }
 
-// Zapis ciecia: w kamieniu (tylko nad kamieniem, gdy jest wielokat) i w stole (ponizej spodu kamienia)
+// Zapis ciecia: w kamieniu (tylko nad kamieniem, gdy jest wielokat) i w stole (ponizej spodu kamienia);
+// tarcza - rzazy (CutRecorder), frez / wiertlo / polerka - slad czola narzedzia (ToolRecorder)
 function recordPose(pose, m) {
   const rock = rockPolygon();
-  const low = bladeFrame(pose, m).lowest;
-  if (!rock || pointInPolygon(low[0], low[1], rock)) state.recorder.update(pose, m);
-  state.tableRecorder.update(pose, tableMachine(m));
+  const low = headFrame(pose, m).lowest;
+  const [stone, table] = isToolMode(m) ? [state.toolRecorder, state.toolTableRecorder] : [state.recorder, state.tableRecorder];
+  if (!rock || pointInPolygon(low[0], low[1], rock)) stone.update(pose, m);
+  table.update(pose, tableMachine(m));
 }
+
+// Rekorder biezacego trybu (podsumowanie na pasku, zakres materialu)
+const activeRecorder = (m = state.machine) => (isToolMode(m) ? state.toolRecorder : state.recorder);
 
 function clearCuts() {
   state.recorder.clear();
   state.tableRecorder.clear();
+  state.toolRecorder.clear();
+  state.toolTableRecorder.clear();
   state.extent = null;
   state.extentProvisional = true;
 }
@@ -105,7 +119,7 @@ function growExtent() {
 function growAutoExtent() {
   const margin = state.cfg.materialMargin;
   const [minW, minH] = state.cfg.materialMinSize;
-  const f = bladeFrame(state.pose, state.machine);
+  const f = headFrame(state.pose, state.machine);
   const [lx, ly] = f.lowest;
   const inMaterial = penetration(f, state.machine) > 0;
   if (!state.extent || state.extentProvisional) {
@@ -115,8 +129,8 @@ function growAutoExtent() {
     if (refit || !state.fitted) { state.fitted = true; fit(); }
   }
   let [x0, y0, x1, y1] = state.extent;
-  const b = state.recorder.bounds();
-  if (b) {
+  for (const b of [state.recorder.bounds(), state.toolRecorder.bounds()]) {
+    if (!b) continue;
     x0 = Math.min(x0, b[0] - margin); y0 = Math.min(y0, b[1] - margin);
     x1 = Math.max(x1, b[2] + margin); y1 = Math.max(y1, b[3] + margin);
   }
@@ -154,25 +168,37 @@ function redraw() {
   view.setMaterial(state.extent, m, rock);
   view.setCuts(state.recorder, 'stone');
   view.setCuts(state.tableRecorder, 'table');
+  view.setToolCuts(state.toolRecorder, 'stone');
+  view.setToolCuts(state.toolTableRecorder, 'table');
   view.setLaser(laserPoints(m, rock));
   view.setPlan(planItems(), topZ(m));
   view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
+  view.setTool(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
   view.render();
 
-  const s = state.recorder.summary();
-  $('#hudCut').textContent = s
-    ? `Cięcie: długość ${s.length.toFixed(0)} mm, głębokość ${s.depth.toFixed(1)} mm (cięć: ${s.count})`
-    : 'Brak cięcia - tarcza nad materiałem';
-  const ts = state.tableRecorder.summary();
-  $('#hudTable').textContent = ts ? `Cięcie w stół: długość ${ts.length.toFixed(0)} mm, głębokość ${ts.depth.toFixed(1)} mm` : '';
+  const tool = isToolMode(m);
+  const mode = modeById(m.mode);
+  const s = activeRecorder(m).summary();
+  const work = { mill: 'Frezowanie', drill: 'Wiercenie', polishing: 'Polerowanie' }[m.mode] || 'Cięcie';
+  let text = `Brak ${tool ? 'obróbki' : 'cięcia'} - ${mode.tool} nad materiałem`;
+  if (s && s.polish) text = `${work}: tor ${s.length.toFixed(0)} mm (przejść: ${s.count})`;
+  else if (s && m.mode === 'drill') text = `${work}: głębokość ${s.depth.toFixed(1)} mm (otworów: ${s.count})`;
+  else if (s) text = `${work}: długość ${s.length.toFixed(0)} mm, głębokość ${s.depth.toFixed(1)} mm (${tool ? 'przejść' : 'cięć'}: ${s.count})`;
+  $('#hudCut').textContent = text;
+  const ts = (tool ? state.toolTableRecorder : state.tableRecorder).summary();
+  $('#hudTable').textContent = ts && !ts.polish ? `${tool ? 'W stół' : 'Cięcie w stół'}: długość ${ts.length.toFixed(0)} mm, głębokość ${ts.depth.toFixed(1)} mm` : '';
   const rb = rock && bounds(rock);
   const size = rb ? `${(rb[2] - rb[0]).toFixed(0)} × ${(rb[3] - rb[1]).toFixed(0)} × ${m.materialThickness.toFixed(1)} mm` : `grubość ${m.materialThickness.toFixed(1)} mm`;
-  $('#hudMachine').textContent = `Tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
+  const ts2 = tool && toolSize(m);
+  const toolText = tool
+    ? `${mode.name}: ${mode.tool} Ø${ts2.diameter.toFixed(0)} mm, długość ${ts2.length.toFixed(0)} mm`
+    : `Piła: tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm`;
+  $('#hudMachine').textContent = `${toolText}${isBased() ? '' : ' (maszyna niezbazowana)'}, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
 
   const p = state.pose;
   if (p) {
-    const depth = Math.max(0, penetration(bladeFrame(p, m), m));
+    const depth = Math.max(0, penetration(headFrame(p, m), m));
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
     if (state.mode === 'offline') line += `  v ${fmt(state.sim.velocity * 0.06, 6, 2)} m/min`;
     $('#pos').textContent = line;
@@ -234,7 +260,7 @@ function sawState() {
 
 function sawText() {
   const s = sawState();
-  return s.running ? `   piła ${s.freq.toFixed(1)} Hz ${s.dir > 0 ? 'FWD' : 'REV'}` : '';
+  return s.running ? `   ${isToolMode(state.machine) ? 'wrzeciono' : 'piła'} ${s.freq.toFixed(1)} Hz ${s.dir > 0 ? 'FWD' : 'REV'}` : '';
 }
 
 // Obroty tarczy na ekranie (umowne: visualRps obr/s przy 50 Hz), petla tylko gdy pila sie kreci
@@ -274,6 +300,11 @@ function onlineValues(v) {
   if (state.mode !== 'online') return;
   const m = { ...state.machine };
   for (const k of MACHINE_KEYS) if (typeof v[k] === 'number') m[k] = v[k];
+  // tryb z PLC (bez flag - pila); srednica polerki tylko z Parametrow wizualizacji
+  m.mode = currentMode();
+  m.polishDiameter = readFields('m').polishDiameter || m.polishDiameter;
+  const toolKey = `${m.mode}:${isBased()}`;
+  if (toolKey !== state.tool.key) { state.machine = m; toolModeChanged(); }
   if (![v.x, v.y, v.z, v.a, v.b].every((n) => typeof n === 'number')) return;
   const cutStart = Boolean(v.cutStart);
   if (cutStart && !state.online.lastCutStart && state.cfg.autoClearOnStart) clearCuts();
@@ -327,6 +358,7 @@ function saveForms() {
     const op = currentOp();
     state.forms.ops[op.id] = readGroup('op', op.fields);
     state.forms.op = op.id;
+    state.forms.modeOp = { ...(state.forms.modeOp || {}), [currentMode()]: op.id };
     state.forms.common = readGroup('common', COMMON_FIELDS);
     if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
     if ($('#figFields').children.length) {
@@ -419,11 +451,22 @@ function readGroup(group, fields) {
   return out;
 }
 
-const currentOp = () => opById($('#op').value) || OPS[0];
+// Operacje trybu: pila - ops.js (CutST ...), frez / wiercenie / polerowanie - tools.js
+const modeOps = () => (currentMode() === 'saw' ? OPS : toolOpsFor(currentMode()));
+const currentOp = () => modeOps().find((o) => o.id === $('#op').value) || modeOps()[0];
+
+function fillOpSelect() {
+  const ops = modeOps();
+  $('#op').innerHTML = ops.map((o) => `<option value="${o.id}">${o.name}</option>`).join('');
+  const want = state.forms.modeOp?.[currentMode()] ?? state.forms.op;
+  $('#op').value = ops.some((o) => o.id === want) ? want : ops[0].id;
+}
 
 function showOp() {
   const op = currentOp();
   $('#opHint').textContent = `Jak w PLC: ${op.plc}`;
+  // glebokosc / wychyl / wyjazd wspolne tylko dla pily - operacje narzedzi maja wlasne pola
+  $('#commonBox').hidden = currentMode() !== 'saw';
   renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields));
   updateCutInfo();
   requestDraw();
@@ -431,7 +474,25 @@ function showOp() {
 
 // --- figury automatu (FiguresGeometricSt) ---------------------------------------------------
 
-const currentFig = () => figureById($('#fig').value) || FIGURES[0];
+// Figury trybu: pila - programy ciecia i profili, frez - ProgramAutoMillST
+const modeFigures = () => FIGURES.filter((f) => (currentMode() === 'mill' ? f.kind === 'mill' : f.kind !== 'mill'));
+const currentFig = () => modeFigures().find((f) => f.id === $('#fig').value) || modeFigures()[0];
+
+function fillFigSelect() {
+  const figs = modeFigures();
+  $('#fig').innerHTML = figs.map((f) => `<option value="${f.id}">${f.v} ${f.name}${f.kind === 'mill' ? ' (frez)' : ''}</option>`).join('');
+  $('#fig').value = figs.some((f) => f.id === state.forms.fig) ? state.forms.fig : figs[0].id;
+}
+
+// Rodzaje programu automatu trybu (pole Program) - bufor innego rodzaju zastapiony przykladem / pustym buforem frezu
+function fillAutoKinds() {
+  const kinds = AUTO_KINDS[currentMode()] || [];
+  for (const o of $('#autoKind').options) o.hidden = !kinds.includes(o.value);
+  const a = state.forms.auto;
+  if (kinds.length && a && !kinds.includes(a.kind)) {
+    state.forms.auto = kinds[0] === 'mill' ? { ...a, kind: 'mill', from: 1, rows: [] } : demoAuto();
+  }
+}
 
 function showFig() {
   const fig = currentFig();
@@ -572,7 +633,7 @@ function updateAutoInfo() {
   const d = offlineDynamics();
   let text = `Kroki: ${a.rows.length}`;
   if (a.kind === 'mill') {
-    const millWidth = readGroup('figctx', FIGURE_CONTEXT_FIELDS).millWidth;
+    const millWidth = offlineMachine().millWidth;
     text += '<br>Bufor frezu (ProgramAutoMillST) jak w PLC – tylko podgląd toru, bez symulacji ruchu (frez pominięty)';
     text += outsideWarning(previewMill(a.rows, a.rows.length, [a.ox, a.oy], millWidth).map((it) => it.path).filter(Boolean));
   } else if (!validDynamics(d)) {
@@ -589,9 +650,19 @@ function updateAutoInfo() {
   $('#autoInfo').innerHTML = text;
 }
 
-// Automat w PLC (online): tablice programu, licznik krokow, aktualny krok
+// Automat w PLC (online): tablice programu, licznik krokow, aktualny krok; w trybie frezu ProgramAutoMillST
+// (te same tablice aProgram*, iProgramMillNumber, iActualNumberOfProgramMills, bProgramMillStart)
 function onlineAuto() {
   const v = state.online.values;
+  if (currentMode() === 'mill') {
+    const count = Math.max(0, Math.round(Number(v.progMillCount) || 0));
+    return {
+      kind: 'mill', count, running: Boolean(v.progMillStart), index: Math.round(Number(v.progMillIndex) || 0),
+      rows: v.progX ? rowsFromArrays(v, count) : [],
+      origin: [Number(v.progOriginX) || 0, Number(v.progOriginY) || 0],
+      opt: { outerInner: false, profileJump: 1, smoothingJump: 50, smoothingArrays: false },
+    };
+  }
   const profile = Boolean(v.progProfStart) || (!v.progCutStart && Number(v.progProfCount) > 0 && !(Number(v.progCutCount) > 0));
   const count = Math.max(0, Math.round(Number(profile ? v.progProfCount : v.progCutCount) || 0));
   const running = Boolean(profile ? v.progProfStart : v.progCutStart);
@@ -613,8 +684,9 @@ function refreshOnlineAuto() {
     const a = { kind: au.kind, from: 1, ox: au.origin[0], oy: au.origin[1], pJump: au.opt.profileJump, sJump: au.opt.smoothingJump, outerInner: au.opt.outerInner, sArrays: au.opt.smoothingArrays, rows: au.rows.slice(0, au.count) };
     writeAutoHeader(a, false);
     renderAutoTable(a, false);
+    const prog = { profile: 'ProgramAutoProfileST', mill: 'ProgramAutoMillST' }[au.kind] || 'ProgramAutoCutST';
     $('#autoInfo').innerHTML = au.rows.length
-      ? `Program z PLC: ${au.kind === 'profile' ? 'ProgramAutoProfileST' : 'ProgramAutoCutST'}, kroków ${au.count}`
+      ? `Program z PLC: ${prog}, kroków ${au.count}`
       : 'Brak tablic programu w PLC (aProgramXPosition ...)';
   }
   markAutoRow(au.running ? au.index : -1);
@@ -634,8 +706,11 @@ function planItems() {
   if (state.mode === 'online') {
     const au = onlineAuto();
     if (!au.count || !au.rows.length) return [];
-    const key = JSON.stringify(['on', au.rows, au.count, au.origin, au.opt, bw]);
-    if (key !== planCache.key) planCache = { key, items: previewSteps(au.rows, au.count, au.origin, au.opt, { bladeWidth: bw }) };
+    const key = JSON.stringify(['on', au.kind, au.rows, au.count, au.origin, au.opt, bw, state.machine.millWidth]);
+    if (key !== planCache.key) {
+      planCache = { key, items: au.kind === 'mill' ? previewMill(au.rows, au.count, au.origin, state.machine.millWidth)
+        : previewSteps(au.rows, au.count, au.origin, au.opt, { bladeWidth: bw }) };
+    }
     return planCache.items.map((it) => ({ path: it.path, active: au.running && it.i === au.index }));
   }
   if (state.planSource === 'auto') {
@@ -643,7 +718,7 @@ function planItems() {
     const key = JSON.stringify(['auto', a, bw]);
     if (key !== planCache.key) {
       planCache = { key, items: a.kind === 'mill'
-        ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], readGroup('figctx', FIGURE_CONTEXT_FIELDS).millWidth)
+        ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], offlineMachine().millWidth)
         : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
     }
     return planCache.items.map((it) => ({ path: it.path, active: state.sim.running && it.i === state.sim.index }));
@@ -679,7 +754,7 @@ function formatTime(sec) {
 
 // Offline gora materialu jak w PLC (WorkArea): fCutMaterialHeight := fCuttingBoardZMin - grubosc
 function offlineMachine() {
-  const m = makeMachine({ ...state.cfg.offline.machine, ...readFields('m') });
+  const m = makeMachine({ ...state.cfg.offline.machine, ...readFields('m'), mode: state.tool.mode });
   const zMin = boardZMin(readArea('board').points);
   if (zMin !== null) m.materialHeight = zMin - m.materialThickness;
   return m;
@@ -748,7 +823,18 @@ function offlineFormsChanged() {
 
 // --- tryb offline: animacja ------------------------------------------------------
 
-function startProgram(program) {
+// Przerwanie bazowania (inny ruch, Stop, zmiana trybu) - maszyna niezbazowana, jak BaseHomingST bez END_PROCEDURE
+function cancelHoming() {
+  if (!state.tool.homing) return;
+  state.tool.homing = null;
+  state.tool.based = false;
+  toolModeChanged();
+}
+
+// homing - tryb bazowania, gdy program to bazowanie
+function startProgram(program, homing = null) {
+  if (!homing) cancelHoming();
+  state.tool.homing = homing;
   state.jog = null;
   state.sim.program = program;
   state.sim.t = 0;
@@ -785,6 +871,7 @@ function simFrame(now) {
     sim.running = false;
     sim.velocity = 0;
     markAutoRow(-1);
+    if (state.tool.homing) finishHoming();
   }
   redraw();
   if (sim.running) requestAnimationFrame(simFrame);
@@ -803,6 +890,7 @@ const JOG_DYN = { x: ['jogXVel', 'fastAcc'], y: ['jogYVel', 'fastAcc'], z: ['jog
 function startJog(dir, vel, acc, dec) {
   if (state.mode !== 'offline' || !state.pose || !(vel > 0)) return;
   stopProgram();
+  cancelHoming();
   state.sim.program = null;
   state.jog = new JogMotion(dir, vel, acc, dec);
   state.jog.last = performance.now();
@@ -891,7 +979,7 @@ function bindManual() {
   $('#sawDir').value = sawCfg.dir;
   $('#sawToggle').onclick = () => {
     state.saw.manual = !state.saw.manual;
-    $('#sawToggle').textContent = state.saw.manual ? 'Piła OFF' : 'Piła ON';
+    $('#sawToggle').textContent = `${isToolMode(state.machine) ? 'Wrzeciono' : 'Piła'} ${state.saw.manual ? 'OFF' : 'ON'}`;
     $('#sawToggle').classList.toggle('on', state.saw.manual);
     requestDraw();
   };
@@ -899,14 +987,14 @@ function bindManual() {
 }
 
 function setMode(mode) {
+  if (state.tool.homing) { state.tool.homing = null; state.tool.based = false; }
   state.mode = mode;
   state.jog = null;
   stopProgram();
   state.sim.program = null;
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
-  for (const t of $$('.tabs [data-offline]')) t.hidden = mode !== 'offline';
-  const active = $('.tabs button.active')?.dataset.tab;
-  if (mode !== 'offline' && active !== 'auto') showTab('stone');
+  state.tool.key = '';
+  toolModeChanged();
   $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
   $('#stonePlc').hidden = mode === 'offline';
@@ -1019,6 +1107,114 @@ function stoneChanged() {
   requestDraw();
 }
 
+// --- bazowanie i tryb pracy (BaseHomingST) ------------------------------------------------
+
+// Tryb: online z PLC (bMode*, bez flag - pila), offline - po ostatnim bazowaniu
+function currentMode() {
+  if (state.mode === 'online') return modeFromValues(state.online.values) || 'saw';
+  return state.tool.mode;
+}
+
+// Zbazowana: online bSystemBased (brak zmiennej w PLC - tak), offline - po bazowaniu (przerwane = nie)
+function isBased() {
+  if (state.mode === 'online') return state.online.values.systemBased !== false;
+  return state.tool.based && !state.tool.homing;
+}
+
+// Zakladki: Stol i kamien, Pozycja, Parametry, Bazowanie - zawsze (Pozycja i Parametry tylko offline);
+// Operacja, Automat, Reczne - wg trybu i tylko po bazowaniu (Operacja i Reczne tylko offline)
+function updateTabs() {
+  const mode = modeById(currentMode());
+  const based = isBased();
+  for (const t of $$('.tabs button')) {
+    const name = t.dataset.tab;
+    let show = state.mode === 'offline' || !('offline' in t.dataset);
+    if (['cut', 'auto', 'man'].includes(name)) show = show && based && mode.tabs.includes(name);
+    t.hidden = !show;
+  }
+  const active = $('.tabs button.active');
+  if (!active || active.hidden) showTab(state.mode === 'online' && !$('.tabs [data-tab="auto"]').hidden ? 'auto' : 'stone');
+}
+
+// Zmiana trybu / bazowania: narzedzie w widoku, zakladki, operacje, figury i rodzaje automatu, napisy trybu
+function toolModeChanged() {
+  const mode = modeById(currentMode());
+  state.tool.key = `${mode.id}:${isBased()}`;
+  if (state.forms) {
+    fillOpSelect();
+    showOp();
+    fillAutoKinds();
+    fillFigSelect();
+    showFig();
+    if (!$('.tab[data-tab="auto"]').hidden) showAuto();
+  }
+  updateTabs();
+  const drive = mode.id === 'saw' ? 'Piła' : 'Wrzeciono';
+  $('#sawTitle').textContent = drive;
+  $('#sawToggle').textContent = `${drive} ${state.saw.manual ? 'OFF' : 'ON'}`;
+  renderHoming();
+  if (state.mode === 'offline' && state.pose && !state.sim.running) applyPose(state.pose, offlineMachine());
+  requestDraw();
+}
+
+// Ekran Bazowanie: offline - wybor trybu i bazowanie jak BaseHomingST; online - stan z PLC
+function renderHoming() {
+  const offline = state.mode === 'offline';
+  const mode = modeById(currentMode());
+  const target = state.tool.homing || state.tool.target || mode.id;
+  for (const b of $$('[data-home]')) {
+    b.classList.toggle('active', b.dataset.home === (offline ? target : mode.id));
+    b.disabled = !offline;
+  }
+  $('#homeStart').hidden = !offline;
+  $('#homeStop').hidden = !offline;
+  const v = state.online.values;
+  const lines = [];
+  if (offline) {
+    const h = state.tool.homing && modeById(state.tool.homing);
+    if (h) lines.push(`Bazowanie w toku: ${h.name} (Z do 0, A na 0 najkrótszą drogą, B na ${h.homeB}°)`);
+    else lines.push(isBased() ? `Zbazowana w trybie: <b>${mode.name}</b> (B ${mode.homeB}°)` : '<span style="color:var(--bad)">Maszyna niezbazowana</span> – wybierz tryb i bazuj');
+  } else {
+    lines.push(`PLC: bSystemBased ${v.systemBased === undefined ? '– (brak zmiennej)' : v.systemBased ? 'TRUE' : '<span style="color:var(--bad)">FALSE</span>'}`);
+    lines.push(`Tryb: ${MODES.map((x) => `${x.plc} ${v[x.flag] ? '<b>TRUE</b>' : 'FALSE'}`).join(', ')}`);
+  }
+  const m = state.mode === 'online' ? state.machine : offlineMachine();
+  if (mode.id === 'saw') {
+    lines.push(`Narzędzie: tarcza Ø${m.discDiameter} × ${m.bladeWidth} mm (fParameterDiscDiameter, fParameterBladeWidth)`);
+  } else {
+    const t = toolSize({ ...m, mode: mode.id });
+    const src = {
+      mill: 'fParameterMillWidth, fParameterMillLength + fParameterMillCorrection',
+      drill: 'fParameterMillWidth, fParameterDrillLength + fParameterMillCorrection',
+      polishing: 'średnica z Parametrów, fParameterMillCorrection − ActiveTool.Height',
+    }[mode.id];
+    lines.push(`Narzędzie: ${mode.tool} Ø${t.diameter.toFixed(1)} mm, długość ${t.length.toFixed(1)} mm (${src}); `
+      + `oś narzędzia ${(m.millTiltDiameter / 2).toFixed(1)} mm od osi A (fParameterMillTiltDiameter/2)`);
+  }
+  const names = { cut: 'Operacja', auto: 'Automat', man: 'Ręczne' };
+  lines.push(`Ekrany trybu: ${mode.tabs.map((t) => names[t]).join(', ')}${isBased() ? '' : ' – po bazowaniu'}`);
+  $('#homeInfo').innerHTML = lines.join('<br>');
+}
+
+function startHoming(modeId) {
+  const d = offlineDynamics();
+  if (state.mode !== 'offline' || !validDynamics(d) || !state.pose) return;
+  stopProgram();
+  state.tool.based = false;
+  startProgram(homingProgram(state.pose, modeId, offlineMachine(), d), modeId);
+  toolModeChanged();
+}
+
+// END_PROCEDURE: bSystemBased, tryb z bBase* - zamiana narzedzia
+function finishHoming() {
+  state.tool.mode = state.tool.homing;
+  state.tool.homing = null;
+  state.tool.target = null;
+  state.tool.based = true;
+  try { localStorage.setItem('vizuapp.toolMode', state.tool.mode); } catch { /* jw. */ }
+  toolModeChanged();
+}
+
 // --- obsluga przyciskow ------------------------------------------------------------
 
 function bindUi() {
@@ -1035,8 +1231,7 @@ function bindUi() {
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
   $('#showPlan').onchange = requestDraw;
-  $('#op').innerHTML = OPS.map((o) => `<option value="${o.id}">${o.name}</option>`).join('');
-  $('#op').value = opById(state.forms.op) ? state.forms.op : 'cut';
+  fillOpSelect();
   $('#op').onchange = () => { saveForms(); showOp(); };
   renderGroup($('#commonFields'), 'common', COMMON_FIELDS, state.forms.common);
   for (const el of $$(AUTO_HEAD)) {
@@ -1051,8 +1246,7 @@ function bindUi() {
   };
   $('#autoDel').onclick = () => { const a = readAuto(); a.rows.pop(); renderAutoTable(a, true); autoChanged(); };
   $('#autoDemo').onclick = () => { const a = demoAuto(); writeAutoHeader(a, true); renderAutoTable(a, true); autoChanged(); };
-  $('#fig').innerHTML = FIGURES.map((f) => `<option value="${f.id}">${f.v} ${f.name}${f.kind === 'mill' ? ' (frez)' : ''}</option>`).join('');
-  $('#fig').value = figureById(state.forms.fig) ? state.forms.fig : FIGURES[0].id;
+  fillFigSelect();
   $('#fig').onchange = () => { saveForms(); showFig(); };
   renderGroup($('#figCtx'), 'figctx', FIGURE_CONTEXT_FIELDS, { ...defaults(FIGURE_CONTEXT_FIELDS), ...(state.forms.figCtx || {}) });
   $('#figFill').onclick = fillFigure;
@@ -1095,7 +1289,15 @@ function bindUi() {
     requestDraw();
   };
   for (const b of $$('.pauseBtn')) b.onclick = togglePause;
-  for (const b of $$('.stopBtn')) b.onclick = () => { stopProgram(); state.sim.program = null; markAutoRow(-1); requestDraw(); };
+  for (const b of $$('.stopBtn')) {
+    b.onclick = () => {
+      stopProgram();
+      state.sim.program = null;
+      markAutoRow(-1);
+      cancelHoming();
+      requestDraw();
+    };
+  }
 
   $('#posGo').onclick = () => {
     const d = offlineDynamics();
@@ -1104,12 +1306,16 @@ function bindUi() {
   };
   $('#posSet').onclick = () => {
     stopProgram();
+    cancelHoming();
     state.sim.program = null;
     applyPose(readFields('pos'), offlineMachine());
     requestDraw();
   };
   $('#posActual').onclick = () => writeFields('pos', state.pose);
 
+  $('#homeModes').innerHTML = MODES.map((x) => `<button data-home="${x.id}">${x.name} <small>B ${x.homeB}°</small></button>`).join('');
+  for (const b of $$('[data-home]')) b.onclick = () => { state.tool.target = b.dataset.home; renderHoming(); };
+  $('#homeStart').onclick = () => startHoming(state.tool.target || state.tool.mode);
   $('#fromPlc').onclick = fromPlc;
   $('#defaults').onclick = () => {
     writeFields('m', state.cfg.offline.machine);
@@ -1125,6 +1331,9 @@ async function init() {
   loadForms();
   $('#showFrame').checked = state.cfg.frame.show;
   try { const f = localStorage.getItem('vizuapp.frame'); if (f !== null) $('#showFrame').checked = f === '1'; } catch { /* jw. */ }
+  state.tool.mode = state.cfg.offline.mode || 'saw';
+  try { state.tool.mode = localStorage.getItem('vizuapp.toolMode') || state.tool.mode; } catch { /* jw. */ }
+  if (!MODES.some((x) => x.id === state.tool.mode)) state.tool.mode = 'saw';
   bindUi();
   bindManual();
   showOp();
