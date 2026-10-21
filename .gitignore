@@ -151,3 +151,6 @@ vite.config.ts.timestamp-*
 # VizuApp: strona budowana przez scripts/build-client.js, paczka na maszyne (build.ps1)
 public/
 dist/
+
+# GitHub Pages: wersja statyczna (scripts/build-pages.js)
+site/

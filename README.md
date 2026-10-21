@@ -8,6 +8,14 @@ obok submodułów `PLC` i `HMI`. Wcześniej aplikacja była w HMI
 (`HMI/VizuApp`) i stamtąd została przeniesiona razem z historią. Zmiany
 opisuje [CHANGELOG.md](CHANGELOG.md).
 
+**Podgląd w przeglądarce (GitHub Pages):** <https://patrykchoinski.github.io/Promasz-Visu3D/>. To wersja statyczna, bez
+serwera VizuApp, więc działa tylko tryb Offline: symulacja operacji, automatu,
+ruchów ręcznych i bazowania, bez połączenia z PLC. Jest publikowana
+automatycznie po każdym pushu do `master` (workflow
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml): testy,
+`scripts/build-pages.js`, publikacja). Formularze zapamiętuje przeglądarka
+odwiedzającego.
+
 Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
 mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
 silnik z wychyłem B, osłona tarczy), stół i kamień z punktów jak w PLC,
@@ -54,6 +62,8 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
 | `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
 | `scripts/build-client.js` | budowa strony do `public/` |
+| `scripts/build-pages.js` | wersja statyczna na GitHub Pages do `site/` (strona + `api/config` z `static: true`, tylko offline) |
+| `.github/workflows/pages.yml` | publikacja na GitHub Pages po pushu do `master` |
 | `test/` | testy (`node --test`) i `fake-plc-server.js` (OPC UA udające CODESYS) |
 | `config.json` | ustawienia (adres OPC UA, port strony, wartości początkowe offline) |
 | `vizu.ps1` | uruchamianie z PLC (jak `D:\Calc\calc.ps1`) |

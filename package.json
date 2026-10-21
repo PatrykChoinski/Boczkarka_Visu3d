@@ -10,7 +10,8 @@
     "start": "node scripts/build-client.js && node src/server/main.js",
     "offline": "node scripts/build-client.js && node src/server/main.js --no-plc",
     "test": "node --test \"test/*.test.js\"",
-    "fake-plc": "node test/fake-plc-server.js"
+    "fake-plc": "node test/fake-plc-server.js",
+    "build:pages": "node scripts/build-pages.js"
   },
   "engines": {
     "node": ">=20"
