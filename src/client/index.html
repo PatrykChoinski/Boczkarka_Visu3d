@@ -39,6 +39,8 @@
           <option value="10">10×</option>
           <option value="30">30×</option>
           <option value="100">100×</option>
+          <option value="500">500×</option>
+          <option value="1000">1000×</option>
         </select>
       </label>
     </div>
@@ -55,6 +57,7 @@
         <button data-tab="stone" class="active">Stół i kamień</button>
         <button data-tab="cut" data-offline>Operacja</button>
         <button data-tab="auto">Automat</button>
+        <button data-tab="cnc">G-kod</button>
         <button data-tab="man" data-offline>Ręczne</button>
         <button data-tab="pos" data-offline>Pozycja</button>
         <button data-tab="par" data-offline>Parametry</button>
@@ -137,6 +140,43 @@
           <button id="autoStart" class="primary">Start</button>
           <button class="pauseBtn">Pauza</button>
           <button class="stopBtn">Stop</button>
+        </div>
+      </div>
+
+      <div class="tab" data-tab="cnc" hidden>
+        <p class="hint">Jak moduł CNC w PLC (tylko tryb frezu): plik G-kodu, punkt początkowy G54 = pozycja osi X / Y / Z
+          (X osi = G54_X + X, Y osi = G54_Y − Y, Z osi = G54_Z + Z, Z w głąb). A i B bez zmian.</p>
+        <div class="row">
+          <label class="filebtn">Wczytaj plik .nc<input type="file" id="cncFile" accept=".nc,.gcode,.ngc,.tap,.cnc,.txt"></label>
+          <button id="cncExample" title="examples/madonna_frez_fi25mm_fixed.nc – płaskorzeźba, frez Ø25">Przykład</button>
+        </div>
+        <div id="cncName" class="info"></div>
+        <h3>Punkt początkowy G54 <span class="muted">HMI.G54_X / G54_Y / G54_Z</span></h3>
+        <div class="grid2">
+          <label>G54 X [mm] <input id="cncX" data-cnc="x" type="number" step="any"></label>
+          <label>G54 Y [mm] <input id="cncY" data-cnc="y" type="number" step="any"></label>
+          <label>G54 Z [mm] <input id="cncZ" data-cnc="z" type="number" step="any"></label>
+        </div>
+        <div class="row" id="cncSet">
+          <button data-g54="x" title="bSetG54_X: G54_X := aktualna pozycja X">X = aktualna</button>
+          <button data-g54="y" title="bSetG54_Y">Y = aktualna</button>
+          <button data-g54="z" title="bSetG54_Z">Z = aktualna</button>
+          <button data-g54="xr" title="bSetG54_X_No_Radius: + fParameterMillWidth / 2">X bez promienia</button>
+          <button data-g54="yr" title="bSetG54_Y_No_Radius: + fParameterMillWidth / 2">Y bez promienia</button>
+        </div>
+        <label class="check"><input type="checkbox" id="cncShowPath" checked> Tor programu (G1 pomarańczowy, G0 niebieski)</label>
+        <div id="cncInfo" class="info"></div>
+        <h3>Podgląd z góry <span class="muted">cieniowanie jak płaskorzeźba, czerwona kropka – frez</span></h3>
+        <canvas id="cncPreview" class="cncPreview" hidden></canvas>
+        <p class="hint" id="cncPreviewHint">Podgląd pojawi się po „Wynik od razu” albo w trakcie animacji.</p>
+        <div class="row" id="cncRun">
+          <button id="cncStart" class="primary">Start</button>
+          <button class="pauseBtn">Pauza</button>
+          <button class="stopBtn">Stop</button>
+        </div>
+        <div class="row">
+          <button id="cncInstant" title="Cały program od razu na materiale, bez animacji">Wynik od razu</button>
+          <button id="cncClear">Wyczyść materiał</button>
         </div>
       </div>
 

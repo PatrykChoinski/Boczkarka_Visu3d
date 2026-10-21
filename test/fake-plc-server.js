@@ -4,7 +4,8 @@
 // NodeId "|var|AX-8.Application.<GVL>.<zmienna>"; pozycje osi z programu ciecia (tryb offline) w petli.
 //
 //   node test/fake-plc-server.js [--port 4840] [--mode saw|mill|drill|polishing]     potem: npm start  (tryb Online)
-//   --mode - tryb po bazowaniu (bModeSaw / Mill / Drill / Polishing, bSystemBased); frez / wiercenie / polerowanie
+//   --mode - tryb po bazowaniu (bModeSaw / Mill / Drill / Polishing, bSystemBased); frez / wiercenie / polerowanie;
+//   cnc - frez wykonuje program G-kodu CNC_GCODE od punktu G54 (HMI.G54_X / Y / Z) jak modul CNC w PLC (#124)
 //   w petli wykonuje operacje narzedzia (shared/tools.js) zamiast ciec pila
 
 import path from 'node:path';
@@ -13,7 +14,9 @@ import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
 import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
-import { machine } from '../src/shared/geometry.js';
+import { machine, plcToolAxisZ } from '../src/shared/geometry.js';
+import { parseGcode } from '../src/shared/gcode.js';
+import { cncProgram } from '../src/shared/cnc.js';
 import { cutProgram, depthTable, ProgramBuilder } from '../src/shared/motion.js';
 import { MODES, toolOpsFor } from '../src/shared/tools.js';
 import { defaults } from '../src/shared/ops.js';
@@ -58,7 +61,26 @@ const PROGRAM = {
 const STEP_CODES = { MoveToStartPosition: 10, StartCutDepth: 20, StartSingleCut: 50, StartLastCut: 60, StartMoveAboveMaterial: 70, CutFinish: 100 };
 
 // Petla dwoch ciec (proste i z wychylem) albo operacji narzedzia trybu - wartosci wszystkich zmiennych w czasie t [s]
+// Program G-kodu dla --mode cnc: kieszen 120 x 80 z lukiem, 2 przejscia po 3 mm (Y w dol jak w plikach CAM)
+export const CNC_GCODE = `S5500 M03
+G00 X0 Y0 Z-10
+G01 Z3 F300
+G01 X120 F3000
+G01 Y-80
+G02 X60 Y-80 I-30 J0
+G01 X0
+G01 Y0
+G01 Z6 F300
+G01 X120 F3000
+G01 Y-80
+G01 X0
+G01 Y0
+G00 Z-10
+M30`;
+
 export function plcTimeline(mode = 'saw') {
+  const cnc = mode === 'cnc';
+  if (cnc) mode = 'mill';
   const m = machine({ ...DEFAULTS.offline.machine, mode });
   const dyn = { ...dynamicsToInternal(DEFAULTS.offline.dynamics), cutVel: 150, cutAcc: 300, cutDec: 300 };   // szybciej - krotki test
   let p1;
@@ -66,6 +88,9 @@ export function plcTimeline(mode = 'saw') {
   if (mode === 'saw') {
     p1 = cutProgram({ x: 0, y: 0, z: 0, a: 0, b: 0 }, { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, above: 20, depths: depthTable(30, 2) }, m, dyn);
     p2 = cutProgram(p1.at(p1.duration).pose, { x0: 300, y0: 450, x1: 900, y1: 800, b: 45, above: 20, depths: depthTable(24, 2) }, m, dyn);
+  } else if (cnc) {
+    p1 = cncProgram({ x: 0, y: 0, z: 0, a: 0, b: 90 }, parseGcode(CNC_GCODE), cncG54(m), m, dyn, { zAbove: 20 });
+    p2 = { duration: 2, at: () => p1.at(p1.duration) };
   } else {
     const op = toolOpsFor(mode)[0];
     const pb = new ProgramBuilder({ x: 0, y: 0, z: 0, a: 0, b: 90 }, m, dyn);
@@ -80,7 +105,7 @@ export function plcTimeline(mode = 'saw') {
     const r = t < p1.duration ? p1.at(t) : p2.at(t - p1.duration);
     const step = STEP_CODES[r.step] ?? (t < p1.duration ? 50 : 100);
     return {
-      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
+      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu
@@ -88,6 +113,10 @@ export function plcTimeline(mode = 'saw') {
     };
   };
 }
+
+// G54 testowego PLC: naroznik kamienia + 400 / 600, Z - czolo frezu na gornej powierzchni (B 90)
+export const cncG54 = (m) => ({ x: 700, y: 900, z: plcToolAxisZ(0, 90, m) });
+const g54Values = (m) => { const g = cncG54(m); return { g54X: g.x, g54Y: g.y, g54Z: g.z }; };
 
 export async function startFakePlc(port, mode = 'saw') {
   const server = new OPCUAServer({

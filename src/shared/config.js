@@ -14,6 +14,10 @@ export const VARIABLES = {
   materialThickness: 'HMI.fParameterMaterialThickness',
   // narzedzia na wrzecionie (frez / wiertlo - fParameterMillWidth, polerka - ActiveTool.Height)
   millWidth: 'HMI.fParameterMillWidth',
+  // CNC (#124): punkt poczatkowy programu G-kodu (CNCInfo: bSetG54_* -> HMI.G54_X / Y / Z)
+  g54X: 'HMI.G54_X',
+  g54Y: 'HMI.G54_Y',
+  g54Z: 'HMI.G54_Z',
   millTiltDiameter: 'HMI.fParameterMillTiltDiameter',
   millLength: 'HMI.fParameterMillLength',
   drillLength: 'HMI.fParameterDrillLength',

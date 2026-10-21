@@ -8,7 +8,7 @@ import { plcToolAxisXY, workAxisZ } from './geometry.js';
 // zakladki widoczne w trybie (Stol i kamien, Pozycja, Parametry i Bazowanie - zawsze)
 export const MODES = [
   { id: 'saw', name: 'Piła', flag: 'modeSaw', plc: 'bModeSaw', base: 'bBaseSaw', homeB: 0, tool: 'tarcza', tabs: ['cut', 'auto', 'man'] },
-  { id: 'mill', name: 'Frez', flag: 'modeMill', plc: 'bModeMill', base: 'bBaseMill', homeB: 90, tool: 'frez', tabs: ['cut', 'auto', 'man'] },
+  { id: 'mill', name: 'Frez', flag: 'modeMill', plc: 'bModeMill', base: 'bBaseMill', homeB: 90, tool: 'frez', tabs: ['cut', 'auto', 'man', 'cnc'] },
   { id: 'drill', name: 'Wiercenie', flag: 'modeDrill', plc: 'bModeDrill', base: 'bBaseDrill', homeB: 90, tool: 'wiertło', tabs: ['cut', 'man'] },
   { id: 'polishing', name: 'Polerowanie', flag: 'modePolishing', plc: 'bModePolishing', base: 'bBasePolishing', homeB: 90, tool: 'narzędzie polerskie', tabs: ['cut', 'man'] },
 ];

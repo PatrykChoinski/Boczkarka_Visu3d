@@ -21,4 +21,6 @@ await build({
 for (const f of ['index.html', 'style.css']) fs.copyFileSync(path.join(root, 'src/client', f), path.join(out, f));
 // obrazki (rysunki figur z HMI - #138)
 fs.cpSync(path.join(root, 'src/client/img'), path.join(out, 'img'), { recursive: true });
+// przykladowe programy G-kodu (#124)
+fs.cpSync(path.join(root, 'examples'), path.join(out, 'examples'), { recursive: true });
 console.log('public/ gotowe');

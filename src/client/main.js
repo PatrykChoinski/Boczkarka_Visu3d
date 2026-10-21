@@ -5,7 +5,7 @@
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
-import { machine as makeMachine, headFrame, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { waterLayout, laserMount } from '../shared/water.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
@@ -17,6 +17,9 @@ import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } fr
 import { JogMotion, jogVelocity, relativeMoveDynamics, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
+import { parseGcode, gcodeSummary } from '../shared/gcode.js';
+import { cncProgram, cncTipPath } from '../shared/cnc.js';
+import { HeightMap, shadeHeightMap } from '../shared/heightmap.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -68,6 +71,8 @@ function tableMachine(m) {
 // Zapis ciecia: w kamieniu (tylko nad kamieniem, gdy jest wielokat) i w stole (ponizej spodu kamienia);
 // tarcza - rzazy (CutRecorder), frez / wiertlo / polerka - slad czola narzedzia (ToolRecorder)
 function recordPose(pose, m) {
+  // G-kod (#124): probki programu CNC na mapie wysokosci zamiast osobnych sladow narzedzia
+  if (cncRecording(m)) { cncRecord(pose, m); return; }
   const rock = rockPolygon();
   const low = headFrame(pose, m).lowest;
   const [stone, table] = isToolMode(m) ? [state.toolRecorder, state.toolTableRecorder] : [state.recorder, state.tableRecorder];
@@ -83,6 +88,8 @@ function clearCuts() {
   state.tableRecorder.clear();
   state.toolRecorder.clear();
   state.toolTableRecorder.clear();
+  cncState.hm = null;
+  cncState.lastTip = null;
   state.extent = null;
   state.extentProvisional = true;
 }
@@ -173,6 +180,7 @@ function redraw() {
   view.setCuts(state.tableRecorder, 'table');
   view.setToolCuts(state.toolRecorder, 'stone');
   view.setToolCuts(state.toolTableRecorder, 'table');
+  drawCnc();
   const lcfg = state.cfg.laser || { side: 1, length: 2500 };
   const head = $('#showBlade').checked && state.pose;
   view.setLaser(laserPoints(m, rock), 8, head && laserOn() ? laserMount(state.pose, m, lcfg.side, lcfg.mountAngle).pos : null);
@@ -926,6 +934,8 @@ function cancelHoming() {
 // homing - tryb bazowania, gdy program to bazowanie
 function startProgram(program, homing = null) {
   if (!homing) cancelHoming();
+  cncState.active = Boolean(program.cnc);
+  cncState.lastTip = null;
   state.tool.homing = homing;
   state.jog = null;
   state.sim.program = program;
@@ -1111,7 +1121,8 @@ function setMode(mode) {
   clearCuts();
   state.fitted = false;
   if (mode === 'offline') {
-    const start = state.pose || state.cfg.offline.start;
+    // bez pozycji (start strony): zbazowany tryb z localStorage - B jak po bazowaniu (frez / wiertlo / polerka 90)
+    const start = state.pose || { ...state.cfg.offline.start, b: state.tool.based ? modeById(state.tool.mode).homeB : state.cfg.offline.start.b };
     applyPose({ ...start }, offlineMachine());
     writeFields('pos', start);
     restoreOfflineAreas();
@@ -1134,6 +1145,7 @@ function showTab(name) {
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
   if (name === 'man') updateManInfo();
+  if (name === 'cnc') updateCncInfo();
   requestDraw();
 }
 
@@ -1215,6 +1227,248 @@ function stoneChanged() {
   requestDraw();
 }
 
+// --- G-kod / CNC 3D (#124, tylko tryb frezu) -------------------------------------------------
+// Plik .nc jak w module CNC PLC: punkt poczatkowy G54 (pozycja osi), ruchy X / Y / Z z pliku, A i B bez zmian.
+// Material w obszarze programu jako mapa wysokosci (HeightMap) - frez obniza powierzchnie wzdluz toru.
+
+const cncState = { prog: null, name: '', summary: null, hm: null, hmKey: '', active: false, lastTip: null, paths: null, pathsKey: '' };
+
+const cncMode = () => currentMode() === 'mill' && isBased();
+
+// G54: online z PLC (HMI.G54_X / Y / Z), offline z pol
+function cncG54() {
+  if (state.mode === 'online') {
+    const v = state.online.values;
+    return { x: Number(v.g54X) || 0, y: Number(v.g54Y) || 0, z: Number(v.g54Z) || 0 };
+  }
+  return { x: Number($('#cncX').value) || 0, y: Number($('#cncY').value) || 0, z: Number($('#cncZ').value) || 0 };
+}
+
+function cncMachine() {
+  return state.mode === 'online' ? state.machine : offlineMachine();
+}
+
+// Domyslny G54: naroznik kamienia + 300 mm, Z - czolo frezu na gornej powierzchni (B 90)
+function defaultG54(m) {
+  const rock = rockPolygon();
+  const b = rock ? bounds(rock) : [0, 0, 0, 0];
+  return { x: b[0] + 300, y: b[1] + 300 + (cncState.summary ? Math.max(0, -cncState.summary.lo[1]) : 0), z: plcToolAxisZ(0, 90, m) };
+}
+
+function writeCncG54(g) {
+  $('#cncX').value = Number(g.x.toFixed(3));
+  $('#cncY').value = Number(g.y.toFixed(3));
+  $('#cncZ').value = Number(g.z.toFixed(3));
+}
+
+function cncFormsChanged() {
+  if (state.forms) { state.forms.cnc = cncG54(); saveForms(); }
+  cncState.hm = null;
+  updateCncInfo();
+  requestDraw();
+}
+
+async function loadCncFile(file) {
+  const text = await file.text();
+  const prog = parseGcode(text);
+  cncState.prog = prog;
+  cncState.name = file.name;
+  cncState.summary = gcodeSummary(prog, (offlineDynamics().fastVel || 150) * 60);
+  cncState.hm = null;
+  cncState.active = false;
+  if (state.mode === 'offline' && !state.forms?.cnc) writeCncG54(defaultG54(cncMachine()));
+  updateCncInfo();
+  requestDraw();
+}
+
+// Tor czubka narzedzia (swiat) - pamietany dla G54 / narzedzia / A, B
+function cncPaths() {
+  if (!cncState.prog || !state.pose) return null;
+  const m = cncMachine();
+  const g = cncG54();
+  const key = JSON.stringify([cncState.name, g, m.millWidth, m.millTiltDiameter, m.millLength, m.cutTiltDiameter, m.millCorrection, Math.round(state.pose.a * 100), Math.round(state.pose.b * 100)]);
+  if (key !== cncState.pathsKey) {
+    cncState.pathsKey = key;
+    cncState.paths = cncTipPath(cncState.prog, g, state.pose, m, 3);
+  }
+  return cncState.paths;
+}
+
+// Mapa wysokosci na obszarze toru (z marginesem promienia frezu), gora i spod kamienia
+function cncHeightMap() {
+  const paths = cncPaths();
+  if (!paths) return null;
+  const m = cncMachine();
+  const r = Math.max(1, toolSize(m).diameter / 2);
+  const key = `${cncState.pathsKey}|${m.materialHeight}|${m.materialThickness}`;
+  if (cncState.hm && cncState.hmKey === key) return cncState.hm;
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const p of paths) {
+    if (p.kind === 'rapid') continue;
+    for (const q of p.pts) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
+  }
+  if (!Number.isFinite(x0)) return null;
+  const box = [x0 - r - 20, y0 - r - 20, x1 + r + 20, y1 + r + 20];
+  // komorka tak, zeby siatka miala najwyzej ok. 400 tys. punktow
+  const res = Math.max(1, Math.sqrt((box[2] - box[0]) * (box[3] - box[1]) / 400000));
+  const top = topZ(m);
+  cncState.hm = new HeightMap(box, top, top - Math.max(1, m.materialThickness), Math.round(res * 10) / 10);
+  cncState.hmKey = key;
+  cncState.lastTip = null;
+  return cncState.hm;
+}
+
+// Probka ruchu: czolo frezu obniza mape wysokosci (od poprzedniej probki)
+function cncRecord(pose, m) {
+  const hm = cncHeightMap();
+  if (!hm) return;
+  const f = toolFrame(pose, m);
+  const tip = f.tip;
+  if (cncState.lastTip) hm.carve(cncState.lastTip, tip, Math.max(1, f.radius));
+  else hm.stamp(tip[0], tip[1], tip[2], Math.max(1, f.radius));
+  cncState.lastTip = tip;
+}
+
+// Czy probki ruchu ida na mape wysokosci (program G-kodu offline albo online z wczytanym plikiem w trybie frezu)
+const cncRecording = (m) => isToolMode(m) && m.mode === 'mill' && cncState.prog
+  && (state.mode === 'online' ? true : cncState.active);
+
+function cncInstant() {
+  const hm = cncHeightMap();
+  if (!hm) return;
+  const m = cncMachine();
+  const r = Math.max(1, toolSize(m).diameter / 2);
+  const t0 = performance.now();
+  for (const p of cncState.paths) {
+    if (p.kind === 'rapid') continue;
+    for (let k = 1; k < p.pts.length; k++) hm.carve(p.pts[k - 1], p.pts[k], r);
+  }
+  updateCncInfo(`Wynik od razu: ${((performance.now() - t0) / 1000).toFixed(1)} s obliczeń`);
+  requestDraw();
+}
+
+function cncStart() {
+  if (state.mode !== 'offline' || !cncState.prog || !cncMode()) return;
+  const d = offlineDynamics();
+  if (!validDynamics(d)) return;
+  const m = offlineMachine();
+  cncHeightMap();
+  const prog = cncProgram(state.pose, cncState.prog, cncG54(), m, d, { zAbove: commonValues().above ?? 20, step: 3 });
+  prog.cnc = true;
+  startProgram(prog);
+  cncState.active = true;
+  cncState.lastTip = null;
+}
+
+const fmtMm = (v) => (Number.isFinite(v) ? v.toFixed(1) : '-');
+
+function updateCncInfo(extra = '') {
+  if (!$('#cncInfo')) return;
+  const online = state.mode === 'online';
+  for (const el of $$('#cncX, #cncY, #cncZ, #cncSet button')) el.disabled = online;
+  $('#cncRun').hidden = online;
+  if (online) writeCncG54(cncG54());
+  const s = cncState.summary;
+  $('#cncName').textContent = cncState.prog ? `${cncState.name}: ${cncState.prog.lines} linii` : 'Brak pliku – wczytaj program G-kodu (.nc)';
+  if (!s) { $('#cncInfo').innerHTML = cncMode() ? '' : '<span style="color:var(--bad)">G-kod tylko w trybie frezu (po bazowaniu)</span>'; return; }
+  const m = cncMachine();
+  const lines = [
+    `Ruchy: ${s.moves} (posuw ${(s.feedLen / 1000).toFixed(1)} m, szybkie ${(s.rapidLen / 1000).toFixed(1)} m), czas ok. ${formatTime(s.time)}`,
+    `Zakres programu: X ${fmtMm(s.lo[0])} … ${fmtMm(s.hi[0])}, Y ${fmtMm(s.lo[1])} … ${fmtMm(s.hi[1])}, Z ${fmtMm(s.lo[2])} … ${fmtMm(s.hi[2])} mm`,
+    `Frez Ø${fmtMm(toolSize(m).diameter)} mm (fParameterMillWidth); najgłębiej Z ${fmtMm(s.hi[2])} mm pod G54_Z`,
+  ];
+  // CNC w PLC nie rusza A / B - frez musi byc pionowo (B 90 po bazowaniu)
+  if (state.pose && Math.abs(state.pose.b - 90) > 0.5) lines.push(`<span style="color:var(--bad)">Wychył B ${fmtMm(state.pose.b)}° – frez nie jest pionowo. Program CNC (jak w PLC) nie rusza A / B: ustaw B 90° (Bazowanie, Ręczne albo Pozycja)</span>`);
+  if (s.hi[2] > m.materialThickness) lines.push(`<span style="color:var(--bad)">Program schodzi ${fmtMm(s.hi[2])} mm – głębiej niż grubość kamienia (${fmtMm(m.materialThickness)} mm)</span>`);
+  const hm = cncState.hm;
+  if (hm && hm.cut) lines.push(`Materiał: obrobione ${(hm.cut * hm.res * hm.res / 100).toFixed(0)} cm², najgłębiej ${fmtMm(hm.top - hm.minZ())} mm (siatka co ${hm.res} mm)`);
+  if (cncState.prog.warnings.length) lines.push(`<span style="color:var(--bad)">Uwagi: ${cncState.prog.warnings.slice(0, 5).join('; ')}${cncState.prog.warnings.length > 5 ? ' …' : ''}</span>`);
+  if (!cncMode()) lines.push('<span style="color:var(--bad)">G-kod tylko w trybie frezu (po bazowaniu)</span>');
+  if (extra) lines.push(extra);
+  $('#cncInfo').innerHTML = lines.join('<br>');
+}
+
+function bindCnc() {
+  $('#cncFile').onchange = (e) => { const f = e.target.files?.[0]; if (f) loadCncFile(f); e.target.value = ''; };
+  for (const el of $$('#cncX, #cncY, #cncZ')) el.addEventListener('input', cncFormsChanged);
+  for (const b of $$('[data-g54]')) {
+    b.onclick = () => {
+      if (!state.pose) return;
+      const g = cncG54();
+      const r = (cncMachine().millWidth || 0) / 2;
+      const k = b.dataset.g54;
+      if (k === 'x') g.x = state.pose.x;
+      if (k === 'y') g.y = state.pose.y;
+      if (k === 'z') g.z = state.pose.z;
+      if (k === 'xr') g.x = state.pose.x + r;
+      if (k === 'yr') g.y = state.pose.y + r;
+      writeCncG54(g);
+      cncFormsChanged();
+    };
+  }
+  $('#cncShowPath').onchange = requestDraw;
+  // przyklad: plaskorzezba Madonny (Dodatkowe Programy w repo glownym), frez fi 25
+  $('#cncExample').onclick = async () => {
+    const name = 'madonna_frez_fi25mm_fixed.nc';
+    try {
+      const res = await fetch(`examples/${name}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await loadCncFile(new File([await res.text()], name));
+    } catch (err) {
+      $('#cncName').textContent = `Nie udało się wczytać przykładu: ${err.message}`;
+    }
+  };
+  $('#cncStart').onclick = cncStart;
+  $('#cncInstant').onclick = cncInstant;
+  $('#cncClear').onclick = () => { cncState.hm = null; cncState.lastTip = null; updateCncInfo(); requestDraw(); };
+  if (state.forms?.cnc) writeCncG54(state.forms.cnc);
+}
+
+// Podglad 2D w panelu (#124): mapa wysokosci z cieniowaniem i pozycja frezu; odswiezanie najwyzej co 0,3 s
+function drawCncPreview(now) {
+  const cv = $('#cncPreview');
+  const hm = cncState.hm;
+  if (!cv || $('.tab[data-tab="cnc"]').hidden) return;
+  if (!hm || !hm.cut || currentMode() !== 'mill') { cv.hidden = true; $('#cncPreviewHint').hidden = false; return; }
+  const key = `${hm.version}|${state.pose?.x}|${state.pose?.y}`;
+  if (key === cncState.previewKey || now - (cncState.previewAt || 0) < 300) return;
+  cncState.previewKey = key;
+  cncState.previewAt = now;
+  cv.hidden = false;
+  $('#cncPreviewHint').hidden = true;
+  if (cv.width !== hm.nx || cv.height !== hm.ny) { cv.width = hm.nx; cv.height = hm.ny; }
+  const ctx = cv.getContext('2d');
+  ctx.putImageData(new ImageData(shadeHeightMap(hm), hm.nx, hm.ny), 0, 0);
+  if (state.pose) {
+    const tip = toolFrame(state.pose, cncMachine()).tip;
+    const px = (tip[0] - hm.x0) / hm.res;
+    const py = hm.ny - 1 - (tip[1] - hm.y0) / hm.res;
+    const r = Math.max(2, toolSize(cncMachine()).diameter / 2 / hm.res);
+    ctx.strokeStyle = '#d62728';
+    ctx.lineWidth = Math.max(1.5, hm.nx / 200);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = '#d62728';
+    ctx.beginPath(); ctx.arc(px, py, Math.max(1.5, hm.nx / 150), 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
+// Widok: mapa wysokosci i tor - tylko w trybie frezu
+function drawCnc() {
+  const show = cncState.prog && currentMode() === 'mill';
+  // podsumowanie materialu w trakcie animacji - najwyzej co 1 s
+  const now = performance.now();
+  if (show && cncState.hm && !$('.tab[data-tab="cnc"]').hidden && now - (cncState.infoAt || 0) > 1000) {
+    cncState.infoAt = now;
+    updateCncInfo();
+  }
+  view.setHeightMap(show ? cncState.hm : null);
+  // kamien nad reliefem prawie przezroczysty (inaczej gorna sciana bryly rozmywa wynik)
+  view.setMaterialOpacity(show && cncState.hm && cncState.hm.cut ? 0.18 : 0.72);
+  drawCncPreview(now);
+  const paths = show && $('#cncShowPath').checked ? cncPaths() : null;
+  view.setCncPath(paths, paths ? cncState.pathsKey : null);
+}
+
 // --- bazowanie i tryb pracy (BaseHomingST) ------------------------------------------------
 
 // Tryb: online z PLC (bMode*, bez flag - pila), offline - po ostatnim bazowaniu
@@ -1237,7 +1491,7 @@ function updateTabs() {
   for (const t of $$('.tabs button')) {
     const name = t.dataset.tab;
     let show = state.mode === 'offline' || !('offline' in t.dataset);
-    if (['cut', 'auto', 'man'].includes(name)) show = show && based && mode.tabs.includes(name);
+    if (['cut', 'auto', 'man', 'cnc'].includes(name)) show = show && based && mode.tabs.includes(name);
     t.hidden = !show;
   }
   const active = $('.tabs button.active');
@@ -1326,6 +1580,7 @@ function finishHoming() {
 // --- obsluga przyciskow ------------------------------------------------------------
 
 function bindUi() {
+  bindCnc();
   for (const b of $$('#mode button')) b.onclick = () => setMode(b.dataset.mode);
   for (const b of $$('[data-view]')) b.onclick = () => { view.viewName = b.dataset.view; fit(); };
   $('#fit').onclick = fit;
@@ -1467,4 +1722,4 @@ async function init() {
 init();
 
 // do testow z konsoli / automatu
-window.vizu = { state, AXES, startJog, releaseJog, get view() { return view; } };
+window.vizu = { state, AXES, startJog, releaseJog, get view() { return view; }, cnc: { state: cncState, load: loadCncFile, start: cncStart, instant: cncInstant } };
