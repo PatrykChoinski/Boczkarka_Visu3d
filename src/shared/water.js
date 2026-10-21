@@ -225,7 +225,7 @@ export function guardRadius(dir) {
 
 // Modul lasera: na krawedzi oslony tarczy od strony lasera (side = laser.side), mountAngle stopni od gory w strone
 // kierunku lasera; narzedzie - nad kolnierzem w strone lasera. -> {pos, u, normal, up}
-export function laserMount(pose, m, side = 1, mountAngle = 50) {
+export function laserMount(pose, m, side = 1, mountAngle = 40) {
   const f = headFrame(pose, m);
   if (isToolMode(m)) {
     const pos = add(add(f.flange, mul(UP, 80)), mul(f.u, side * (f.radius + 160)));

@@ -34,8 +34,10 @@ czerwono.
   Parametry wpisujesz ręcznie albo pobierasz z PLC.
 
 Operacje piły: cięcie proste (`CutST`), pasy, bloki, krawędzie, zakoszenie,
-łuk, okrąg, elipsa, profil krawędzi i wygładzanie. Frez, wiercenie i
-polerowanie są na razie pominięte.
+łuk, okrąg, elipsa, profil krawędzi i wygładzanie. Frez (#131): linia,
+łuk, okrąg, elipsa, pasy, bloki, krawędzie i automat frezu. Wiercenie (#133):
+w punkcie i w miejscu. Polerowanie (#132): z powtórzeniami albo kolejką
+narzędzi.
 
 Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 **three.js** (WebGL), budowana przez esbuild do `public/`.
@@ -46,7 +48,8 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 |---|---|
 | `src/shared/geometry.js` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth`; frez / wiertło / polerka wg `MillST`, `DrillST`, `Polishing` |
 | `src/shared/cuts.js` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
-| `src/shared/tools.js` | tryby po bazowaniu (`BaseHomingST`), program bazowania, operacje frezu, wiercenia i polerowania |
+| `src/shared/tools.js` | tryby po bazowaniu (`BaseHomingST`), program bazowania, operacje wiercenia (`DrillST`, `DrillSimpleST`) i polerowania (`Polishing`), lista operacji narzędzi |
+| `src/shared/millops.js` | programy frezu jak w PLC (#131): `MillST`, `MillArcST`, `MillCircleST`, `MillElipseST`, `MillStripesST`, `MillBlocksST`, `EdgesST` (frez), tablica głębokości frezu, automat `ProgramAutoMillST` + `MillShapeST` |
 | `src/shared/toolcuts.js` | zapis śladu narzędzia na wrzecionie (rowki, otwory, polerowana powierzchnia) |
 | `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
 | `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne, jednostki (m/min, m/s²) |
@@ -155,7 +158,7 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   tarczy, wzdłuż kierunku cięcia przy danym A. Domyślnie świeci w prawą
   stronę (`laser.side` = 1, czyli +kierunek cięcia); długość to
   `laser.length`. Moduł lasera (#141) jest narysowany na osłonie tarczy od
-  strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Gdy laser
+  strony lasera, `laser.mountAngle` stopni od góry (domyślnie 40°: na górnej krawędzi osłony przy narożniku, jak na zdjęciu w #141). Gdy laser
   świeci, z modułu do linii na materiale idzie półprzezroczysty wachlarz
   wiązki. W trybach frezu, wiercenia i polerowania moduł jest obok narzędzia.
 - **Suport (#141):** przed przednim końcem prawego murka (od strony operatora)
@@ -283,7 +286,10 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
       Szerokość tarczy, grubość i `bServiceBlocksReverse` biorą się z
       Parametrów i wspólnych parametrów cięcia.
     - Figury frezu wypełniają bufor frezu (`ProgramAutoMillST`, kroki
-      `ProgramMillStep`) tylko do podglądu toru. Visu3D nie symuluje frezu.
+      `ProgramMillStep`). W trybie frezu Start symuluje automat (#131):
+      linie, łuki, okręgi, elipsy, skosy B, wiercenie, zmiana głębokości,
+      potwierdzenie. „Zamknięte kształty” (`bProgramReapitingOver`) frezują
+      zamknięty kształt w całości na każdej głębokości (`MillShapeST`).
     - `PROFILES` (100) nie jest tworzeniem figury, tylko liczeniem profilu na
       istniejącym buforze, więc go tu nie ma.
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
@@ -348,9 +354,29 @@ Widoczne ekrany zależą od trybu i bazowania. „Stół i kamień”, „Pozycj
 tylko po bazowaniu i tylko te, które dotyczą trybu:
 
 - piła: wszystkie operacje piły, automat cięcia i profili;
-- frez: frezowanie linii (`MillST`), automat frezu (`ProgramAutoMillST`, figury frezu, podgląd);
-- wiercenie: wiercenie (`DrillST`);
-- polerowanie: polerowanie (`Polishing` – XY, YX, prostokąt CCW / CW).
+- frez (#131): linia (`MillST`: dwa punkty albo kąt i długość), łuk
+  (`MillArcST`: promień, trzy punkty, cięciwa, z / bez średnicy frezu), okrąg
+  (`MillCircleST`: zewnętrzny / wewnętrzny / po linii, od środka albo od góry),
+  elipsa (`MillElipseST`), pasy (`MillStripesST`, też frezowanie stołu), bloki
+  (`MillBlocksST`), krawędzie prostokąta (`EdgesST` w trybie frezu), automat
+  frezu (`ProgramAutoMillST`) z symulacją ruchu;
+- wiercenie (#133): w punkcie (`DrillST`) i w miejscu (`DrillSimpleST` – od
+  aktualnego Z), prędkość Z wiercenia `fVelocityAxisZDrill`;
+- polerowanie (#132): `Polishing` – XY, YX, prostokąt CCW / CW, prędkość
+  `fVelocityMillMode`, Z z wysokości materiału albo `fHeightPosition`
+  („Zapisz Z” jak `bSaveZ`), powtórzenia narzędzi `aToolRepetitions` albo
+  kolejka `aQueueTools` (rodzaje na narzędzie), wymiana narzędzia jako
+  wyjazd w górę i postój (pozycje magazynu `PolishingToolChange` są w PLC
+  zmienne, więc bez dojazdu).
+
+Wspólne pola frezu (zakładka Operacja, „Głębokości frezu”): tablica głębokości
+(`Depths`: grubość materiału + `fMillDepthMillReserve`, równe przejścia, stały
+skok `fMillDepthMillHeight` z `fMillDepthMinLastJumpDistance` albo jedno
+przejście), `bServiceMillZFirst`, `fCutOvertakingPrecent` (zjazd w Z w trakcie
+ruchu i przejście czyszczące) i wyjazd nad materiał. Przejścia idą na zmianę w
+obie strony jak w PLC. W pile ukryte są pola frezu (parametry frezu, wiertła,
+polerki, „Parametry figury” frezu), w trybach narzędzi pola piły (tarcza,
+`HeadRotationDiameter`, przesunięcie we/zew, korekty daszków).
 
 Przerwanie bazowania (Stop, inny ruch) zostawia maszynę niezbazowaną. Online
 tryb i bazowanie są czytane z PLC (`bModeSaw` / `bModeMill` / `bModeDrill` /
@@ -424,7 +450,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
 | `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
-| `laser` | `{side: 1, length: 2500, mountAngle: 50}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
+| `laser` | `{side: 1, length: 2500, mountAngle: 40}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
 | `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD (−1: strona −u tarczy schodzi w materiał - tam leci woda z dysz) |
 | `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}`; `mode` - tryb po bazowaniu na starcie (`saw`, `mill`, `drill`, `polishing`) |
 

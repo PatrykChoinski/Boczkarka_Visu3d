@@ -1,8 +1,9 @@
-// Tryby maszyny po bazowaniu (BaseHomingST) i operacje narzedzi na wrzecionie: frez (MillST), wiercenie (DrillST),
-// polerowanie (Polishing). Pila zostaje jak dotad (operacje z ops.js, CutST).
+// Tryby maszyny po bazowaniu (BaseHomingST) i operacje narzedzi na wrzecionie: frez (millops.js - MillST ...),
+// wiercenie (DrillST, DrillSimpleST), polerowanie (Polishing). Pila zostaje jak dotad (operacje z ops.js, CutST).
 
-import { ProgramBuilder, depthTable } from './motion.js';
+import { ProgramBuilder } from './motion.js';
 import { plcToolAxisXY, workAxisZ } from './geometry.js';
+import { MILL_OPS } from './millops.js';
 
 // Tryby: flaga trybu (bMode*) i bazowania (bBase*) w PLC, B po bazowaniu (BaseHomingST.MOVE_A_HOME_B: pila 0, reszta 90),
 // zakladki widoczne w trybie (Stol i kamien, Pozycja, Parametry i Bazowanie - zawsze)
@@ -81,42 +82,31 @@ export function polishingPath(v) {
   return pts;
 }
 
+// Wiercenie: Z w dol z fVelocityAxisZDrill (pole w m/min jak dynamika), przyspieszenie Z z dynamiki
+const DRILL_VEL = { k: 'zVel', label: 'Prędkość Z wiercenia [m/min] (fVelocityAxisZDrill)', t: 'num', d: 0.6 };
+const drillZ = (pb, v) => ({ z: [Math.max(v.zVel, 0.001) * 1000 / 60, pb.dyn.zAcc] });
+
+// Polerowanie bez bMaterialHeightMode: Z osi = fHeightPosition + ActiveTool.Height - sin(B) * (korekta + Ct/2)
+// (jak workAxisZ, tylko od zadanej wysokosci zamiast fMillMaterialHeight)
+export const polishAxisZ = (height, m) => workAxisZ(0, 90, { ...m, materialHeight: height });
+
+// Kolejnosc pracy narzedzi polerskich: [{tool, type}] - narzedzia 1..10 rosnaco; bez kolejki aToolRepetitions[n] razy
+// wybrany rodzaj, z kolejka (aQueueTools[n].Actions[type]) rodzaje XY, YX, CCW, CW po kolei, kazdy Actions razy
+export function polishingJobs(v) {
+  const jobs = [];
+  const count = (list, i) => Math.max(0, Math.round(Number((list || [])[i]) || 0));
+  for (let i = 0; i < 10; i++) {
+    if (!v.queue) {
+      for (let r = 0; r < count(v.reps ?? [1], i); r++) jobs.push({ tool: i + 1, type: v.type });
+    } else {
+      [v.qXY, v.qYX, v.qCCW, v.qCW].forEach((q, type) => { for (let r = 0; r < count(q, i); r++) jobs.push({ tool: i + 1, type }); });
+    }
+  }
+  return jobs;
+}
+
 export const TOOL_OPS = [
-  {
-    id: 'millLine', mode: 'mill', name: 'Frezowanie linii', plc: 'MillST',
-    saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualXSaveZero, bManualYSaveZero' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualEndPositionSave' }],
-    fields: [
-      { k: 'twoPoint', label: 'Dwa punkty (inaczej kąt i długość) – bManualTwoPoint', t: 'bool', d: true },
-      { k: 'x0', label: 'Początek X', t: 'num', d: 600 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 600 },
-      { k: 'x1', label: 'Koniec X', t: 'num', d: 1600, show: (v) => v.twoPoint },
-      { k: 'y1', label: 'Koniec Y', t: 'num', d: 600, show: (v) => v.twoPoint },
-      { k: 'angle', label: 'Kąt [°] (fManualASetPosition)', t: 'num', d: 0, show: (v) => !v.twoPoint },
-      { k: 'length', label: 'Długość [mm]', t: 'num', d: 1000, show: (v) => !v.twoPoint },
-      { k: 'depth', label: 'Głębokość [mm]', t: 'num', d: 10 },
-      { k: 'passes', label: 'Przejścia (iMillsNumber)', t: 'int', d: 2 },
-      { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
-    ],
-    // MillST.GetPositions bez katu B: fMillAngle = 0 (A = 0), punkty narzedzia przesuniete o MillTiltDiameter/2
-    points(v) {
-      if (v.twoPoint !== false) return [[v.x0, v.y0], [v.x1, v.y1]];
-      const a = v.angle * Math.PI / 180;
-      return [[v.x0, v.y0], [v.x0 + Math.cos(a) * v.length, v.y0 + Math.sin(a) * v.length]];
-    },
-    path(v) { return [this.points(v)]; },
-    build(pb, v) {
-      const m = pb.m;
-      const ends = this.points(v).map(([x, y]) => toolXY(m, x, y));
-      pb.goto({ x: ends[0][0], y: ends[0][1], a: 0, b: 90 }, v.above, 'GoToPosition');
-      pb.axesTo({ z: workAxisZ(-v.above, 90, m) }, 'GoToPosition');
-      let side = 0;
-      depthTable(v.depth, v.passes).forEach((d) => {
-        pb.axesTo({ z: workAxisZ(d, 90, m) }, 'MillZDown');
-        side = 1 - side;
-        pb.linearTo({ x: ends[side][0], y: ends[side][1] }, 'Mill');
-      });
-      pb.zUp(workAxisZ(-v.above, 90, m), 'MoveAboveMaterial');
-    },
-  },
+  ...MILL_OPS,
   {
     id: 'drill', mode: 'drill', name: 'Wiercenie', plc: 'DrillST',
     saves: [{ x: 'x', y: 'y', name: 'punkt', plc: 'bManualXSaveZero, bManualYSaveZero' }],
@@ -124,47 +114,90 @@ export const TOOL_OPS = [
       { k: 'x', label: 'Punkt X (fManualXZeroPosition)', t: 'num', d: 1000 },
       { k: 'y', label: 'Punkt Y (fManualYZeroPosition)', t: 'num', d: 800 },
       { k: 'depth', label: 'Głębokość [mm] (fDrillDepth)', t: 'num', d: 40 },
+      DRILL_VEL,
       { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
     ],
     path(v) { return [[[v.x - 25, v.y], [v.x + 25, v.y], null, [v.x, v.y - 25], [v.x, v.y + 25]]]; },
     marks: (v) => [[v.x, v.y]],          // znacznik XY w punkcie otworu
-    // DrillST: GoToPosition nad punkt na wysokosc materialu (A 0, B 90), wrzeciono 95 % obrotow, MOVE_DRILL, MOVE_ABOVE_MATERIAL
+    // DrillST: GoToPosition nad punkt na wysokosc materialu (A 0, B 90), wrzeciono 95 % obrotow, MOVE_DRILL
+    // z fVelocityAxisZDrill, MOVE_ABOVE_MATERIAL z fVelocityAxisZApproach
     build(pb, v) {
       const m = pb.m;
       const [x, y] = toolXY(m, v.x, v.y);
       pb.goto({ x, y, a: 0, b: 90, z: workAxisZ(0, 90, m) }, v.above, 'MOVE_TO_START_POSITION');
       pb.dwell(1, 'WAIT_MAIN_DRIVE');
-      pb.axesTo({ z: workAxisZ(v.depth, 90, m) }, 'MOVE_DRILL');
+      pb.axesTo({ z: workAxisZ(v.depth, 90, m) }, 'MOVE_DRILL', drillZ(pb, v));
       pb.zUp(workAxisZ(-v.above, 90, m), 'MOVE_ABOVE_MATERIAL');
     },
   },
   {
+    id: 'drillSimple', mode: 'drill', name: 'Wiercenie w miejscu', plc: 'DrillSimpleST', here: true,
+    fields: [
+      { k: 'depth', label: 'Głębokość od aktualnego Z [mm] (fDrillDepth)', t: 'num', d: 40 },
+      DRILL_VEL,
+      { k: 'above', label: 'Wyjazd nad start [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
+    ],
+    // DrillSimpleST: bez dojazdu - wiercenie w aktualnym XY od aktualnego Z (z0): wrzeciono 95 %, Z do z0 + fDrillDepth
+    // z fVelocityAxisZDrill, potem Z na z0 - fParameterZMoveAboveMaterial z fVelocityAxisZApproach
+    build(pb, v) {
+      const z0 = pb.cur.z;
+      pb.dwell(1, 'WAIT_MAIN_DRIVE');
+      pb.axesTo({ z: z0 + v.depth }, 'MOVE_DRILL', drillZ(pb, v));
+      pb.zUp(z0 - v.above, 'MOVE_ABOVE');
+    },
+  },
+  {
     id: 'polishing', mode: 'polishing', name: 'Polerowanie', plc: 'Polishing',
-    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bSaveStartPosition' }],
+    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bSaveStartPosition' }, { z: 'height', name: 'Z', plc: 'bSaveZ' }],
     fields: [
       { k: 'xs', label: 'Start X (fXStartPosition)', t: 'num', d: 600 },
       { k: 'ys', label: 'Start Y (fYStartPosition)', t: 'num', d: 500 },
       { k: 'width', label: 'Szerokość w X [mm] (fWidth)', t: 'num', d: 1200 },
       { k: 'length', label: 'Długość w Y [mm] (fLength)', t: 'num', d: 800 },
       { k: 'jump', label: 'Skok [mm] (fJump)', t: 'num', d: 100 },
-      { k: 'type', label: 'Rodzaj (PolishingType)', t: 'sel', d: 0, o: POLISH_TYPES },
-      { k: 'vel', label: 'Prędkość [m/min] (fVelocity)', t: 'num', d: 3 },
+      { k: 'type', label: 'Rodzaj (PolishingType)', t: 'sel', d: 0, o: POLISH_TYPES, show: (v) => !v.queue },
+      { k: 'vel', label: 'Prędkość [m/min] (fVelocityMillMode)', t: 'num', d: 3 },
+      { k: 'heightMode', label: 'Z z wysokości materiału (bMaterialHeightMode)', t: 'bool', d: true },
+      { k: 'height', label: 'Wysokość Z osi [mm] (fHeightPosition)', t: 'num', d: 0, show: (v) => !v.heightMode },
+      { k: 'queue', label: 'Kolejka narzędzi (aQueueTools)', t: 'bool', d: false },
+      { k: 'reps', label: 'Powtórzenia narzędzi 1–10 (aToolRepetitions)', t: 'list', d: '1', show: (v) => !v.queue },
+      { k: 'qXY', label: 'Kolejka: XY na narzędzie 1–10 (Actions[XY])', t: 'list', d: '1', show: (v) => v.queue },
+      { k: 'qYX', label: 'Kolejka: YX na narzędzie 1–10 (Actions[YX])', t: 'list', d: '0', show: (v) => v.queue },
+      { k: 'qCCW', label: 'Kolejka: prostokąt CCW na narzędzie 1–10', t: 'list', d: '0', show: (v) => v.queue },
+      { k: 'qCW', label: 'Kolejka: prostokąt CW na narzędzie 1–10', t: 'list', d: '0', show: (v) => v.queue },
+      { k: 'change', label: 'Wymiana narzędzia [s] (PolishingToolChange – postój)', t: 'num', d: 10 },
       { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterAboveMaterialPosition)', t: 'num', d: 20 },
     ],
-    path(v) { return [polishingPath(v)]; },
-    // Polishing: MOVE_TO_START_POSITION (A 0, B 90, Z materialu z ActiveTool.Height - bMaterialHeightMode), linie X / Y
-    // z fVelocity, END_MOVE_ABOVE_MATERIAL
+    path(v) {
+      const types = [...new Set(polishingJobs(v).map((j) => j.type))];
+      return (types.length ? types : [v.type]).map((type) => polishingPath({ ...v, type }));
+    },
+    // Polishing: dla kazdego narzedzia (rosnaco) i powtorzenia MOVE_TO_START_POSITION (A 0, B 90, Z z wysokosci
+    // materialu albo fHeightPosition + ActiveTool.Height), linie X / Y z fVelocityMillMode, END_MOVE_ABOVE_MATERIAL;
+    // miedzy narzedziami PolishingToolChange (magazyn - pozycje nieznane: Z w gore i postoj)
     build(pb, v) {
       const m = pb.m;
-      const pts = polishingPath(v).map(([x, y]) => toolXY(m, x, y));
+      const zWork = v.heightMode === false ? polishAxisZ(v.height, m) : workAxisZ(0, 90, m);
+      const zAbove = zWork - v.above;
       const vel = Math.max(v.vel, 0.01) * 1000 / 60;
-      pb.goto({ x: pts[0][0], y: pts[0][1], a: 0, b: 90, z: workAxisZ(0, 90, m) }, v.above, 'MOVE_TO_START_POSITION');
-      pb.dwell(1, 'CHECK_START_POSITION');
-      for (let i = 1; i < pts.length; i++) {
-        const step = pts[i][0] !== pts[i - 1][0] ? 'MOVE_POLISHING_X' : 'MOVE_POLISHING_Y';
-        pb.linearTo({ x: pts[i][0], y: pts[i][1] }, step, vel);
+      let tool = null;
+      for (const job of polishingJobs(v)) {
+        pb.label = `Narzędzie ${job.tool}, ${POLISH_TYPES[job.type][1].split(' ')[0]}`;
+        if (tool !== null && job.tool !== tool) {
+          pb.zUp(zAbove, 'END_MOVE_ABOVE_MATERIAL');
+          pb.dwell(Math.max(0, v.change), 'CHANGE_TOOL');
+        }
+        tool = job.tool;
+        const pts = polishingPath({ ...v, type: job.type }).map(([x, y]) => toolXY(m, x, y));
+        pb.goto({ x: pts[0][0], y: pts[0][1], a: 0, b: 90, z: zWork }, v.above, 'MOVE_TO_START_POSITION');
+        pb.dwell(1, 'CHECK_START_POSITION');
+        for (let i = 1; i < pts.length; i++) {
+          const step = pts[i][0] !== pts[i - 1][0] ? 'MOVE_POLISHING_X' : 'MOVE_POLISHING_Y';
+          pb.linearTo({ x: pts[i][0], y: pts[i][1] }, step, vel);
+        }
+        pb.zUp(zAbove, 'END_MOVE_ABOVE_MATERIAL');
       }
-      pb.zUp(workAxisZ(-v.above, 90, m), 'END_MOVE_ABOVE_MATERIAL');
+      pb.label = null;
     },
   },
 ];

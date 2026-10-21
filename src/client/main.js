@@ -16,6 +16,7 @@ import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../sh
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, jogVelocity, relativeMoveDynamics, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
+import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
 import { parseGcode, gcodeSummary } from '../shared/gcode.js';
 import { cncProgram, cncTipPath } from '../shared/cnc.js';
@@ -392,7 +393,7 @@ function saveForms() {
     state.forms.ops[op.id] = readGroup('op', op.fields);
     state.forms.op = op.id;
     state.forms.modeOp = { ...(state.forms.modeOp || {}), [currentMode()]: op.id };
-    state.forms.common = readGroup('common', COMMON_FIELDS);
+    if (commonFields()) state.forms[commonSlot()] = readGroup('common', commonFields());
     if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
     if ($('#figFields').children.length) {
       const fig = currentFig();
@@ -412,7 +413,7 @@ function loadForms() {
   writeFields('d', off.dynamics);
   writeArea('board', off.board);
   writeArea('rock', off.rock);
-  state.forms = { op: 'cut', ops: {}, common: defaults(COMMON_FIELDS), auto: demoAuto() };
+  state.forms = { op: 'cut', ops: {}, common: defaults(COMMON_FIELDS), millCommon: defaults(MILL_COMMON_FIELDS), auto: demoAuto() };
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (saved) {
@@ -426,6 +427,7 @@ function loadForms() {
           ...state.forms, ...saved.forms,
           ops: saved.forms.ops || {},
           common: { ...state.forms.common, ...(saved.forms.common || {}) },
+          millCommon: { ...state.forms.millCommon, ...(saved.forms.millCommon || {}) },
           auto: saved.forms.auto?.rows ? saved.forms.auto : state.forms.auto,
         };
       }
@@ -447,26 +449,33 @@ const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
 
 // saves - przyciski "Zapisz" punktow (#139): wiersz z przyciskiem za polem Y punktu
 function renderGroup(container, group, fields, values, saves = []) {
-  container.innerHTML = fields.map((f) => fieldHtml(group, f) + saves.filter((sv) => sv.y === f.k).map((sv) => saveHtml(group, sv)).join('')).join('');
+  container.innerHTML = fields.map((f) => fieldHtml(group, f) + saves.filter((sv) => (sv.y ?? sv.z) === f.k).map((sv) => saveHtml(group, sv)).join('')).join('');
   writeGroup(group, fields, values);
   applyVisibility(group, fields);
   for (const el of container.querySelectorAll('[data-g]')) {
     el.addEventListener('input', () => { applyVisibility(group, fields); offlineFormsChanged(); });
   }
   for (const b of container.querySelectorAll('[data-save-x]')) b.onclick = () => savePoint(group, fields, b.dataset.saveX, b.dataset.saveY);
+  for (const b of container.querySelectorAll('[data-save-z]')) b.onclick = () => savePoint(group, fields, null, null, b.dataset.saveZ);
 }
 
 function saveHtml(group, sv) {
+  // sam Z (polerowanie: bSaveZ - aktualna pozycja osi Z jako fHeightPosition)
+  if (sv.z) {
+    const tz = `Wpisz aktualną pozycję osi Z jako ${sv.name}${sv.plc ? ` (jak w PLC: ${sv.plc})` : ''}`;
+    return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.z}"><button data-save-z="${sv.z}" title="${tz}">Zapisz ${sv.name}</button></div>`;
+  }
   const title = `Wpisz aktualną pozycję osi X / Y jako ${sv.name}${sv.plc ? ` (jak w PLC: ${sv.plc})` : ''}`;
   return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.y}"><button data-save-x="${sv.x}" data-save-y="${sv.y}" title="${title}">Zapisz ${sv.name}</button></div>`;
 }
 
-// "Zapisz": aktualna pozycja osi X / Y do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
-function savePoint(group, fields, kx, ky) {
+// "Zapisz": aktualna pozycja osi X / Y (albo Z) do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
+function savePoint(group, fields, kx, ky, kz = null) {
   const p = state.pose;
   if (!p) return;
-  fieldEl(group, kx).value = savedPosition(p.x);
-  fieldEl(group, ky).value = savedPosition(p.y);
+  if (kx) fieldEl(group, kx).value = savedPosition(p.x);
+  if (ky) fieldEl(group, ky).value = savedPosition(p.y);
+  if (kz) fieldEl(group, kz).value = savedPosition(p.z);
   applyVisibility(group, fields);
   offlineFormsChanged();
   requestDraw();
@@ -475,14 +484,17 @@ function savePoint(group, fields, kx, ky) {
 // Pola z warunkiem show(v) widoczne tylko przy zaznaczonej opcji (np. koniec X/Y tylko przy "dwa punkty")
 function applyVisibility(group, fields) {
   const v = readGroup(group, fields);
+  const mode = currentMode();
   for (const f of fields) {
-    if (!f.show) continue;
+    if (!f.show && !f.modes) continue;
+    // modes - pole tylko w podanych trybach (#131: w pile ukryte pola frezu i odwrotnie)
+    const visible = (!f.show || f.show(v)) && (!f.modes || f.modes.includes(mode));
     const el = fieldEl(group, f.k);
     const box = el?.closest('label');
-    if (box) box.hidden = !f.show(v);
+    if (box) box.hidden = !visible;
     // przycisk "Zapisz" punktu widoczny razem z polem Y punktu
     const save = $(`[data-save-group="${group}"][data-save-of="${f.k}"]`);
-    if (save) save.hidden = !f.show(v);
+    if (save) save.hidden = !visible;
   }
 }
 
@@ -505,7 +517,7 @@ function readGroup(group, fields) {
   return out;
 }
 
-// Operacje trybu: pila - ops.js (CutST ...), frez / wiercenie / polerowanie - tools.js
+// Operacje trybu: pila - ops.js (CutST ...), frez - millops.js (przez tools.js), wiercenie / polerowanie - tools.js
 const modeOps = () => (currentMode() === 'saw' ? OPS : toolOpsFor(currentMode()));
 const currentOp = () => modeOps().find((o) => o.id === $('#op').value) || modeOps()[0];
 
@@ -519,8 +531,8 @@ function fillOpSelect() {
 function showOp() {
   const op = currentOp();
   $('#opHint').textContent = `Jak w PLC: ${op.plc}`;
-  // glebokosc / wychyl / wyjazd wspolne tylko dla pily - operacje narzedzi maja wlasne pola
-  $('#commonBox').hidden = currentMode() !== 'saw';
+  // wspolne pola: pila - glebokosc / wychyl / wyjazd, frez - tablica glebokosci frezu (Depths), wiercenie / polerowanie - brak
+  renderCommon();
   renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields), op.saves);
   updateCutInfo();
   requestDraw();
@@ -550,7 +562,7 @@ function fillAutoKinds() {
 
 function showFig() {
   const fig = currentFig();
-  const kinds = { cut: 'piła – ProgramAutoCutST', profile: 'profile – ProgramAutoProfileST', mill: 'frez – ProgramAutoMillST, tylko podgląd' };
+  const kinds = { cut: 'piła – ProgramAutoCutST', profile: 'profile – ProgramAutoProfileST', mill: 'frez – ProgramAutoMillST' };
   $('#figHint').textContent = `Jak w PLC: FigureType.${fig.id} (${fig.v}), ${fig.plc}; program: ${kinds[fig.kind] || fig.kind}`;
   renderGroup($('#figFields'), 'fig', fig.fields, state.forms.figs?.[fig.id] || defaults(fig.fields));
   // litery wymiarow przy polach (jak tekst obok pola na ekranie figury w HMI)
@@ -618,9 +630,25 @@ function fillFigure() {
   }
 }
 
-// Wspolne parametry ciecia + szerokosc tarczy z parametrow maszyny
+// Wspolne parametry trybu: pila - ciecie (COMMON_FIELDS), frez - Depths frezu (MILL_COMMON_FIELDS)
+const commonFields = () => ({ saw: COMMON_FIELDS, mill: MILL_COMMON_FIELDS })[currentMode()] || null;
+const commonSlot = () => (currentMode() === 'mill' ? 'millCommon' : 'common');
+
+function renderCommon() {
+  const fields = commonFields();
+  const box = $('#commonFields');
+  $('#commonBox').hidden = !fields;
+  $('#commonBox summary').textContent = currentMode() === 'mill' ? 'Głębokości frezu (Depths), wyjazd' : 'Głębokość, wychył, wyjazd';
+  if (!fields || box.dataset.mode === currentMode()) return;
+  box.dataset.mode = currentMode();
+  renderGroup(box, 'common', fields, { ...defaults(fields), ...(state.forms[commonSlot()] || {}) });
+}
+
+// Wspolne parametry trybu + szerokosc tarczy z parametrow maszyny
 function commonValues() {
-  return { ...readGroup('common', COMMON_FIELDS), bladeWidth: offlineMachine().bladeWidth };
+  const fields = commonFields() || [];
+  const v = $('#commonFields').dataset.mode === currentMode() ? readGroup('common', fields) : { ...defaults(fields), ...(state.forms[commonSlot()] || {}) };
+  return { ...v, bladeWidth: offlineMachine().bladeWidth };
 }
 
 // --- automat (tabela krokow jak lista programu w HMI) -----------------------------------------
@@ -661,7 +689,7 @@ function renderAutoTable(a, editable) {
   for (const el of $$('#autoTable [data-a]')) el.addEventListener('input', autoChanged);
 }
 
-const AUTO_HEAD = '#autoKind, #autoFrom, #autoOX, #autoOY, #autoPJump, #autoSJump, #autoOuterInner, #autoSArrays';
+const AUTO_HEAD = '#autoKind, #autoFrom, #autoOX, #autoOY, #autoPJump, #autoSJump, #autoOuterInner, #autoSArrays, #autoRepeatOver';
 
 function writeAutoHeader(a, editable) {
   $('#autoKind').value = a.kind;
@@ -670,6 +698,7 @@ function writeAutoHeader(a, editable) {
   $('#autoPJump').value = a.pJump; $('#autoSJump').value = a.sJump;
   $('#autoOuterInner').checked = Boolean(a.outerInner);
   $('#autoSArrays').checked = Boolean(a.sArrays);
+  $('#autoRepeatOver').checked = Boolean(a.repeatOver);
   for (const el of $$(AUTO_HEAD)) el.disabled = !editable;
   for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
   $('#autoEdit').hidden = !editable;
@@ -689,7 +718,7 @@ function readAuto() {
     kind: $('#autoKind').value, from: Math.max(1, Math.round(Number($('#autoFrom').value) || 1)),
     ox: Number($('#autoOX').value) || 0, oy: Number($('#autoOY').value) || 0,
     pJump: Number($('#autoPJump').value) || 1, sJump: Number($('#autoSJump').value) || 50,
-    outerInner: $('#autoOuterInner').checked, sArrays: $('#autoSArrays').checked,
+    outerInner: $('#autoOuterInner').checked, sArrays: $('#autoSArrays').checked, repeatOver: $('#autoRepeatOver').checked,
     rows: rows.filter(Boolean),
   };
 }
@@ -717,9 +746,10 @@ function autoChanged() {
 
 function buildAutoProgram(from) {
   const a = readAuto();
-  if (a.kind === 'mill') throw new Error('frez (ProgramAutoMillST) – Visu3D nie symuluje frezu, bufor tylko do podglądu');
   const pb = new ProgramBuilder(from, offlineMachine(), offlineDynamics());
-  addAutomat(pb, a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues());
+  // frez (#131): ProgramAutoMillST z tablica glebokosci frezu, bProgramReapitingOver - zamkniete ksztalty
+  if (a.kind === 'mill') addAutomatMill(pb, a.rows, a.rows.length, [a.ox, a.oy], commonValues(), { closedShapes: a.repeatOver, startIndex: (a.from || 1) - 1 });
+  else addAutomat(pb, a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues());
   pb.dwell(0.5, 'CutFinish');
   return pb.build();
 }
@@ -729,17 +759,16 @@ function updateAutoInfo() {
   const a = readAuto();
   const d = offlineDynamics();
   let text = `Kroki: ${a.rows.length}`;
-  if (a.kind === 'mill') {
-    const millWidth = offlineMachine().millWidth;
-    text += '<br>Bufor frezu (ProgramAutoMillST) jak w PLC – tylko podgląd toru, bez symulacji ruchu (frez pominięty)';
-    text += outsideWarning(previewMill(a.rows, a.rows.length, [a.ox, a.oy], millWidth).map((it) => it.path).filter(Boolean));
+  if (a.kind === 'mill' && currentMode() !== 'mill') {
+    text += '<br>Bufor frezu (ProgramAutoMillST) – symulacja w trybie frezu (Bazowanie: Frez)';
   } else if (!validDynamics(d)) {
     text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
   } else {
     try {
       const prog = buildAutoProgram(state.pose || state.cfg.offline.start);
       text += `, czas programu ${formatTime(prog.duration)}`;
-      text += outsideWarning(previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues()).map((it) => it.path));
+      text += outsideWarning((a.kind === 'mill' ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], offlineMachine().millWidth)
+        : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues())).map((it) => it.path).filter(Boolean));
     } catch (err) {
       text += `<br><span style="color:var(--bad)">Błąd programu: ${err.message}</span>`;
     }
@@ -822,13 +851,13 @@ function planItems() {
   }
   const op = currentOp();
   const v = state.forms.ops[op.id] || defaults(op.fields);
-  const common = { ...(state.forms.common || {}), bladeWidth: bw };
-  const key = JSON.stringify(['op', op.id, v, common]);
+  const common = { ...(state.forms[commonSlot()] || {}), bladeWidth: bw };
+  const key = JSON.stringify(['op', op.id, v, common, state.machine.millWidth]);
   if (key !== planCache.key) {
     let items = [];
     try {
-      const lines = op.lines ? op.lines(v, common) : [];
-      const paths = op.path ? op.path(v, common) : [];
+      const lines = op.lines ? op.lines(v, common, state.machine) : [];
+      const paths = op.path ? op.path(v, common, state.machine) : [];
       // marks - wlasne punkty akcji (wiercenie: punkt otworu zamiast konca krzyzyka)
       const marks = op.marks ? op.marks(v) : null;
       items = [...lines.map((l) => ({ path: [[l.x0, l.y0], [l.x1, l.y1]] })), ...paths.map((path) => (marks ? { path, marks } : { path }))];
@@ -880,9 +909,10 @@ function updateCutInfo() {
   const d = offlineDynamics();
   let text = '';
   try {
-    const lines = op.lines ? op.lines(v, common) : [];
-    const paths = op.path ? op.path(v, common) : [];
-    if (lines.length) text += `Linie cięcia: ${lines.length}`;
+    const m = offlineMachine();
+    const lines = op.lines ? op.lines(v, common, m) : [];
+    const paths = op.path ? op.path(v, common, m) : [];
+    if (lines.length) text += `${currentMode() === 'saw' ? 'Linie cięcia' : 'Linie frezu'}: ${lines.length}`;
     if (validDynamics(d)) {
       const prog = buildOpProgram(state.pose || state.cfg.offline.start);
       text += `${text ? ', ' : ''}czas programu ${formatTime(prog.duration)}`;
@@ -1511,6 +1541,9 @@ function toolModeChanged() {
     if (!$('.tab[data-tab="auto"]').hidden) showAuto();
   }
   updateTabs();
+  // elementy tylko dla trybu (data-modes="saw" / "mill drill polishing" ...), pola kontekstu figur wg modes
+  for (const el of $$('[data-modes]')) el.hidden = !el.dataset.modes.split(/\s+/).includes(mode.id);
+  if (state.forms) applyVisibility('figctx', FIGURE_CONTEXT_FIELDS);
   const drive = mode.id === 'saw' ? 'Piła' : 'Wrzeciono';
   $('#sawTitle').textContent = drive;
   $('#sawToggle').textContent = `${drive} ${state.saw.manual ? 'OFF' : 'ON'}`;
@@ -1601,7 +1634,7 @@ function bindUi() {
   }
   fillOpSelect();
   $('#op').onchange = () => { saveForms(); showOp(); };
-  renderGroup($('#commonFields'), 'common', COMMON_FIELDS, state.forms.common);
+  renderCommon();
   for (const el of $$(AUTO_HEAD)) {
     el.addEventListener('input', () => { if (el.id === 'autoKind') renderAutoTable(readAuto(), true); autoChanged(); });
   }
@@ -1620,7 +1653,8 @@ function bindUi() {
   $('#figFill').onclick = fillFigure;
   $('#autoStart').onclick = () => {
     const d = offlineDynamics();
-    if (!validDynamics(d) || state.mode !== 'offline' || readAuto().kind === 'mill') return;
+    const kind = readAuto().kind;
+    if (!validDynamics(d) || state.mode !== 'offline' || (kind === 'mill') !== (currentMode() === 'mill')) return;
     clearCuts();
     state.planSource = 'auto';
     startProgram(buildAutoProgram(state.pose));

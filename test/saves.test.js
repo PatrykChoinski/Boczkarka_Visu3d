@@ -5,9 +5,11 @@ import { TOOL_OPS } from '../src/shared/tools.js';
 
 test('Zapisz (#139): kazda operacja ma przyciski punktow na istniejacych polach X / Y', () => {
   for (const op of [...OPS, ...TOOL_OPS]) {
+    if (op.here) continue;                // DrillSimpleST - w aktualnej pozycji, bez punktow
     assert.ok(op.saves?.length, `${op.id}: brak przyciskow Zapisz`);
     const keys = new Set(op.fields.map((f) => f.k));
     for (const sv of op.saves) {
+      if (sv.z) { assert.ok(keys.has(sv.z), `${op.id}: ${sv.z}`); continue; }   // sam Z (bSaveZ)
       assert.ok(keys.has(sv.x) && keys.has(sv.y), `${op.id}: ${sv.x} / ${sv.y}`);
       assert.ok(sv.name);
       // pole Y zapisywanego punktu jest za polem X (przycisk renderowany za polem Y)
