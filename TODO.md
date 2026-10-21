@@ -136,7 +136,8 @@ Gałąź `develop/WizuGCode` (Visu3D i repo główne). Przykładowy plik: `Dodat
 - [x] Testy: parser na fragmencie pliku, G54 → osie, mapa wysokości (frez schodzi na zadaną głębokość), program z przykładowego pliku
 - [x] Sprawdzenie w przeglądarce na przykładowym pliku (wczytanie 0,2 s, „Wynik od razu” 1,7 s, siatka 399 × 504 co 1 mm; relief Madonny z mapy wysokości – zgodny z plikiem)
 - [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit (bez push)
-- [ ] Na maszynie: porównanie z rzeczywistym frezowaniem (G54, kierunek Y, głębokość)
+- [x] Online z testowym PLC (`--mode cnc`: frez po bazowaniu, program G-kodu od G54, `HMI.G54_X / Y / Z`): G54 z PLC w polach (zablokowane), ruchy z PLC wycinają mapę wysokości – 214 cm², 6 mm jak w programie
+- [ ] Na maszynie (robi użytkownik): porównanie z rzeczywistym frezowaniem (G54, kierunek Y, głębokość)
 - [x] Animacja w przeglądarce: cały plik Madonny na 1000× – mapa wysokości tnie się w trakcie, podsumowanie odświeżane co 1 s (koniec po 17 886 s programu; wynik = „Wynik od razu” w 99,8 % siatki, różnice > 0,5 mm w 342 komórkach na narożnikach – próbki co 10 s przy 1000× łączone prostą)
 - [x] Poprawka: po przeładowaniu strony zbazowany tryb wracał z B 0° (frez poziomo, program CNC nic nie ciął) – teraz B jak po bazowaniu; ostrzeżenie w zakładce G-kod, gdy B ≠ 90°
 - [x] Tempo animacji 500× i 1000× (program Madonny ≈ 5 h ruchu)

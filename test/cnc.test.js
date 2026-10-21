@@ -127,3 +127,20 @@ test('animacja: probki programu (czolo frezu z pozycji osi) wycinaja to samo co 
   near(hm.top - hm.minZ(), 1.505, 1e-3);
   assert.ok(hm.cut > 500, `obrobione komorki ${hm.cut}`);
 });
+
+test('testowy PLC --mode cnc: frez po bazowaniu, G54 w HMI.G54_X / Y / Z, czolo schodzi na glebokosc programu (6 mm)', async () => {
+  const { plcTimeline, cncG54 } = await import('./fake-plc-server.js');
+  const tl = plcTimeline('cnc');
+  const v0 = tl(0);
+  assert.equal(v0.modeMill, true);
+  assert.equal(v0.systemBased, true);
+  const m = machine({ ...v0, mode: 'mill' });
+  assert.deepEqual([v0.g54X, v0.g54Y, v0.g54Z], Object.values(cncG54(m)));
+  let deepest = Infinity;
+  for (let t = 0; t < 120; t += 0.1) {
+    const v = tl(t);
+    assert.equal(v.b, 90);
+    deepest = Math.min(deepest, toolFrame(v, m).tip[2]);
+  }
+  near(topZ(m) - deepest, 6, 1e-6);
+});

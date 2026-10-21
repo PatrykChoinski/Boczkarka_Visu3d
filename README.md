@@ -379,6 +379,7 @@ w materiale – jak moduł CNC w PLC:
   zakres X / Y / Z, ostrzeżenie, gdy program schodzi głębiej niż grubość kamienia.
 
 Przykładowy plik: `Dodatkowe Programy/madonna_frez_fi25mm_fixed.nc` (repo główne, frez Ø25). Testy: `test/cnc.test.js`.
+Online bez maszyny: `node test/fake-plc-server.js --mode cnc` (frez wykonuje program `CNC_GCODE` od G54 700 / 900) + `npm start`.
 
 ### Rysunki figur w automacie (#138)
 
