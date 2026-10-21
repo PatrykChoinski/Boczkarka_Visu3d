@@ -134,7 +134,7 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 
 | Poziom | Dostęp |
 |---|---|
-| niezalogowany | podgląd: widok 3D, „Stół i kamień” i „Bazowanie” tylko do odczytu, online automat z PLC |
+| niezalogowany | podgląd: widok 3D, „Bazowanie” tylko do odczytu, online automat z PLC; bez „Stołu i kamienia” |
 | Operator | praca: Operacja, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, edycja stołu i kamienia |
 | Serwis | jak Operator + Parametry i opcje serwisowe (`bService…`, pola „(serwis)”) |
 | Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |

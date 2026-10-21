@@ -1681,7 +1681,7 @@ function isBased() {
 // Operacja, Automat - wg trybu i tylko po bazowaniu (Operacja tylko offline); Ruchy reczne (okno z gornego menu, #143) -
 // offline, po bazowaniu. Bez bazowania (#144) ustawienia (stol i kamien, Pozycja, Parametry) zablokowane.
 // Logowanie (#145): niezalogowany - podglad, Operator - praca, Serwis - Parametry i opcje serwisowe, Admin - parametry figur
-const TAB_LEVEL = { cut: 1, cnc: 1, pos: 1, par: 2 };
+const TAB_LEVEL = { stone: 1, cut: 1, cnc: 1, pos: 1, par: 2 };
 
 function updateTabs() {
   const mode = modeById(currentMode());
@@ -1712,7 +1712,11 @@ function updateTabs() {
   for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
   for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
   const active = $('.tabs button.active');
-  if (!active || active.hidden) showTab(state.mode === 'online' && !$('.tabs [data-tab="auto"]').hidden ? 'auto' : 'stone');
+  // zakladka zniknela (tryb, bazowanie, wylogowanie): online automat, potem Stol i kamien, inaczej pierwsza widoczna
+  if (!active || active.hidden) {
+    const visible = [...$$('.tabs button')].filter((t) => !t.hidden).map((t) => t.dataset.tab);
+    showTab(['auto', 'stone'].find((t) => visible.includes(t) && (t !== 'auto' || state.mode === 'online')) || visible[0]);
+  }
 }
 
 // Zmiana trybu / bazowania: narzedzie w widoku, zakladki, operacje, figury i rodzaje automatu, napisy trybu
