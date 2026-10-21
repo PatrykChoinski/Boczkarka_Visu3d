@@ -50,6 +50,8 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/cuts.js` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
 | `src/shared/tools.js` | tryby po bazowaniu (`BaseHomingST`), program bazowania, operacje wiercenia (`DrillST`, `DrillSimpleST`) i polerowania (`Polishing`), lista operacji narzędzi |
 | `src/shared/millops.js` | programy frezu jak w PLC (#131): `MillST`, `MillArcST`, `MillCircleST`, `MillElipseST`, `MillStripesST`, `MillBlocksST`, `EdgesST` (frez), tablica głębokości frezu, automat `ProgramAutoMillST` + `MillShapeST` |
+| `src/server/auth.js` | logowanie (#145): użytkownicy z `users.json` (skróty scrypt), sesje, wylogowanie po bezczynności |
+| `scripts/users.mjs` | zakładanie / zmiana haseł użytkowników w `users.json` |
 | `src/shared/toolcuts.js` | zapis śladu narzędzia na wrzecionie (rowki, otwory, polerowana powierzchnia) |
 | `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
 | `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne, jednostki (m/min, m/s²) |
@@ -114,7 +116,8 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
 
 1. `powershell -File build.ps1` na komputerze z Node.js 20+. Skrypt robi
    `npm ci`, testy, buduje stronę i składa `dist\VizuApp\`: `node.exe`, `app\`
-   (serwer, strona, `node_modules` bez narzędzi), `config.json` i `vizu.ps1`.
+   (serwer, strona, `node_modules` bez narzędzi), `config.json`, `vizu.ps1`
+   i `users.json` (jeśli jest – patrz „Logowanie”).
 2. Zawartość `dist\VizuApp\` (ok. 110 MB, z czego 92 MB to `node.exe`)
    skopiuj na maszynę do `D:\VizuApp\`. Instalacja Node.js na maszynie nie jest
    potrzebna.
@@ -122,6 +125,29 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
    configu jest już `SupportOPCUA` i potrzebne zmienne (`HMI`, `HMI2`,
    `Communication`, `IOVars`).
 4. Na panelu potrzebna jest przeglądarka z WebGL (Edge albo Chrome).
+
+### Logowanie (#145)
+
+Użytkownicy jak w zgłoszeniu: **Operator**, **Serwis**, **Admin**. HMI i PLC
+nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekranu
+„serwis”), więc poziomy są takie:
+
+| Poziom | Dostęp |
+|---|---|
+| niezalogowany | podgląd: widok 3D, „Stół i kamień” i „Bazowanie” tylko do odczytu, online automat z PLC |
+| Operator | praca: Operacja, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, edycja stołu i kamienia |
+| Serwis | jak Operator + Parametry i opcje serwisowe (`bService…`, pola „(serwis)”) |
+| Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |
+
+- Hasła sprawdza serwer. W pliku `users.json` obok `config.json` są tylko
+  skróty scrypt haseł (sól + hash). Pliku nie ma w repo (`.gitignore`, repo jest
+  publiczne). Zakładanie i zmiana hasła (hasło z wejścia, nie z linii poleceń):
+  `node scripts/users.mjs set Operator`, `… set Serwis`, `… set Admin`;
+  `node scripts/users.mjs list` – lista.
+- Wylogowanie po bezczynności: `auth.timeoutMin` w `config.json` (domyślnie
+  30 min, 0 – bez limitu). Sesja trwa do zamknięcia karty przeglądarki.
+- Bez `users.json` (i w wersji na GitHub Pages) logowanie jest wyłączone i
+  wszystko jest dostępne.
 
 ## Ekran
 
@@ -246,8 +272,13 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     widać tylko przy „dwóch punktach”, kąt pasów tylko przy „pod kątem”,
     tabelę szerokości tylko bez stałej szerokości, pola łuku wg rodzaju, a
     tablicę głębokości wg trybu.
-  - Wspólne parametry cięcia: tablica głębokości, skos, wyjazd nad materiał,
+  - Wspólne parametry cięcia: tablica głębokości, wyjazd nad materiał,
     wolniejsza końcówka.
+  - Wychył (#142): jak na ekranie `manual_ciecie` – tylko w cięciu prostym
+    (`CutST`): „Cięcie pod kątem – wychył B” (`bManualBAngle`) i kąt
+    `fManualBSetPosition` (pole −2,5…90°, skos tylko dla 0 < B < 90 jak
+    `GetPositions`). Pasy, bloki, krawędzie, łuk i okrąg w PLC zerują
+    `bManualBAngle`, więc tu też tną pionowo; skosy automatu – kąt z wiersza.
   - Przebieg jak w PLC (`CutST` i programy z zadania `Programs`), dojazd jak
     `GoToPositionST`.
   - Przyciski: Start / Pauza / Stop. **Tempo animacji** (pasek u góry): 1× to
@@ -293,8 +324,11 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     - `PROFILES` (100) nie jest tworzeniem figury, tylko liczeniem profilu na
       istniejącym buforze, więc go tu nie ma.
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
-- **Ręczne** (offline, wizualizacja nie steruje maszyną): jak ekran ruchów
-  ręcznych w HMI.
+- **Ruchy ręczne** (#143, offline, wizualizacja nie steruje maszyną): jak ekran
+  ruchów ręcznych w HMI, jako okno otwierane przyciskiem „Ruchy ręczne” w
+  górnym menu. Okno przesuwa się za nagłówek (pozycja zapamiętana w
+  przeglądarce) i zamyka przyciskiem ×; przycisk jest aktywny tylko po
+  bazowaniu.
   - **Prędkości ruchów** (#140, na dole ekranu): prędkość każdej osi osobno – X, Y, Z
     w m/min, A, B w °/s (`fJogXVelocity` … `fJogBVelocity`). To te same
     wartości co „Jog” w Parametrach, zmiana w jednym miejscu jest widoczna w
@@ -350,8 +384,10 @@ narzędzie w widoku zamienia się na narzędzie trybu:
 | Polerowanie | talerz na uchwycie | średnica z Parametrów (w PLC nie ma takiej zmiennej), długość `fParameterMillCorrection − ActiveTool.Height` |
 
 Widoczne ekrany zależą od trybu i bazowania. „Stół i kamień”, „Pozycja”,
-„Parametry” i „Bazowanie” są zawsze. „Operacja”, „Automat” i „Ręczne” są
-tylko po bazowaniu i tylko te, które dotyczą trybu:
+„Parametry” i „Bazowanie” są zawsze. „Operacja”, „Automat” i „Ruchy ręczne”
+są tylko po bazowaniu i tylko te, które dotyczą trybu. Bez bazowania (#144)
+nie ma żadnych ruchów poza bazowaniem, a ustawienia (stół i kamień, Pozycja,
+Parametry) są zablokowane – na górze panelu jest komunikat:
 
 - piła: wszystkie operacje piły, automat cięcia i profili;
 - frez (#131): linia (`MillST`: dwa punkty albo kąt i długość), łuk

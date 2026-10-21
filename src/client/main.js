@@ -39,6 +39,8 @@ const state = {
   // tryb po bazowaniu (offline - ekran Bazowanie; online - bModeSaw / Mill / Drill / Polishing i bSystemBased z PLC),
   // homing - docelowy tryb bazowania w toku
   tool: { mode: 'saw', based: true, homing: null, key: '' },
+  // logowanie (#145): enabled - serwer ma users.json; level 0 niezalogowany, 1 Operator, 2 Serwis, 3 Admin
+  auth: { enabled: false, users: [], user: null, level: 0, token: null, timeoutMin: 30, lastActivity: 0, lastPing: 0 },
   extent: null,
   extentProvisional: true,
   stoneKey: '',
@@ -442,7 +444,8 @@ function fieldHtml(group, f) {
   if (f.t === 'bool') return `<label class="cb wide"><input type="checkbox" ${attrs}> ${f.label}</label>`;
   if (f.t === 'sel') return `<label>${f.label}<select ${attrs}>${f.o.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select></label>`;
   if (f.t === 'list') return `<label class="wide">${f.label}<input type="text" ${attrs}></label>`;
-  return `<label>${f.label}<input type="number" step="${f.t === 'int' ? 1 : 'any'}" ${attrs}></label>`;
+  const lim = `${f.min !== undefined ? ` min="${f.min}"` : ''}${f.max !== undefined ? ` max="${f.max}"` : ''}`;
+  return `<label>${f.label}<input type="number" step="${f.t === 'int' ? 1 : 'any'}"${lim} ${attrs}></label>`;
 }
 
 const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
@@ -486,6 +489,8 @@ function applyVisibility(group, fields) {
   const v = readGroup(group, fields);
   const mode = currentMode();
   for (const f of fields) {
+    // #145: pola serwisowe (bService..., "(serwis)") od poziomu Serwis
+    if (isServiceField(f)) fieldEl(group, f.k)?.closest('label')?.classList.toggle('noaccess', accessLevel() < 2);
     if (!f.show && !f.modes) continue;
     // modes - pole tylko w podanych trybach (#131: w pile ukryte pola frezu i odwrotnie)
     const visible = (!f.show || f.show(v)) && (!f.modes || f.modes.includes(mode));
@@ -638,7 +643,7 @@ function renderCommon() {
   const fields = commonFields();
   const box = $('#commonFields');
   $('#commonBox').hidden = !fields;
-  $('#commonBox summary').textContent = currentMode() === 'mill' ? 'Głębokości frezu (Depths), wyjazd' : 'Głębokość, wychył, wyjazd';
+  $('#commonBox summary').textContent = currentMode() === 'mill' ? 'Głębokości frezu (Depths), wyjazd' : 'Głębokość, wyjazd';
   if (!fields || box.dataset.mode === currentMode()) return;
   box.dataset.mode = currentMode();
   renderGroup(box, 'common', fields, { ...defaults(fields), ...(state.forms[commonSlot()] || {}) });
@@ -913,6 +918,11 @@ function updateCutInfo() {
     const lines = op.lines ? op.lines(v, common, m) : [];
     const paths = op.path ? op.path(v, common, m) : [];
     if (lines.length) text += `${currentMode() === 'saw' ? 'Linie cięcia' : 'Linie frezu'}: ${lines.length}`;
+    // #142: skos tylko dla 0 < B < 90 (GetPositions), inaczej ciecie pionowe
+    if (op.id === 'cut' && v.tilt) {
+      text += v.b > 0 && v.b < 90 ? `${text ? ', ' : ''}skos B ${v.b}°`
+        : '<br><span style="color:var(--bad)">Wychył B poza 0–90° – cięcie bez skosu (jak GetPositions w PLC)</span><br>';
+    }
     if (validDynamics(d)) {
       const prog = buildOpProgram(state.pose || state.cfg.offline.start);
       text += `${text ? ', ' : ''}czas programu ${formatTime(prog.duration)}`;
@@ -961,8 +971,9 @@ function cancelHoming() {
   toolModeChanged();
 }
 
-// homing - tryb bazowania, gdy program to bazowanie
+// homing - tryb bazowania, gdy program to bazowanie; bez bazowania (#144) tylko bazowanie; ruchy od Operatora (#145)
 function startProgram(program, homing = null) {
+  if ((!homing && !isBased()) || accessLevel() < 1) return;
   if (!homing) cancelHoming();
   cncState.active = Boolean(program.cnc);
   cncState.lastTip = null;
@@ -1015,10 +1026,164 @@ function stopProgram() {
   requestDraw();
 }
 
-// --- ruchy reczne offline (ekran Reczne) ------------------------------------------------------
+// --- logowanie (#145) ----------------------------------------------------------------------------
+// Serwer sprawdza haslo (users.json, skroty scrypt) i daje token sesji; strona trzyma token w sessionStorage.
+// Bez users.json (i w wersji statycznej) logowanie wylaczone - pelny dostep. Wylogowanie po bezczynnosci
+// (auth.timeoutMin z konfiguracji): ruch myszy / klawisz odswieza sesje na serwerze najwyzej co 30 s.
+
+const TOKEN_KEY = 'vizuapp.token';
+const LEVEL_NAMES = ['Niezalogowany', 'Operator', 'Serwis', 'Admin'];
+
+const accessLevel = () => (state.auth.enabled ? state.auth.level : 3);
+const isServiceField = (f) => /\(serwis\)|bService/.test(f.label);
+
+function authChanged() {
+  const a = state.auth;
+  $('#authBox').hidden = !a.enabled;
+  $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
+  $('#loginBtn').textContent = a.user ? 'Wyloguj' : 'Zaloguj';
+  if (state.forms) {
+    showOp();
+    showFig();
+    applyVisibility('figctx', FIGURE_CONTEXT_FIELDS);
+    if (commonFields()) applyVisibility('common', commonFields());
+  }
+  toolModeChanged();
+}
+
+function setSession(s) {
+  const a = state.auth;
+  a.user = s?.user ?? null;
+  a.level = s?.level ?? 0;
+  a.token = s?.token ?? (s ? a.token : null);
+  a.lastActivity = Date.now();
+  a.lastPing = Date.now();
+  try { if (a.token) sessionStorage.setItem(TOKEN_KEY, a.token); else sessionStorage.removeItem(TOKEN_KEY); } catch { /* jw. */ }
+  if (!a.user) {
+    // wylogowanie: ruchy stop, okno reczne zamkniete
+    stopProgram();
+    releaseJog();
+  }
+  authChanged();
+}
+
+const authHeaders = () => (state.auth.token ? { authorization: `Bearer ${state.auth.token}` } : {});
+
+async function initAuth() {
+  const a = state.auth;
+  a.enabled = Boolean(state.cfg.auth?.enabled) && !state.cfg.static;
+  a.users = state.cfg.auth?.users || [];
+  a.timeoutMin = state.cfg.auth?.timeoutMin ?? 30;
+  $('#loginUser').innerHTML = a.users.map((u) => `<option value="${u}">${u}</option>`).join('');
+  if (a.enabled) {
+    try { a.token = sessionStorage.getItem(TOKEN_KEY); } catch { a.token = null; }
+    if (a.token) {
+      const r = await fetch('api/session', { headers: authHeaders() }).catch(() => null);
+      setSession(r?.ok ? { ...(await r.json()), token: a.token } : null);
+    } else setSession(null);
+  } else authChanged();
+  bindAuth();
+}
+
+function showLogin(open) {
+  $('#loginWin').hidden = !open;
+  $('#loginErr').textContent = '';
+  $('#loginPass').value = '';
+  if (open) $('#loginPass').focus();
+}
+
+async function login(user, password) {
+  const r = await fetch('api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user, password }) })
+    .catch(() => null);
+  if (!r?.ok) {
+    $('#loginErr').textContent = r ? 'Złe hasło' : 'Brak połączenia z serwerem';
+    $('#loginPass').value = '';
+    return;
+  }
+  setSession(await r.json());
+  showLogin(false);
+}
+
+function logout() {
+  if (state.auth.token) fetch('api/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
+  setSession(null);
+}
+
+function bindAuth() {
+  $('#loginBtn').onclick = () => (state.auth.user ? logout() : showLogin(true));
+  $('#loginClose').onclick = () => showLogin(false);
+  $('#loginCancel').onclick = () => showLogin(false);
+  $('#loginForm').onsubmit = (e) => { e.preventDefault(); login($('#loginUser').value, $('#loginPass').value); };
+  // aktywnosc odswieza sesje na serwerze (najwyzej co 30 s); bezczynnosc dluzej niz timeoutMin - wylogowanie
+  const activity = () => {
+    const a = state.auth;
+    if (!a.user) return;
+    a.lastActivity = Date.now();
+    if (a.lastActivity - a.lastPing < 30000) return;
+    a.lastPing = a.lastActivity;
+    fetch('api/session', { headers: authHeaders() }).then((r) => { if (r.status === 401) setSession(null); }).catch(() => {});
+  };
+  for (const ev of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(ev, activity, { passive: true });
+  setInterval(() => {
+    const a = state.auth;
+    if (a.user && a.timeoutMin > 0 && Date.now() - a.lastActivity > a.timeoutMin * 60000) logout();
+  }, 15000);
+}
+
+// --- ruchy reczne offline (okno Ruchy reczne, #143) -------------------------------------------
+
+const MAN_WIN_KEY = 'vizuapp.manWin';
+
+function showManWin(open) {
+  const win = $('#manWin');
+  if (!open) releaseJog();
+  win.hidden = !open;
+  $('#manOpen').classList.toggle('active', open);
+  if (open) {
+    placeManWin();
+    updateManInfo();
+  }
+}
+
+// Okno w granicach ekranu (pozycja zapamietana w przegladarce)
+function placeManWin(x, y) {
+  const win = $('#manWin');
+  if (x === undefined) {
+    try { ({ x, y } = JSON.parse(localStorage.getItem(MAN_WIN_KEY) || '{}')); } catch { /* jw. */ }
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const maxX = Math.max(0, window.innerWidth - win.offsetWidth);
+  const maxY = Math.max(0, window.innerHeight - 40);
+  win.style.left = `${Math.min(Math.max(0, x), maxX)}px`;
+  win.style.top = `${Math.min(Math.max(0, y), maxY)}px`;
+}
+
+// Przesuwanie okna za naglowek (mysz i dotyk)
+function bindManWin() {
+  const win = $('#manWin');
+  const head = $('#manHead');
+  let drag = null;
+  head.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = win.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener('pointermove', (e) => { if (drag) placeManWin(e.clientX - drag.dx, e.clientY - drag.dy); });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    try { localStorage.setItem(MAN_WIN_KEY, JSON.stringify({ x: win.offsetLeft, y: win.offsetTop })); } catch { /* jw. */ }
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  $('#manOpen').onclick = () => showManWin(win.hidden);
+  $('#manClose').onclick = () => showManWin(false);
+  window.addEventListener('resize', () => { if (!win.hidden) placeManWin(win.offsetLeft, win.offsetTop); });
+}
 
 function startJog(dir, vel, acc, dec) {
-  if (state.mode !== 'offline' || !state.pose || !(vel > 0)) return;
+  if (state.mode !== 'offline' || !state.pose || !(vel > 0) || !isBased() || accessLevel() < 1) return;
   stopProgram();
   cancelHoming();
   state.sim.program = null;
@@ -1054,7 +1219,7 @@ function jogFrame(now) {
 
 function updateManInfo() {
   const p = state.pose;
-  if (!p || $('.tab[data-tab="man"]').hidden) return;
+  if (!p || $('#manWin').hidden) return;
   const d = offlineDynamics();
   syncManualSpeeds();
   $('#manInfo').innerHTML = `Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
@@ -1174,7 +1339,6 @@ function showTab(name) {
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
-  if (name === 'man') updateManInfo();
   if (name === 'cnc') updateCncInfo();
   requestDraw();
 }
@@ -1514,16 +1678,39 @@ function isBased() {
 }
 
 // Zakladki: Stol i kamien, Pozycja, Parametry, Bazowanie - zawsze (Pozycja i Parametry tylko offline);
-// Operacja, Automat, Reczne - wg trybu i tylko po bazowaniu (Operacja i Reczne tylko offline)
+// Operacja, Automat - wg trybu i tylko po bazowaniu (Operacja tylko offline); Ruchy reczne (okno z gornego menu, #143) -
+// offline, po bazowaniu. Bez bazowania (#144) ustawienia (stol i kamien, Pozycja, Parametry) zablokowane.
+// Logowanie (#145): niezalogowany - podglad, Operator - praca, Serwis - Parametry i opcje serwisowe, Admin - parametry figur
+const TAB_LEVEL = { cut: 1, cnc: 1, pos: 1, par: 2 };
+
 function updateTabs() {
   const mode = modeById(currentMode());
   const based = isBased();
+  const level = accessLevel();
   for (const t of $$('.tabs button')) {
     const name = t.dataset.tab;
     let show = state.mode === 'offline' || !('offline' in t.dataset);
-    if (['cut', 'auto', 'man', 'cnc'].includes(name)) show = show && based && mode.tabs.includes(name);
-    t.hidden = !show;
+    if (['cut', 'auto', 'cnc'].includes(name)) show = show && based && mode.tabs.includes(name);
+    // automat offline (edycja bufora) od Operatora, online - podglad PLC
+    const need = name === 'auto' ? (state.mode === 'offline' ? 1 : 0) : (TAB_LEVEL[name] ?? 0);
+    t.hidden = !show || level < need;
   }
+  const manOk = state.mode === 'offline' && based && mode.tabs.includes('man') && level >= 1;
+  $('#manOpen').disabled = !manOk;
+  $('#manOpen').title = manOk ? 'Ruchy ręczne (jak ekran ruchów ręcznych w HMI) – okno, które można przesuwać i zamknąć'
+    : state.mode === 'offline' ? 'Ruchy ręczne – dopiero po bazowaniu' : 'Ruchy ręczne – tylko offline (wizualizacja nie steruje maszyną)';
+  if (!manOk) showManWin(false);
+  const locked = !based || level < 1;
+  $('#lockInfo').hidden = !locked;
+  $('#lockInfo').innerHTML = level < 1
+    ? 'Niezalogowany – tylko podgląd. Zaloguj się (przycisk <b>Zaloguj</b> u góry), żeby wykonywać ruchy i zmieniać ustawienia.'
+    : 'Maszyna niezbazowana – ruchy i ustawienia zablokowane. Zbazuj maszynę w zakładce <b>Bazowanie</b>.';
+  for (const el of $$('[data-lock]')) {
+    el.inert = locked;
+    el.classList.toggle('locked', locked);
+  }
+  for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
+  for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
   const active = $('.tabs button.active');
   if (!active || active.hidden) showTab(state.mode === 'online' && !$('.tabs [data-tab="auto"]').hidden ? 'auto' : 'stone');
 }
@@ -1559,7 +1746,7 @@ function renderHoming() {
   const target = state.tool.homing || state.tool.target || mode.id;
   for (const b of $$('[data-home]')) {
     b.classList.toggle('active', b.dataset.home === (offline ? target : mode.id));
-    b.disabled = !offline;
+    b.disabled = !offline || accessLevel() < 1;
   }
   $('#homeStart').hidden = !offline;
   $('#homeStop').hidden = !offline;
@@ -1738,6 +1925,8 @@ async function init() {
   if (!MODES.some((x) => x.id === state.tool.mode)) state.tool.mode = 'saw';
   bindUi();
   bindManual();
+  bindManWin();
+  await initAuth();
   showOp();
   showFig();
   stoneChanged();

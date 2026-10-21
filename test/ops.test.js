@@ -85,7 +85,7 @@ test('ciecie wewnetrzne: konce odsuniete o pol cieciwy tarczy, glebokosc ogranic
 
 test('skos: plaszczyzna tarczy przecina gorna powierzchnie na linii ciecia przy kazdej glebokosci', () => {
   const pb = new ProgramBuilder(START, M, DYN);
-  OPS[0].build(pb, { x0: 400, y0: 400, x1: 1200, y1: 400, internal: 0, reverse: false }, { ...COMMON, tilt: true, b: 45 });
+  OPS[0].build(pb, { x0: 400, y0: 400, x1: 1200, y1: 400, internal: 0, reverse: false, tilt: true, b: 45 }, COMMON);
   const prog = pb.build();
   let n = 0;
   for (let t = 0; t <= prog.duration; t += 0.05) {
@@ -225,4 +225,23 @@ test('automat (#135): ciecie zewnetrzne wychodzi za punkt o szerokosc tarczy, we
   near(slopeOuter.hi, 1000 + bw, 0.2);
   const slopeInner = automatEnds(20, 45);  // skos wewn.: odsuniecie z glebokosci w plaszczyznie tarczy
   assert.ok(slopeInner.top[0] >= 0 && slopeInner.top[1] <= 1000, `skos wewn. rzaz ${slopeInner.top}`);
+});
+
+test('wychyl (#142): tylko ciecie proste (bManualBAngle, fManualBSetPosition), pasy i luk bez skosu jak w PLC', () => {
+  const maxB = (id, v, common = COMMON) => {
+    const op = OPS.find((o) => o.id === id);
+    const pb = new ProgramBuilder(START, M, DYN);
+    op.build(pb, { ...defaults(op.fields), ...v }, common);
+    const prog = pb.build();
+    let b = 0;
+    for (let t = 0; t <= prog.duration; t += 0.1) b = Math.max(b, prog.at(t).pose.b);
+    return b;
+  };
+  assert.ok(Math.abs(maxB('cut', { tilt: true, b: 30 }) - 30) < 1e-6);
+  assert.equal(maxB('cut', { tilt: false, b: 30 }), 0);
+  assert.equal(maxB('cut', { tilt: true, b: 90 }), 0);            // skos tylko 0 < B < 90 (GetPositions)
+  // stary zapis wspolnych pol z wychylem nie wlacza skosu w pasach / luku (CutStripesST, CutArcST zeruja bManualBAngle)
+  assert.equal(maxB('stripes', { number: 1 }, { ...COMMON, tilt: true, b: 45 }), 0);
+  assert.equal(maxB('arc', {}, { ...COMMON, tilt: true, b: 45 }), 0);
+  assert.ok(!COMMON_FIELDS.some((f) => f.k === 'tilt'));
 });

@@ -121,7 +121,8 @@ async function main() {
   const browser = await launchBrowser();
   try {
     // 1. serwer bez PLC
-    run(['src/server/main.js', '--no-plc', '--port', String(PORT_OFFLINE)], 'serwer-offline');
+    // bez users.json (logowanie wylaczone - pelny dostep), tez gdy lokalnie jest plik uzytkownikow
+    run(['src/server/main.js', '--no-plc', '--users', 'brak-users.json', '--port', String(PORT_OFFLINE)], 'serwer-offline');
     await waitHttp(`http://127.0.0.1:${PORT_OFFLINE}/api/health`);
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_OFFLINE}/`);
@@ -135,7 +136,7 @@ async function main() {
 
     // 2. serwer z testowym PLC (OPC UA)
     run(['test/fake-plc-server.js', '--port', String(PORT_PLC)], 'fake-plc');
-    run(['src/server/main.js', '--port', String(PORT_ONLINE), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`], 'serwer-online');
+    run(['src/server/main.js', '--users', 'brak-users.json', '--port', String(PORT_ONLINE), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`], 'serwer-online');
     await waitHttp(`http://127.0.0.1:${PORT_ONLINE}/api/health`);
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_ONLINE}/`);

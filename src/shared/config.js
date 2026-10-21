@@ -148,6 +148,8 @@ export const DEFAULTS = {
   autoClearOnStart: true,               // nowe ciecie (bCutStart) czysci poprzednie
   materialMargin: 300,
   materialMinSize: [1200, 800],
+  // logowanie (#145): wylogowanie po bezczynnosci [min] (0 - bez limitu); uzytkownicy w users.json (scripts/users.mjs)
+  auth: { timeoutMin: 30 },
   // model maszyny (pila mostowa) w widoku - wg punktow stolu, niezalezny od kamienia: most wzdluz osi
   // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu, spod mostu bridgeZ mm nad Z = 0,
   // dlugosc slupa Z, wysokosc stolu (do podlogi); panel - panel operatorski przed prawym murkiem (#141)

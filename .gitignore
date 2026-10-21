@@ -157,3 +157,6 @@ site/
 
 # test uruchomienia strony (scripts/smoke-test.mjs): zrzuty ekranu
 test-results/
+
+# Logowanie (#145): skroty hasel uzytkownikow (scripts/users.mjs) - tylko lokalnie / na maszynie
+users.json

@@ -21,4 +21,6 @@ Pop-Location
 if ($code) { throw 'npm ci --omit=dev: blad' }
 Copy-Item (Get-Command node).Source $dist
 Copy-Item vizu.ps1, config.json $dist
+# logowanie (#145): users.json (skroty hasel, scripts/users.mjs) tylko z lokalnego pliku - nie ma go w repo
+if (Test-Path users.json) { Copy-Item users.json $dist } else { Write-Warning 'Brak users.json - logowanie wylaczone (node scripts/users.mjs set Operator ...)' }
 Write-Host "Gotowe: $dist (skopiowac na maszyne do D:\VizuApp)"

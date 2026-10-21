@@ -1,6 +1,6 @@
 // Operacje piły w trybie offline: pola formularza (jak na ekranach HMI) i budowa programu ruchu jak w PLC.
 // Kazda operacja: {id, name, plc, fields: [...], saves: [...], build(pb, v, common)} - pb = ProgramBuilder,
-// v - wartosci pol operacji, common - wspolne parametry ciecia (glebokosc, wychyl, wyjazd).
+// v - wartosci pol operacji, common - wspolne parametry ciecia (glebokosc, wyjazd; wychyl tylko w cieciu prostym - #142).
 // saves - przyciski "Zapisz" (#139): {x, y, name, plc} - pola punktu, do ktorych wpisywana jest aktualna pozycja
 // osi X / Y (jak w PLC: TO_REAL(TO_DINT(fXActualPosition*100))/100.0).
 
@@ -20,7 +20,7 @@ const passCount = (common) => (common.depthMode === 'one' ? 1 : Math.max(1, comm
 function cutLines(pb, lines, common) {
   lines.forEach((l, i) => {
     if (i > 0) pb.dwell(2, 'WAIT_START');
-    addCutST(pb, cutParams(l, common));
+    addCutST(pb, cutParams(l, { ...common, tilt: false }));
   });
 }
 
@@ -41,6 +41,9 @@ export const OPS = [
       { k: 'toLaser', label: 'Długość w stronę lasera (bManualToLaser)', t: 'bool', d: false, show: (v) => !v.twoPoint },
       { k: 'internal', label: 'Rodzaj', t: 'sel', d: 0, o: INTERNAL },
       { k: 'reverse', label: 'Odwrócone (głowica +180°)', t: 'bool', d: false },
+      // #142: wychyl jak na ekranie manual_ciecie - bManualBAngle, fManualBSetPosition (pole -2,5..90; skos tylko 0 < B < 90)
+      { k: 'tilt', label: 'Cięcie pod kątem – wychył B (bManualBAngle)', t: 'bool', d: false },
+      { k: 'b', label: 'Wychył B [°] (fManualBSetPosition, 0–90)', t: 'num', d: 45, min: -2.5, max: 90, show: (v) => v.tilt },
     ],
     // CutST.GetPositions: dwa punkty - kat z punktow; kat + dlugosc - koniec = start + L*(cos, sin),
     // w strone lasera (bManualToLaser) start - L*(cos, sin), kat glowicy zostaje zadany
@@ -50,7 +53,8 @@ export const OPS = [
       const L = (v.toLaser ? -1 : 1) * v.length;
       return [{ x0: v.x0, y0: v.y0, x1: v.x0 + Math.cos(a) * L, y1: v.y0 + Math.sin(a) * L, angle: v.angle, reverse: v.reverse, internal: v.internal }];
     },
-    build(pb, v, common) { addCutST(pb, cutParams(this.lines(v)[0], common)); },
+    // CutST: wychyl z pol ciecia (fCutBSetAngle := fManualBSetPosition przy bManualBAngle)
+    build(pb, v, common) { addCutST(pb, cutParams(this.lines(v)[0], { ...common, tilt: Boolean(v.tilt), b: v.b })); },
   },
   {
     id: 'stripes', name: 'Pasy', plc: 'CutStripesST',
@@ -150,7 +154,7 @@ export const OPS = [
       return { S, E, R: v.r, cw: v.cw };
     },
     path(v) { const a = this.arc(v); const p = a && arcPlan(a.S, a.E, a.R, a.cw); return p ? [arcPath(p)] : []; },
-    build(pb, v, common) { const a = this.arc(v); if (a) addArc(pb, a, cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, common)); },
+    build(pb, v, common) { const a = this.arc(v); if (a) addArc(pb, a, cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, { ...common, tilt: false })); },
   },
   {
     id: 'circle', name: 'Okrąg', plc: 'CutCircleST',
@@ -163,7 +167,7 @@ export const OPS = [
     ],
     circle: (v) => ({ x: v.x, y: v.y, R: v.r, center: v.center, inner: v.inner }),
     path(v, common) { const p = circlePlan(this.circle(v), common.bladeWidth); return [circlePath(p.C, p.Rc)]; },
-    build(pb, v, common) { addCircle(pb, this.circle(v), cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, common)); },
+    build(pb, v, common) { addCircle(pb, this.circle(v), cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, { ...common, tilt: false })); },
   },
   {
     id: 'ellipse', name: 'Elipsa', plc: 'CutElipseST',
@@ -173,7 +177,7 @@ export const OPS = [
       { k: 'length', label: 'Długość (oś X) [mm]', t: 'num', d: 1400 }, { k: 'width', label: 'Szerokość (oś Y) [mm]', t: 'num', d: 900 },
     ],
     path(v) { return v.length > 0 && v.width > 0 ? [ellipsePoints(v.xs, v.ys, v.length, v.width).pts] : []; },
-    build(pb, v, common) { addEllipse(pb, v, cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, common)); },
+    build(pb, v, common) { addEllipse(pb, v, cutParams({ x0: 0, y0: 0, x1: 1, y1: 0 }, { ...common, tilt: false })); },
   },
   {
     id: 'profile', name: 'Profil krawędzi', plc: 'ProgramAutoProfileST (kroki 8-11) + CutST',

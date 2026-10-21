@@ -75,6 +75,13 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [ ] MillArcST z bManualArcIncludeToolDiameter: kierunek przesunięcia końców w PLC (znak) – sprawdzić na maszynie
 - [ ] MillBlocksST: faza Y w PLC dodaje szerokość frezu także do Y – zostawione jak w PLC
 
+## #142–#145 Wychył, ruchy ręczne, blokada, logowanie
+- [x] #142 Wychył w cięciu prostym jak manual_ciecie (bManualBAngle, fManualBSetPosition -2,5..90, skos 0 < B < 90); pasy / bloki / łuk bez skosu jak w PLC
+- [x] #143 Ruchy ręczne jako okno z górnego menu (przesuwane, zamykane, pozycja zapamiętana)
+- [x] #144 Bez bazowania: żadnych ruchów poza bazowaniem, ustawienia zablokowane
+- [x] #145 Logowanie Operator / Serwis / Admin (serwer, users.json ze skrótami scrypt, wylogowanie po bezczynności)
+- [ ] Na maszynie: users.json w D:\VizuApp (node scripts/users.mjs …) i potwierdzenie, co ma odblokowywać każdy poziom
+
 ## #135 Końce cięć w automacie
 - [x] Cięcie zewnętrzne wychodzi za punkt o szerokość tarczy
 - [x] Wewnętrzne / pół-wewnętrzne nie wychodzą za punkt (też skos - głębokość w płaszczyźnie tarczy)

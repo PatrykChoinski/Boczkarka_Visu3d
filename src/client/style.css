@@ -114,7 +114,7 @@ footer { background: var(--bar); }
 table.jog { width: 100%; border-collapse: collapse; }
 table.jog td { padding: 3px; }
 table.jog td:first-child { width: 22px; font-weight: 600; }
-table.jog button, .tab[data-tab="man"] .grid2 button { width: 100%; min-height: 46px; }
+table.jog button, #manWin .grid2 button { width: 100%; min-height: 46px; }
 button.hold.pressed { background: var(--accent); border-color: var(--accent); color: #fff; }
 .presets { gap: 4px; margin-top: 4px; }
 .presets button { flex: 1; min-width: 0; padding: 4px; }
@@ -163,3 +163,27 @@ label.cb .lt { display: inline-flex; }
 .filebtn input { display: none; }
 .cncPreview { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #8f8a80;
   image-rendering: auto; margin: 4px 0 6px; }
+
+/* #143 Ruchy reczne: okno otwierane z gornego menu, przesuwane za naglowek, zamykane */
+.win { position: fixed; z-index: 20; top: 70px; left: 24px; width: 430px; max-width: calc(100vw - 16px); max-height: calc(100vh - 90px);
+  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.winHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 4px 12px;
+  background: var(--bar); border-radius: 8px 8px 0 0; font-weight: 600; cursor: move; touch-action: none; }
+.winHead button { min-height: 32px; padding: 0 12px; font-size: 18px; }
+.winBody { overflow-y: auto; padding: 4px 12px 14px; }
+#manOpen.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* #145 logowanie */
+.authUser { font-size: 13px; color: var(--muted); }
+.authUser b { color: var(--text); }
+.win.modal { top: 90px; left: 50%; transform: translateX(-50%); width: 340px; z-index: 30; }
+.win.modal .winHead { cursor: default; }
+input[type=password] { min-height: 38px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; width: 100%; user-select: text; }
+#loginErr { color: var(--bad); min-height: 1em; }
+/* brak uprawnien (poziom uzytkownika): element schowany */
+.noaccess { display: none !important; }
+
+/* #144 bez bazowania: ruchy i ustawienia zablokowane */
+.lockInfo { margin: 0 0 8px; padding: 6px 10px; border: 1px solid #f1b4ae; border-radius: 6px; background: #fdecea; color: var(--bad); font-size: 13px; }
+[data-lock].locked { opacity: 0.5; }

@@ -12,6 +12,13 @@
       <button data-mode="online">Online (PLC)</button>
       <button data-mode="offline">Offline</button>
     </div>
+    <div class="group" id="authBox" hidden>
+      <span id="authUser" class="authUser"></span>
+      <button id="loginBtn">Zaloguj</button>
+    </div>
+    <div class="group">
+      <button id="manOpen" title="Ruchy ręczne (jak ekran ruchów ręcznych w HMI) – okno, które można przesuwać i zamknąć">Ruchy ręczne</button>
+    </div>
     <div class="group">
       <button data-view="iso">Izometria</button>
       <button data-view="top">Góra</button>
@@ -58,21 +65,21 @@
         <button data-tab="cut" data-offline>Operacja</button>
         <button data-tab="auto">Automat</button>
         <button data-tab="cnc">G-kod</button>
-        <button data-tab="man" data-offline>Ręczne</button>
         <button data-tab="pos" data-offline>Pozycja</button>
         <button data-tab="par" data-offline>Parametry</button>
         <button data-tab="home">Bazowanie</button>
       </nav>
+      <p class="lockInfo" id="lockInfo" hidden>Maszyna niezbazowana – ruchy i ustawienia zablokowane. Zbazuj maszynę w zakładce <b>Bazowanie</b>.</p>
 
       <div class="tab" data-tab="stone">
         <p class="hint">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. „Poz.” wpisuje aktualną pozycję osi.</p>
         <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
-        <label class="inline">Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
-        <table class="pts" data-pts="board"></table>
+        <label class="inline" data-lock>Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
+        <table class="pts" data-pts="board" data-lock></table>
         <h3>Kamień <span class="muted">aCuttingRockX/Y/Z</span></h3>
-        <label class="inline">Liczba punktów <input id="rockCount" data-count="rock" type="number" min="0" max="8" step="1"></label>
-        <table class="pts" data-pts="rock"></table>
-        <div class="grid2" id="stoneOffline">
+        <label class="inline" data-lock>Liczba punktów <input id="rockCount" data-count="rock" type="number" min="0" max="8" step="1"></label>
+        <table class="pts" data-pts="rock" data-lock></table>
+        <div class="grid2" id="stoneOffline" data-lock>
           <label>Grubość kamienia [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
         </div>
         <p class="hint" id="stonePlc" hidden></p>
@@ -87,7 +94,7 @@
         <p class="hint" id="opHint"></p>
         <div class="grid2" id="opFields"></div>
         <details id="commonBox">
-          <summary>Głębokość, wychył, wyjazd</summary>
+          <summary>Głębokość, wyjazd</summary>
           <div class="grid2" id="commonFields"></div>
         </details>
         <div id="cutInfo" class="info"></div>
@@ -113,9 +120,9 @@
           <div class="saveRow wide" id="autoSaveRow"><button id="autoSaveStart" title="Wpisz aktualną pozycję osi X / Y jako punkt startowy (jak w PLC: bProgramSaveStartPosition, frez: bProgramMillStartPointSave)">Zapisz punkt startowy</button></div>
           <label data-prof>Skok profilu [mm] <input id="autoPJump" type="number" step="any" min="0.1"></label>
           <label data-prof>Skok wygładzania [mm] <input id="autoSJump" type="number" step="any" min="1"></label>
-          <label class="cb wide" data-modes="saw"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
+          <label class="cb wide" data-modes="saw" data-level="2"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
           <label class="cb wide" data-modes="mill"><input type="checkbox" id="autoRepeatOver"> Zamknięte kształty w całości na każdej głębokości (bProgramReapitingOver)</label>
-          <label class="cb wide" data-prof><input type="checkbox" id="autoSArrays"> Wygładzanie łańcuchem wierszy (bServiceSmoothingArrays)</label>
+          <label class="cb wide" data-prof data-level="2"><input type="checkbox" id="autoSArrays"> Wygładzanie łańcuchem wierszy (bServiceSmoothingArrays)</label>
         </div>
         <details id="figBox" open>
           <summary>Figura – wypełnij bufor jak PLC (FiguresGeometricSt)</summary>
@@ -123,7 +130,7 @@
           <p class="hint" id="figHint"></p>
           <div id="figPic" class="figPic"></div>
           <div class="grid2" id="figFields"></div>
-          <details id="figCtxBox">
+          <details id="figCtxBox" data-level="3">
             <summary>Parametry figury (zmienne PLC)</summary>
             <div class="grid2" id="figCtx"></div>
           </details>
@@ -181,56 +188,6 @@
         </div>
       </div>
 
-      <div class="tab" data-tab="man" hidden>
-        <p class="hint">Jak ekran ruchów ręcznych w HMI, tylko w trybie offline (wizualizacja nie steruje maszyną). Przytrzymaj przycisk – oś jedzie z prędkością jog i rampą z Parametrów; puść – hamuje.</p>
-        <h3>Jog osi</h3>
-        <table class="jog">
-          <tr><td>X</td><td><button class="hold" data-jog="x" data-sign="-1">X −</button></td><td><button class="hold" data-jog="x" data-sign="1">X +</button></td></tr>
-          <tr><td>Y</td><td><button class="hold" data-jog="y" data-sign="-1">Y −</button></td><td><button class="hold" data-jog="y" data-sign="1">Y +</button></td></tr>
-          <tr><td>Z</td><td><button class="hold" data-jog="z" data-sign="-1">Z ↑ (w górę)</button></td><td><button class="hold" data-jog="z" data-sign="1">Z ↓ (w dół)</button></td></tr>
-          <tr><td>A</td><td><button class="hold" data-jog="a" data-sign="-1">A −</button></td><td><button class="hold" data-jog="a" data-sign="1">A +</button></td></tr>
-          <tr><td>B</td><td><button class="hold" data-jog="b" data-sign="-1">B −</button></td><td><button class="hold" data-jog="b" data-sign="1">B +</button></td></tr>
-        </table>
-        <h3>Obrót A <span class="muted">bManualASetPosition</span></h3>
-        <div class="row presets" id="aPresets"></div>
-        <div class="moveTo">
-          <label>A zadany [°] <input id="aSet" type="number" step="any" value="45"></label>
-          <button data-move="a">Jedź na A</button>
-          <button data-move="a" data-rel="1">Jedź o A</button>
-        </div>
-        <h3>Wychył B <span class="muted">bManualBSetPosition</span></h3>
-        <div class="row presets" id="bPresets"></div>
-        <div class="moveTo">
-          <label>B zadany [°] <input id="bSet" type="number" step="any" min="-3" max="93" value="15"></label>
-          <button data-move="b">Jedź na B</button>
-          <button data-move="b" data-rel="1">Jedź o B</button>
-        </div>
-        <h3>Ruchy interpolowane <span class="muted">względem lasera, prędkość cięcia</span></h3>
-        <div class="grid2">
-          <button class="hold" data-interp="along">Wzdłuż lasera</button>
-          <button class="hold" data-interp="back">Przeciwnie do lasera</button>
-          <button class="hold" data-interp="perp">Prostopadle</button>
-          <button class="hold" data-interp="perpBack">Prostopadle odwrotnie</button>
-        </div>
-        <h3><span id="sawTitle">Piła</span> <span class="muted">napęd główny</span></h3>
-        <div class="grid2">
-          <button id="sawToggle">Piła ON</button>
-          <label>Kierunek <select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
-          <label>Częstotliwość [Hz] <input id="sawFreq" type="number" step="any" min="0" max="120"></label>
-          <label class="cb wide" title="Przy włączonej pile prędkość jog X / Y = prędkość cięcia, Z = prędkość robocza Z (ManualST)"><input type="checkbox" id="manRewrite"> Przy pile ON jog z prędkością cięcia (bServiceManualRewriteJogSpeed)</label>
-        </div>
-        <div id="manInfo" class="info"></div>
-        <h3>Prędkości ruchów <span class="muted">fJogXVelocity … fJogBVelocity</span></h3>
-        <table class="jog speeds">
-          <tr><td>X</td><td><input data-jogvel="jogXVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
-          <tr><td>Y</td><td><input data-jogvel="jogYVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
-          <tr><td>Z</td><td><input data-jogvel="jogZVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
-          <tr><td>A</td><td><input data-jogvel="jogAVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
-          <tr><td>B</td><td><input data-jogvel="jogBVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
-        </table>
-        <p class="hint">Prędkości jog i jazdy „o” kąt (jak MCJog / MCRelative w PLC); jazda „na” kąt – prędkość osi A / B z Parametrów (VelA / VelB). Te same wartości co „Jog” w Parametrach.</p>
-      </div>
-
       <div class="tab" data-tab="home" hidden>
         <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Operacja / Automat / Ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
@@ -241,7 +198,7 @@
         <div id="homeInfo" class="info"></div>
       </div>
 
-      <div class="tab" data-tab="pos" hidden>
+      <div class="tab" data-tab="pos" data-lock hidden>
         <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
         <h3>Aktualne</h3>
         <div class="grid2 actual">
@@ -265,7 +222,7 @@
         </div>
       </div>
 
-      <div class="tab" data-tab="par" hidden>
+      <div class="tab" data-tab="par" data-lock hidden>
         <!-- #131-#133: parametry tylko trybu (data-modes) - w pile bez parametrow narzedzi, w trybach narzedzi bez tarczy -->
         <h3 data-modes="saw">Tarcza i głowica</h3>
         <h3 data-modes="mill drill polishing">Głowica</h3>
@@ -311,6 +268,71 @@
       </div>
     </aside>
   </main>
+
+  <div id="manWin" class="win" hidden role="dialog" aria-label="Ruchy ręczne">
+    <div class="winHead" id="manHead"><span>Ruchy ręczne</span><button id="manClose" title="Zamknij">×</button></div>
+    <div class="winBody">
+      <p class="hint">Jak ekran ruchów ręcznych w HMI, tylko w trybie offline (wizualizacja nie steruje maszyną). Przytrzymaj przycisk – oś jedzie z prędkością jog i rampą z Parametrów; puść – hamuje.</p>
+      <h3>Jog osi</h3>
+      <table class="jog">
+        <tr><td>X</td><td><button class="hold" data-jog="x" data-sign="-1">X −</button></td><td><button class="hold" data-jog="x" data-sign="1">X +</button></td></tr>
+        <tr><td>Y</td><td><button class="hold" data-jog="y" data-sign="-1">Y −</button></td><td><button class="hold" data-jog="y" data-sign="1">Y +</button></td></tr>
+        <tr><td>Z</td><td><button class="hold" data-jog="z" data-sign="-1">Z ↑ (w górę)</button></td><td><button class="hold" data-jog="z" data-sign="1">Z ↓ (w dół)</button></td></tr>
+        <tr><td>A</td><td><button class="hold" data-jog="a" data-sign="-1">A −</button></td><td><button class="hold" data-jog="a" data-sign="1">A +</button></td></tr>
+        <tr><td>B</td><td><button class="hold" data-jog="b" data-sign="-1">B −</button></td><td><button class="hold" data-jog="b" data-sign="1">B +</button></td></tr>
+      </table>
+      <h3>Obrót A <span class="muted">bManualASetPosition</span></h3>
+      <div class="row presets" id="aPresets"></div>
+      <div class="moveTo">
+        <label>A zadany [°] <input id="aSet" type="number" step="any" value="45"></label>
+        <button data-move="a">Jedź na A</button>
+        <button data-move="a" data-rel="1">Jedź o A</button>
+      </div>
+      <h3>Wychył B <span class="muted">bManualBSetPosition</span></h3>
+      <div class="row presets" id="bPresets"></div>
+      <div class="moveTo">
+        <label>B zadany [°] <input id="bSet" type="number" step="any" min="-3" max="93" value="15"></label>
+        <button data-move="b">Jedź na B</button>
+        <button data-move="b" data-rel="1">Jedź o B</button>
+      </div>
+      <h3>Ruchy interpolowane <span class="muted">względem lasera, prędkość cięcia</span></h3>
+      <div class="grid2">
+        <button class="hold" data-interp="along">Wzdłuż lasera</button>
+        <button class="hold" data-interp="back">Przeciwnie do lasera</button>
+        <button class="hold" data-interp="perp">Prostopadle</button>
+        <button class="hold" data-interp="perpBack">Prostopadle odwrotnie</button>
+      </div>
+      <h3><span id="sawTitle">Piła</span> <span class="muted">napęd główny</span></h3>
+      <div class="grid2">
+        <button id="sawToggle">Piła ON</button>
+        <label>Kierunek <select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
+        <label>Częstotliwość [Hz] <input id="sawFreq" type="number" step="any" min="0" max="120"></label>
+        <label class="cb wide" data-level="2" title="Przy włączonej pile prędkość jog X / Y = prędkość cięcia, Z = prędkość robocza Z (ManualST)"><input type="checkbox" id="manRewrite"> Przy pile ON jog z prędkością cięcia (bServiceManualRewriteJogSpeed)</label>
+      </div>
+      <div id="manInfo" class="info"></div>
+      <h3>Prędkości ruchów <span class="muted">fJogXVelocity … fJogBVelocity</span></h3>
+      <table class="jog speeds">
+        <tr><td>X</td><td><input data-jogvel="jogXVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+        <tr><td>Y</td><td><input data-jogvel="jogYVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+        <tr><td>Z</td><td><input data-jogvel="jogZVel" type="number" step="any" min="0.001"></td><td class="muted">m/min</td></tr>
+        <tr><td>A</td><td><input data-jogvel="jogAVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
+        <tr><td>B</td><td><input data-jogvel="jogBVel" type="number" step="any" min="0.001"></td><td class="muted">°/s</td></tr>
+      </table>
+      <p class="hint">Prędkości jog i jazdy „o” kąt (jak MCJog / MCRelative w PLC); jazda „na” kąt – prędkość osi A / B z Parametrów (VelA / VelB). Te same wartości co „Jog” w Parametrach.</p>
+    </div>
+  </div>
+
+  <!-- #145 logowanie: uzytkownik i haslo, sprawdzane przez serwer (users.json) -->
+  <div id="loginWin" class="win modal" hidden role="dialog" aria-label="Logowanie">
+    <div class="winHead"><span>Logowanie</span><button id="loginClose" title="Zamknij">×</button></div>
+    <form class="winBody" id="loginForm">
+      <label>Użytkownik <select id="loginUser"></select></label>
+      <label>Hasło <input type="password" id="loginPass" autocomplete="current-password"></label>
+      <p class="hint" id="loginErr"></p>
+      <div class="row"><button type="submit" class="primary">Zaloguj</button><button type="button" id="loginCancel">Anuluj</button></div>
+      <p class="hint">Operator – praca (operacje, automat, ruchy ręczne, pozycja, bazowanie, stół i kamień). Serwis – dodatkowo Parametry i opcje serwisowe. Admin – dodatkowo parametry figur (zmienne PLC).</p>
+    </form>
+  </div>
 
   <footer>
     <div id="pos" class="mono"></div>

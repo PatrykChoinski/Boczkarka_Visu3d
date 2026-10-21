@@ -13,8 +13,6 @@ export const COMMON_FIELDS = [
   { k: 'maxJump', label: 'Max skok tablicy 2 [%]', t: 'num', d: 0, show: (v) => v.depthMode === 'same' },
   { k: 'step', label: 'Skok głębokości [mm]', t: 'num', d: 10, show: (v) => v.depthMode === 'step' },
   { k: 'minLast', label: 'Min. ostatni skok [mm]', t: 'num', d: 2, show: (v) => v.depthMode === 'step' },
-  { k: 'tilt', label: 'Cięcie pod kątem (skos)', t: 'bool', d: false },
-  { k: 'b', label: 'Wychył B [°]', t: 'num', d: 45, show: (v) => v.tilt },
   { k: 'above', label: 'Wyjazd nad materiał [mm]', t: 'num', d: 20 },
   { k: 'lastCutWithDirection', label: 'Ostatnie cięcie z kierunkiem', t: 'bool', d: false },
   { k: 'slower', label: 'Wolniejsza końcówka ostatniego przejścia', t: 'bool', d: true },
@@ -22,7 +20,8 @@ export const COMMON_FIELDS = [
   { k: 'innerCorr', label: 'Korekta cięcia wewn. [mm]', t: 'num', d: 0 },
 ];
 
-// Parametry CutST z wartosci wspolnych + linia
+// Parametry CutST z wartosci wspolnych + linia; wychyl (common.tilt, common.b) tylko gdy podany przez wywolujacego -
+// w PLC tylko ciecie proste (CutST, bManualBAngle) i skosy automatu; pasy, bloki, krawedzie, luk, okrag go zeruja (#142)
 export function cutParams(line, common, extra = {}) {
   const { total, ...rest } = extra;
   return {
