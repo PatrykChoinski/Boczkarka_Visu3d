@@ -63,3 +63,19 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [x] Ekrany tylko trybu (operacje frezu, wiercenia, polerowania; automat frezu)
 - [ ] Symulacja ruchu automatu frezu (ProgramAutoMillST) – na razie podgląd toru
 - [ ] Na maszynie: znak ActiveTool.Height i średnica polerki
+
+# TODO – #136 animacja obrotów: frez / wiercenie / polerowanie
+
+Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowszego `master` / `main`.
+
+- [x] Sprawdzenie w PLC: frez, wiercenie i polerowanie kręcą tym samym napędem co piła (`bMainDriveOn`, `iMainDriveFreqAct`) – obroty z `sawState()`
+- [x] Frez: spiralne ostrza na części roboczej + krzyż na czole, obracają się z wrzecionem
+- [x] Wiertło (koronka): segmenty na obwodzie czoła + pasy wzdłuż rury
+- [x] Polerka: sektory na talerzu + znacznik na boku
+- [x] Znacznik na chwycie (widać obroty także przy zasłoniętym czole)
+- [x] Prędkość obrotów narzędzi w `config.json` (`saw.toolVisualRps`), kierunek FWD / REV
+- [x] Test: geometria znaczników na powierzchni narzędzia i obrót wokół osi (`test/toolspin.test.js`, 105/105)
+- [x] Sprawdzenie w przeglądarce: frez, wiercenie, polerowanie po bazowaniu, wrzeciono ON – obrót widoczny
+- [x] Linie znaczników i tarczy bez obcinania po starej sferze otaczającej (`frustumCulled = false`) – wcześniej znikały po odjechaniu narzędzia
+- [ ] Na maszynie: kierunek obrotu FWD narzędzi względem rzeczywistości (`fwdSign`)
+- [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit na gałęzi develop (bez push)

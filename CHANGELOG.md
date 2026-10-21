@@ -6,6 +6,17 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Animacja obrotów: frez, wiercenie, polerowanie (#136)
+- Narzędzia kręcą się z wrzecionem (ten sam napęd co tarcza w PLC – `bMainDriveOn` w `MillST`, `DrillST`, `DrillSimpleST`, `Polishing`; online `bMainDriveRunning`, `iMainDriveFreqAct`, FWD / REV):
+  - frez: 4 spiralne ostrza na części roboczej (skręt 0,9 rad) i ostrza na czole;
+  - wiertło (koronka): 6 segmentów na obwodzie czoła i pasy wzdłuż rury;
+  - polerka: 8 sektorów na spodzie talerza i znacznik na boku;
+  - czerwony znacznik (pierwsze ostrze / segment / sektor, kreska na chwycie) pokazuje kierunek, także przy czole w materiale.
+- Prędkość na ekranie: `saw.toolVisualRps` obr/s przy 50 Hz (domyślnie 3), tarcza bez zmian (`saw.visualRps`).
+- Geometria znaczników i układ części narzędzia (chwyt, część robocza) przeniesione do `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`) – widok używa tych samych wymiarów co przedtem.
+- Poprawka: linie obrotów (znaczniki narzędzi, szprychy i ząb tarczy, obwód czoła, oś A) mają `frustumCulled = false` – geometria jest podmieniana co klatkę, a three.js obcinał je po sferze otaczającej z pierwszej pozycji, więc znikały po odjechaniu narzędzia.
+- Sprawdzone: `npm test` 105/105 (nowy `test/toolspin.test.js`: znaczniki na narzędziu w obrębie części dla frezu, wiertła i polerki przy A 0 / 37 / −90 i B 90 / 60, obrót wrzeciona obraca znaczniki wokół osi narzędzia o ten sam kąt, spirala frezu). W przeglądarce offline: bazowanie frez / wiercenie / polerowanie, wrzeciono ON – ostrza, segmenty i sektory obracają się.
+
 ### Ekran Bazowanie, tryby frez / wiercenie / polerowanie (#134)
 - Nowa zakładka „Bazowanie” jak `BaseHomingST`:
   - Z do 0, potem A na 0 najkrótszą drogą i B na 0° (piła) albo 90° (frez, wiercenie, polerowanie);

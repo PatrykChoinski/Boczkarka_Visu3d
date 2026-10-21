@@ -28,6 +28,7 @@
   "saw": {
     "freqScale": 0.01,
     "visualRps": 1.5,
+    "toolVisualRps": 3,
     "fwdSign": 1
   },
   "offline": {

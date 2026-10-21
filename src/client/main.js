@@ -263,14 +263,16 @@ function sawText() {
   return s.running ? `   ${isToolMode(state.machine) ? 'wrzeciono' : 'piła'} ${s.freq.toFixed(1)} Hz ${s.dir > 0 ? 'FWD' : 'REV'}` : '';
 }
 
-// Obroty tarczy na ekranie (umowne: visualRps obr/s przy 50 Hz), petla tylko gdy pila sie kreci
+// Obroty tarczy / narzedzia na ekranie (umowne: visualRps / toolVisualRps obr/s przy 50 Hz), petla tylko gdy naped sie kreci
 function spinFrame(now) {
   const s = sawState();
   const dt = state.saw.last ? Math.min(0.1, (now - state.saw.last) / 1000) : 0;
   state.saw.last = now;
   if (!s.running || s.freq <= 0) { state.saw.last = 0; state.saw.spinning = false; return; }
   const cfg = state.cfg.saw || {};
-  const rps = (cfg.visualRps ?? 1.5) * s.freq / 50;
+  // narzedzia (frez, wiertlo, polerka) - male srednice, na ekranie szybciej niz tarcza (toolVisualRps przy 50 Hz)
+  const base = isToolMode(state.machine) ? (cfg.toolVisualRps ?? 3) : (cfg.visualRps ?? 1.5);
+  const rps = base * s.freq / 50;
   state.saw.angle = (state.saw.angle + s.dir * (cfg.fwdSign ?? 1) * rps * 2 * Math.PI * dt) % (2 * Math.PI);
   if (!state.sim.running && !state.jog) redraw();
   requestAnimationFrame(spinFrame);

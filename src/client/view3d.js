@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
+import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
   background: 0xeef1f4,
@@ -26,6 +27,7 @@ const COLORS = {
   laser: 0xffd400,
   spoke: 0x16365f,
   tooth: 0xd62728,
+  toolMark: 0xf4f7fb,
   mill: 0x9aa4ad,
   millEdge: 0x1f5fa8,
   drill: 0x8fa6c1,
@@ -258,6 +260,8 @@ export class View3D {
     // szprychy i znacznik zeba - widac obroty tarczy
     this.spokes = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.spoke }));
     this.tooth = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
+    // geometria linii zmienia sie co klatke - bez obcinania po starej sferze otaczajacej
+    for (const l of [this.discEdge, this.spindle, this.axisA, this.spokes, this.tooth]) l.frustumCulled = false;
     g.add(this.disc, this.discEdge, this.hub, this.spindle, this.axisA, this.lowest, this.spokes, this.tooth);
     return g;
   }
@@ -312,22 +316,25 @@ export class View3D {
     this.toolTube = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1, true), std(COLORS.drill, { side: THREE.DoubleSide }));
     this.toolPad = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1), std(COLORS.polish, { metalness: 0.1, roughness: 0.8 }));
     this.toolFace = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.millEdge }));
-    this.toolMark = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
+    // znaczniki obrotu (ostrza frezu, segmenty koronki, sektory polerki) i wyrozniony znacznik
+    this.toolMarks = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.toolMark }));
+    this.toolMark = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
     this.toolAxisA = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: COLORS.axis, dashSize: 12, gapSize: 8 }));
     this.toolLowest = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.lowest }));
-    g.add(this.toolBody, this.toolShank, this.toolTube, this.toolPad, this.toolFace, this.toolMark, this.toolAxisA, this.toolLowest);
+    // geometria linii zmienia sie co klatke - bez obcinania po starej sferze otaczajacej
+    for (const l of [this.toolMarks, this.toolMark, this.toolFace, this.toolAxisA]) l.frustumCulled = false;
+    g.add(this.toolBody, this.toolShank, this.toolTube, this.toolPad, this.toolFace, this.toolMarks, this.toolMark, this.toolAxisA, this.toolLowest);
     g.visible = false;
     return g;
   }
 
   // Narzedzie trybu m.mode: frez - chwyt + czesc robocza, wiertlo - koronka (rura), polerka - talerz na uchwycie;
-  // spin - kat obrotu wrzeciona [rad] (znacznik na obwodzie czola)
+  // spin - kat obrotu wrzeciona [rad]: obracaja sie ostrza frezu, segmenty koronki, sektory polerki (toolSpinMarks)
   setTool(pose, m, visible, spin = 0) {
     this.toolGroup.visible = Boolean(visible && pose && isToolMode(m));
     if (!this.toolGroup.visible) return;
     const f = toolFrame(pose, m);
     const r = Math.max(f.radius, 1);
-    const len = Math.max(f.length, 1);
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v3(f.normal));
     const at = (k) => v3(f.flange.map((c, i) => c + f.normal[i] * k));   // punkt na osi narzedzia k mm od kolnierza
     const place = (mesh, k0, k1, rad) => {
@@ -337,23 +344,16 @@ export class View3D {
       mesh.position.copy(at((k0 + k1) / 2));
     };
     for (const part of [this.toolBody, this.toolShank, this.toolTube, this.toolPad]) part.visible = false;
-    if (m.mode === 'drill') {
-      const shank = Math.min(60, len * 0.25);
-      place(this.toolShank, 0, shank, Math.min(r * 0.5, 30));
-      place(this.toolTube, shank, len, r);
-    } else if (m.mode === 'polishing') {
-      const pad = Math.min(30, len);
-      place(this.toolShank, 0, len - pad, Math.min(r * 0.35, 40));
-      place(this.toolPad, len - pad, len, r);
-    } else {
-      const cut = Math.min(len, Math.max(40, len * 0.35));
-      place(this.toolShank, 0, len - cut, Math.min(r * 0.7, 25));
-      place(this.toolBody, len - cut, len, r);
-    }
-    // obwod czola i znacznik obrotu (od osi do obwodu czola)
+    const marks = toolSpinMarks(f, m.mode, spin);
+    const lay = marks.layout;
+    const work = { drill: this.toolTube, polishing: this.toolPad, mill: this.toolBody }[lay.kind];
+    place(this.toolShank, ...lay.shank);
+    place(work, ...lay.work);
+    // obwod czola i znaczniki obrotu
     const rim = (t) => v3(f.tip.map((c, i) => c + r * (Math.cos(t) * f.d[i] + Math.sin(t) * f.u[i])));
     this.toolFace.geometry.setFromPoints(Array.from({ length: 64 }, (_, i) => rim((i / 64) * Math.PI * 2)));
-    this.toolMark.geometry.setFromPoints([v3(f.tip), rim(spin), rim(spin + 0.2)]);
+    this.toolMarks.geometry.setFromPoints(marks.lines.map(v3));
+    this.toolMark.geometry.setFromPoints(marks.accent.map(v3));
     this.toolAxisA.geometry.setFromPoints([v3(f.axis), v3([f.axis[0], f.axis[1], f.axis[2] + 400])]);
     this.toolAxisA.computeLineDistances();
     this.toolLowest.position.copy(v3(f.lowest));
