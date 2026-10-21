@@ -19,14 +19,14 @@ export const FIGURE_CONTEXT_FIELDS = [
   { k: 'internal', label: 'Rodzaj (iManualInternal)', t: 'sel', d: 0, o: INTERNAL },
   { k: 'additional', label: 'Dodatkowa droga (bManualAdditionalDistance)', t: 'bool', d: false, modes: ['saw'] },
   { k: 'additionalDistance', label: 'Dodatkowa droga [mm] (fManualAdditionalDistance)', t: 'num', d: 50, show: (v) => v.additional, modes: ['saw'] },
-  { k: 'rectangleACBD', label: 'Prostokąt w kolejności AC-BD (bServiceRectangleACBD)', t: 'bool', d: false, modes: ['saw'] },
+  { k: 'rectangleACBD', label: 'Prostokąt w kolejności AC-BD (bServiceRectangleACBD)', t: 'bool', d: false, modes: ['saw'], svc: 'bServiceRectangleACBD' },
   { k: 'roofCorrectionX', label: 'Korekta daszków X (fParameterRoofCorrectionX)', t: 'num', d: 0, modes: ['saw'] },
   { k: 'roofCorrectionY', label: 'Korekta daszków Y (fParameterRoofCorrectionY)', t: 'num', d: 0, modes: ['saw'] },
-  { k: 'newStart', label: 'Nowe punkty startu frezu (bServiceMillProgramNewStartPoints)', t: 'bool', d: false, modes: ['mill'] },
+  { k: 'newStart', label: 'Nowe punkty startu frezu (bServiceMillProgramNewStartPoints)', t: 'bool', d: false, modes: ['mill'], svc: 'bServiceMillProgramNewStartPoints' },
   { k: 'newStartX', label: 'Start frezu X względem programu', t: 'num', d: 0, show: (v) => v.newStart, modes: ['mill'] },
   { k: 'newStartY', label: 'Start frezu Y względem programu', t: 'num', d: 0, show: (v) => v.newStart, modes: ['mill'] },
   { k: 'machineNumber', label: 'Numer maszyny (iMachineNumber)', t: 'int', d: 0, modes: ['mill'] },
-  { k: 'bookMinimalRadius', label: 'Książki: promień minimalny (bServiceBookMinimalRadius)', t: 'bool', d: false, modes: ['saw'] },
+  { k: 'bookMinimalRadius', label: 'Książki: promień minimalny (bServiceBookMinimalRadius)', t: 'bool', d: false, modes: ['saw'], svc: 'bServiceBookMinimalRadius' },
 ];
 
 // Kontekst figury: pola "Parametry figury" + szerokosc tarczy, srednica frezu (fParameterMillWidth), grubosc z parametrow

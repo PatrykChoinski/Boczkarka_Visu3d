@@ -135,8 +135,8 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 | Poziom | Dostęp |
 |---|---|
 | niezalogowany | podgląd: widok 3D, „Bazowanie” tylko do odczytu, online automat z PLC; bez „Stołu i kamienia” |
-| Operator | praca: Operacja, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, edycja stołu i kamienia |
-| Serwis | jak Operator + Parametry i opcje serwisowe (`bService…`, pola „(serwis)”) |
+| Operator | praca: Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień |
+| Serwis | jak Operator + Parametry i bity serwisowe (`bService…`, Ustawienia → Serwis) |
 | Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |
 
 - Hasła sprawdza serwer. W pliku `users.json` obok `config.json` są tylko
@@ -151,9 +151,22 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 
 ## Ekran
 
-Przyciski ekranów (Stół i kamień, Operacja, Automat, G-kod, Pozycja, Parametry,
-Bazowanie) są w kolumnie po lewej stronie jak menu HMI (`Menu_Lewo`), panel
-wybranego ekranu – po prawej, z tytułem (ikona i nazwa ekranu).
+Przyciski ekranów są w kolumnie po lewej stronie w kolejności lewego menu HMI
+(`Menu_Lewo`): Automat (tryb automatyczny), G-kod (tryb CNC), Manual (tryb
+manualny – programy piły / narzędzi), Bazowanie, Parametry (serwis), Ustawienia,
+na końcu Pozycja (w lewym menu HMI jej nie ma). Panel wybranego ekranu jest po
+prawej, z tytułem (ikona i nazwa ekranu).
+
+**Ustawienia** mają dwa podekrany: „Stół i kamień” (punkty stołu i kamienia,
+grubość) i „Serwis” – bity serwisowe `HMI.bService…` w jednym miejscu, od
+poziomu Serwis (`src/shared/service.js`): piła (`bServiceBlocksReverse`,
+`bServiceLastCutSlower`, `bServiceBlockSwap`, `bServiceRectangleACBD`,
+`bServiceBookMinimalRadius`), automat (`bServiceCutProgramOuterInner`,
+`bServiceSmoothingArrays`), frez (`bServiceMillZFirst`,
+`bServiceMillCircleReverse`, `bServiceAllowSwap`,
+`bServiceMillProgramNewStartPoints`), ruchy ręczne
+(`bServiceManualRewriteJogSpeed`). Formularze programów nie pokazują tych pól –
+biorą wartość z ustawień (jeden bit dla wszystkich programów, jak w PLC).
 
 **Ikony zamiast napisów.** Przyciski mają piktogramy zamiast napisów (łatwiej
 przetłumaczyć aplikację na inne języki), opis jest w podpowiedzi po najechaniu
@@ -168,7 +181,8 @@ podpowiedzi i komunikaty.
 | dłoń | okno Ruchy ręczne |
 | prędkościomierz | tempo symulacji, prędkości jog |
 | sylwetka, strzałka do / z drzwi | użytkownik, zaloguj / wyloguj |
-| warstwy, tarcza z rzazem, lista z ▶, `</>`, celownik, suwaki, dom | ekrany: Stół i kamień, Operacja, Automat, G-kod, Pozycja, Parametry, Bazowanie |
+| lista z ▶, `</>`, tarcza z rzazem, strzałki do punktu, suwaki, koło zębate, celownik | ekrany: Automat, G-kod, Manual, Bazowanie, Parametry, Ustawienia, Pozycja |
+| warstwy, klucz | Ustawienia: stół i kamień, serwis |
 | sześcian, kwadrat z krzyżem, przód, bok, ramka, lupy | widok: izometria, góra, przód, bok, dopasuj, przybliż / oddal |
 | tarcza, most, przerywany tor, celownik, linijka, laser, gumka | warstwy: głowica, suport, plan, XY, odległości, laser; wyczyść |
 | ▶ / ❚❚ / ośmiokąt | start, pauza / wznów, stop |
@@ -279,7 +293,7 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
 
 ### Tryb offline (panel po prawej)
 
-- **Operacja**: wybór programu piły i formularz jak na ekranach HMI.
+- **Manual**: wybór programu piły i formularz jak na ekranach HMI.
   - Programy: cięcie proste (zewnętrzne / wewnętrzne / odwrócone), pasy,
     bloki, krawędzie, zakoszenie, łuk (promień / trzy punkty / cięciwa),
     okrąg, elipsa, profil krawędzi z wygładzaniem.
@@ -425,7 +439,7 @@ narzędzie w widoku zamienia się na narzędzie trybu:
 | Polerowanie | talerz na uchwycie | średnica z Parametrów (w PLC nie ma takiej zmiennej), długość `fParameterMillCorrection − ActiveTool.Height` |
 
 Widoczne ekrany zależą od trybu i bazowania. „Stół i kamień”, „Pozycja”,
-„Parametry” i „Bazowanie” są zawsze. „Operacja”, „Automat” i „Ruchy ręczne”
+„Parametry” i „Bazowanie” są zawsze. „Manual”, „Automat” i „Ruchy ręczne”
 są tylko po bazowaniu i tylko te, które dotyczą trybu. Bez bazowania (#144)
 nie ma żadnych ruchów poza bazowaniem, a ustawienia (stół i kamień, Pozycja,
 Parametry) są zablokowane – na górze panelu jest komunikat:
@@ -446,7 +460,7 @@ Parametry) są zablokowane – na górze panelu jest komunikat:
   wyjazd w górę i postój (pozycje magazynu `PolishingToolChange` są w PLC
   zmienne, więc bez dojazdu).
 
-Wspólne pola frezu (zakładka Operacja, „Głębokości frezu”): tablica głębokości
+Wspólne pola frezu (zakładka Manual, „Głębokości frezu”): tablica głębokości
 (`Depths`: grubość materiału + `fMillDepthMillReserve`, równe przejścia, stały
 skok `fMillDepthMillHeight` z `fMillDepthMinLastJumpDistance` albo jedno
 przejście), `bServiceMillZFirst`, `fCutOvertakingPrecent` (zjazd w Z w trakcie

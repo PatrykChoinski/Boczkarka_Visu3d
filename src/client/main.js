@@ -17,6 +17,7 @@ import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } fr
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
+import { SERVICE_BITS, SERVICE_GROUPS, serviceDefaults } from '../shared/service.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -43,6 +44,8 @@ const state = {
   tool: { mode: 'saw', based: true, homing: null, key: '' },
   // ruchy reczne (#143): tryb ciagly / skok, wlaczony przelacznik ruchu interpolowanego, punkty A, B, C
   manContinuous: true, manToggle: null, points: {},
+  // bity serwisowe HMI.bService... (ekran Ustawienia, service.js)
+  service: serviceDefaults(),
   // logowanie (#145): enabled - serwer ma users.json; level 0 niezalogowany, 1 Operator, 2 Serwis, 3 Admin
   auth: { enabled: false, users: [], user: null, level: 0, token: null, timeoutMin: 30, lastActivity: 0, lastPing: 0 },
   extent: null,
@@ -400,6 +403,7 @@ function saveForms() {
     state.forms.ops[op.id] = readGroup('op', op.fields);
     state.forms.op = op.id;
     state.forms.modeOp = { ...(state.forms.modeOp || {}), [currentMode()]: op.id };
+    state.forms.service = state.service;
     if (commonFields()) state.forms[commonSlot()] = readGroup('common', commonFields());
     if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
     if ($('#figFields').children.length) {
@@ -430,6 +434,7 @@ function loadForms() {
       if (saved.board) writeArea('board', saved.board);
       if (saved.rock) writeArea('rock', saved.rock);
       if (saved.forms) {
+        state.service = { ...serviceDefaults(), ...(saved.forms.service || {}) };
         state.forms = {
           ...state.forms, ...saved.forms,
           ops: saved.forms.ops || {},
@@ -457,7 +462,7 @@ const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
 
 // saves - przyciski "Zapisz" punktow (#139): wiersz z przyciskiem za polem Y punktu
 function renderGroup(container, group, fields, values, saves = []) {
-  container.innerHTML = fields.map((f) => fieldHtml(group, f) + saves.filter((sv) => (sv.y ?? sv.z) === f.k).map((sv) => saveHtml(group, sv)).join('')).join('');
+  container.innerHTML = fields.filter((f) => !f.svc).map((f) => fieldHtml(group, f) + saves.filter((sv) => (sv.y ?? sv.z) === f.k).map((sv) => saveHtml(group, sv)).join('')).join('');
   writeGroup(group, fields, values);
   applyVisibility(group, fields);
   for (const el of container.querySelectorAll('[data-g]')) {
@@ -521,6 +526,8 @@ function writeGroup(group, fields, values) {
 function readGroup(group, fields) {
   const out = {};
   for (const f of fields) {
+    // bit serwisowy: wartosc z ekranu Ustawienia (pole nie jest w formularzu)
+    if (f.svc) { out[f.k] = Boolean(state.service[f.svc] ?? f.d); continue; }
     const el = fieldEl(group, f.k);
     out[f.k] = el ? parseField(f, f.t === 'bool' ? el.checked : el.value) : parseField(f, f.d);
   }
@@ -699,15 +706,13 @@ function renderAutoTable(a, editable) {
   for (const el of $$('#autoTable [data-a]')) el.addEventListener('input', autoChanged);
 }
 
-const AUTO_HEAD = '#autoKind, #autoFrom, #autoOX, #autoOY, #autoPJump, #autoSJump, #autoOuterInner, #autoSArrays, #autoRepeatOver';
+const AUTO_HEAD = '#autoKind, #autoFrom, #autoOX, #autoOY, #autoPJump, #autoSJump, #autoRepeatOver';
 
 function writeAutoHeader(a, editable) {
   $('#autoKind').value = a.kind;
   $('#autoFrom').value = a.from ?? 1;
   $('#autoOX').value = a.ox; $('#autoOY').value = a.oy;
   $('#autoPJump').value = a.pJump; $('#autoSJump').value = a.sJump;
-  $('#autoOuterInner').checked = Boolean(a.outerInner);
-  $('#autoSArrays').checked = Boolean(a.sArrays);
   $('#autoRepeatOver').checked = Boolean(a.repeatOver);
   for (const el of $$(AUTO_HEAD)) el.disabled = !editable;
   for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
@@ -728,7 +733,9 @@ function readAuto() {
     kind: $('#autoKind').value, from: Math.max(1, Math.round(Number($('#autoFrom').value) || 1)),
     ox: Number($('#autoOX').value) || 0, oy: Number($('#autoOY').value) || 0,
     pJump: Number($('#autoPJump').value) || 1, sJump: Number($('#autoSJump').value) || 50,
-    outerInner: $('#autoOuterInner').checked, sArrays: $('#autoSArrays').checked, repeatOver: $('#autoRepeatOver').checked,
+    // bServiceCutProgramOuterInner, bServiceSmoothingArrays - z ekranu Ustawienia
+    outerInner: Boolean(state.service.bServiceCutProgramOuterInner), sArrays: Boolean(state.service.bServiceSmoothingArrays),
+    repeatOver: $('#autoRepeatOver').checked,
     rows: rows.filter(Boolean),
   };
 }
@@ -1039,6 +1046,43 @@ function stopProgram() {
   requestDraw();
 }
 
+// --- bity serwisowe (ekran Ustawienia) ----------------------------------------------------------
+// Jeden bit dla wszystkich programow (jak HMI.bService... w PLC); zmiana odswieza formularze, plan i informacje.
+
+const SERVICE_ICON = { saw: 'saw', auto: 'auto', mill: 'mill', man: 'hand' };
+
+// Podekrany Ustawien: Stol i kamien / Bity serwisowe (Serwis)
+function showSetPage(name) {
+  for (const b of $$('#setPages [data-set]')) b.classList.toggle('active', b.dataset.set === name);
+  for (const p of $$('[data-setpage]')) p.hidden = p.dataset.setpage !== name;
+}
+
+function renderServiceBits() {
+  for (const b of $$('#setPages [data-set]')) b.onclick = () => showSetPage(b.dataset.set);
+  $('#serviceBits').innerHTML = Object.entries(SERVICE_GROUPS).map(([g, name]) => `
+    <div class="svcGroup"><div class="svcHead" title="${name}">${icon(SERVICE_ICON[g])}<span>${name}</span></div>
+    ${SERVICE_BITS.filter((b) => b.group === g).map((b) => `<label class="cb svc" title="HMI.${b.k}">
+      <input type="checkbox" data-svc="${b.k}"${state.service[b.k] ? ' checked' : ''}><span>${b.label}<code>${b.k}</code></span></label>`).join('')}</div>`).join('');
+  for (const el of $$('[data-svc]')) {
+    el.addEventListener('input', () => {
+      state.service[el.dataset.svc] = el.checked;
+      serviceChanged();
+    });
+  }
+}
+
+function serviceChanged() {
+  saveForms();
+  if (state.forms) {
+    showOp();
+    showFig();
+  }
+  // automat: OuterInner / wygladzanie lancuchem - plan i czas programu (tylko gdy tabela jest na ekranie)
+  if ($('#autoTable').rows.length) autoChanged();
+  offlineFormsChanged();
+  requestDraw();
+}
+
 // --- logowanie (#145) ----------------------------------------------------------------------------
 // Serwer sprawdza haslo (users.json, skroty scrypt) i daje token sesji; strona trzyma token w sessionStorage.
 // Bez users.json (i w wersji statycznej) logowanie wylaczone - pelny dostep. Wylogowanie po bezczynnosci
@@ -1264,7 +1308,7 @@ function syncManualSpeeds() {
 }
 
 // bServiceManualRewriteJogSpeed: przy wlaczonej pile (offline - START PIŁY) jog X / Y z predkoscia ciecia, Z robocza
-const manualRewrite = () => $('#manRewrite').checked && state.saw.manual;
+const manualRewrite = () => Boolean(state.service.bServiceManualRewriteJogSpeed) && state.saw.manual;
 
 // Punkty reczne A, B, C (bManualSavePointA..C / bManualMovePointA..C, GoToPositionST) - zapis w przegladarce
 const POINTS_KEY = 'vizuapp.points';
@@ -1416,7 +1460,6 @@ function bindManual() {
       updateManInfo();
     });
   }
-  $('#manRewrite').addEventListener('input', updateManInfo);
   $('#manJump').addEventListener('input', updateManInfo);
   for (const b of $$('#manWin [data-hmi]')) {
     if ('hold' in b.dataset) {
@@ -1849,7 +1892,7 @@ function isBased() {
 }
 
 // Zakladki: Stol i kamien, Pozycja, Parametry, Bazowanie - zawsze (Pozycja i Parametry tylko offline);
-// Operacja, Automat - wg trybu i tylko po bazowaniu (Operacja tylko offline); Ruchy reczne (okno z gornego menu, #143) -
+// Manual (operacje), Automat - wg trybu i tylko po bazowaniu (Manual tylko offline); Ruchy reczne (okno z gornego menu, #143) -
 // offline, po bazowaniu. Bez bazowania (#144) ustawienia (stol i kamien, Pozycja, Parametry) zablokowane.
 // Logowanie (#145): niezalogowany - podglad, Operator - praca, Serwis - Parametry i opcje serwisowe, Admin - parametry figur
 const TAB_LEVEL = { stone: 1, cut: 1, cnc: 1, pos: 1, par: 2 };
@@ -1881,6 +1924,7 @@ function updateTabs() {
     el.classList.toggle('locked', locked);
   }
   for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
+  if (level < 2 && !$('#serviceBox').hidden) showSetPage('area');
   for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
   const active = $('.tabs button.active');
   if (active && !active.hidden) setPanelTitle(active.dataset.tab);
@@ -1951,7 +1995,7 @@ function renderHoming() {
     lines.push(`Narzędzie: ${mode.tool} Ø${t.diameter.toFixed(1)} mm, długość ${t.length.toFixed(1)} mm (${src}); `
       + `oś narzędzia ${(m.millTiltDiameter / 2).toFixed(1)} mm od osi A (fParameterMillTiltDiameter/2)`);
   }
-  const names = { cut: 'Operacja', auto: 'Automat', man: 'Ręczne' };
+  const names = { cut: 'Manual', auto: 'Automat', man: 'Ruchy ręczne', cnc: 'G-kod' };
   lines.push(`Ekrany trybu: ${mode.tabs.map((t) => names[t]).join(', ')}${isBased() ? '' : ' – po bazowaniu'}`);
   $('#homeInfo').innerHTML = lines.join('<br>');
 }
@@ -2107,6 +2151,7 @@ async function init() {
   bindUi();
   bindManual();
   bindManWin();
+  renderServiceBits();
   await initAuth();
   showOp();
   showFig();

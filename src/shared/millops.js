@@ -22,7 +22,7 @@ export const MILL_COMMON_FIELDS = [
   { k: 'passes', label: 'Przejścia (iMillDepthPrimaryNumber)', t: 'int', d: 3, show: (v) => v.depthMode === 'same' },
   { k: 'step', label: 'Skok głębokości [mm] (fMillDepthMillHeight)', t: 'num', d: 10, show: (v) => v.depthMode === 'step' },
   { k: 'minLast', label: 'Min. ostatni skok [mm] (fMillDepthMinLastJumpDistance)', t: 'num', d: 2, show: (v) => v.depthMode === 'step' },
-  { k: 'zFirst', label: 'Najpierw Z, potem przejście (bServiceMillZFirst)', t: 'bool', d: false },
+  { k: 'zFirst', label: 'Najpierw Z, potem przejście (bServiceMillZFirst)', t: 'bool', d: false, svc: 'bServiceMillZFirst' },
   { k: 'overtaking', label: 'Zjazd na % długości (fCutOvertakingPrecent)', t: 'num', d: 70, show: (v) => !v.zFirst },
   { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
 ];
@@ -405,7 +405,7 @@ export const MILL_OPS = [
       { k: 'center', label: 'Punkt = środek (bManualCircleCenter, inaczej góra toru)', t: 'bool', d: true },
       { k: 'r', label: 'Promień R [mm] (fManualArcRadius)', t: 'num', d: 300 },
       { k: 'internal', label: 'Rodzaj (iManualInternal)', t: 'sel', d: 1, o: MILL_INTERNAL },
-      { k: 'reverse', label: 'Przeciwnie do zegara (bServiceMillCircleReverse)', t: 'bool', d: false },
+      { k: 'reverse', label: 'Przeciwnie do zegara (bServiceMillCircleReverse)', t: 'bool', d: false, svc: 'bServiceMillCircleReverse' },
     ],
     path(v, common, m) { const g = circleGeometry(v, m?.millWidth ?? 0); return g ? [circlePath(g.C, g.r)] : []; },
     marks: (v) => [[v.x, v.y]],
@@ -441,7 +441,7 @@ export const MILL_OPS = [
       { k: 'number', label: 'Liczba pasów (iManualStripesNumberSet)', t: 'int', d: 3, show: (v) => !v.table },
       { k: 'tableLength', label: 'Długość stołu [mm] (fManualTableLength)', t: 'num', d: 1000, show: (v) => v.table },
       { k: 'tableWidth', label: 'Szerokość stołu [mm] (fManualTableWidth)', t: 'num', d: 300, show: (v) => v.table },
-      { k: 'swap', label: 'Zamiana kierunku linii (bServiceAllowSwap)', t: 'bool', d: false },
+      { k: 'swap', label: 'Zamiana kierunku linii (bServiceAllowSwap)', t: 'bool', d: false, svc: 'bServiceAllowSwap' },
     ],
     lines(v, common, m) { return millStripesLines(v, m?.millWidth ?? 0).map((l) => ({ x0: l.zero[0], y0: l.zero[1], x1: l.end[0], y1: l.end[1] })); },
     build(pb, v, common) {

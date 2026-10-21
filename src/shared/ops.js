@@ -88,7 +88,7 @@ export const OPS = [
       { k: 'lengths', label: 'Długości bloków w X', t: 'list', d: '500, 500, 400' },
       { k: 'widths', label: 'Szerokości bloków w Y', t: 'list', d: '400, 400' },
       { k: 'additional', label: 'Wydłużenie linii [mm]', t: 'num', d: 0 },
-      { k: 'swapOrder', label: 'Najpierw linie Y (serwis)', t: 'bool', d: false },
+      { k: 'swapOrder', label: 'Najpierw linie Y', t: 'bool', d: false, svc: 'bServiceBlockSwap' },
     ],
     lines: (v, common) => blocksLines({ ...v, bladeWidth: common.bladeWidth, blocksReverse: common.blocksReverse, passes: passCount(common) }),
     build(pb, v, common) { cutLines(pb, this.lines(v, common), common); },
@@ -102,7 +102,7 @@ export const OPS = [
       { k: 'angle', label: 'Kąt [°]', t: 'num', d: 0 },
       { k: 'internal', label: 'Rodzaj', t: 'sel', d: 0, o: INTERNAL },
       { k: 'additional', label: 'Wydłużenie krawędzi [mm]', t: 'num', d: 0 },
-      { k: 'acbd', label: 'Kolejność AB, CD, BC, DA (serwis)', t: 'bool', d: false },
+      { k: 'acbd', label: 'Kolejność AB, CD, BC, DA', t: 'bool', d: false, svc: 'bServiceRectangleACBD' },
     ],
     lines(v, common) {
       return edgesLines({ ...v, bladeWidth: common.bladeWidth, blocksReverse: common.blocksReverse })

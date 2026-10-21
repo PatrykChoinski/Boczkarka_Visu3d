@@ -38,6 +38,10 @@ const ICONS = {
   gcode: '<path d="M8 6l-5 6 5 6M16 6l5 6-5 6M14 4l-4 16"/>',
   pos: '<circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',
   par: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/><circle cx="12" cy="12" r="6.5"/>',
+  // bazowanie: strzalki do punktu bazowego (zero osi)
+  homing: '<circle cx="12" cy="12" r="2.5"/><path d="M12 2v5M10 5l2 2 2-2M12 22v-5M10 19l2-2 2 2M2 12h5M5 10l2 2-2 2M22 12h-5M19 10l-2 2 2 2"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 015.2 5.2l-8.4 8.4a2.1 2.1 0 01-3-3l8.4-8.4"/><path d="M14.5 6.5l3 3"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   hand: '<path d="M8 13V5.5a1.5 1.5 0 013 0V11M11 10V4.5a1.5 1.5 0 013 0V11M14 10.5V6a1.5 1.5 0 013 0v7c0 4.5-2.5 8-7 8-3 0-4.5-1.5-6-4l-2-3.5a1.5 1.5 0 012.5-1.6L8 15"/>',
   // akcje

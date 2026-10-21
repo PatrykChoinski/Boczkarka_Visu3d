@@ -1,7 +1,8 @@
 // Wspolne parametry ciecia (Depths, CutST, serwis) dla operacji offline i automatu.
 
 // Pola: k - klucz, t - 'num' | 'int' | 'bool' | 'sel' | 'list' (liczby po przecinku), d - domyslna, o - opcje sel,
-// show(v) - pole widoczne tylko przy danych wartosciach innych pol (np. tylko przy "dwa punkty")
+// show(v) - pole widoczne tylko przy danych wartosciach innych pol (np. tylko przy "dwa punkty");
+// svc - bit serwisowy HMI.bService... (service.js): pole nie jest w formularzu, wartosc z ekranu Ustawienia
 export const INTERNAL = [[0, 'zewnętrzne'], [1, 'wewnętrzne (oba końce)'], [2, 'wewn. początek'], [3, 'wewn. koniec']];
 
 // Wspolne parametry ciecia (Depths, CutST, serwis)
@@ -15,8 +16,8 @@ export const COMMON_FIELDS = [
   { k: 'minLast', label: 'Min. ostatni skok [mm]', t: 'num', d: 2, show: (v) => v.depthMode === 'step' },
   { k: 'above', label: 'Wyjazd nad materiał [mm]', t: 'num', d: 20 },
   { k: 'lastCutWithDirection', label: 'Ostatnie cięcie z kierunkiem', t: 'bool', d: false },
-  { k: 'slower', label: 'Wolniejsza końcówka ostatniego przejścia', t: 'bool', d: true },
-  { k: 'blocksReverse', label: 'Linie Y z odwróconą głowicą (serwis)', t: 'bool', d: true },
+  { k: 'slower', label: 'Wolniejsza końcówka ostatniego przejścia', t: 'bool', d: true, svc: 'bServiceLastCutSlower' },
+  { k: 'blocksReverse', label: 'Linie Y z odwróconą głowicą', t: 'bool', d: true, svc: 'bServiceBlocksReverse' },
   { k: 'innerCorr', label: 'Korekta cięcia wewn. [mm]', t: 'num', d: 0 },
 ];
 

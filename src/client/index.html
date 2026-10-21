@@ -35,14 +35,16 @@
 
   <main>
     <!-- przyciski ekranow po lewej stronie jak menu HMI (Menu_Lewo) -->
+    <!-- przyciski ekranow po lewej stronie w kolejnosci menu HMI (Menu_Lewo): tryb automatyczny, CNC, manualny,
+         bazowanie, serwis (Parametry), ustawienia (stol i kamien, bity serwisowe); Pozycja - na koncu -->
     <nav class="tabs side" id="screens">
-      <button data-tab="stone" class="active" title="Stół i kamień"><svg class="ic big" aria-hidden="true"><use href="#i-stone"/></svg></button>
-      <button data-tab="cut" data-offline title="Operacja"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
       <button data-tab="auto" title="Automat"><svg class="ic big" aria-hidden="true"><use href="#i-auto"/></svg></button>
-      <button data-tab="cnc" title="G-kod"><svg class="ic big" aria-hidden="true"><use href="#i-gcode"/></svg></button>
+      <button data-tab="cnc" title="G-kod (CNC)"><svg class="ic big" aria-hidden="true"><use href="#i-gcode"/></svg></button>
+      <button data-tab="cut" data-offline title="Manual"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
+      <button data-tab="home" title="Bazowanie"><svg class="ic big" aria-hidden="true"><use href="#i-homing"/></svg></button>
+      <button data-tab="par" data-offline title="Parametry (serwis)"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>
+      <button data-tab="stone" class="active" title="Ustawienia"><svg class="ic big" aria-hidden="true"><use href="#i-settings"/></svg></button>
       <button data-tab="pos" data-offline title="Pozycja"><svg class="ic big" aria-hidden="true"><use href="#i-pos"/></svg></button>
-      <button data-tab="par" data-offline title="Parametry"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>
-      <button data-tab="home" title="Bazowanie"><svg class="ic big" aria-hidden="true"><use href="#i-home"/></svg></button>
     </nav>
     <section id="viewWrap">
       <div id="view"></div>
@@ -73,6 +75,12 @@
       <p class="lockInfo" id="lockInfo" hidden>Maszyna niezbazowana – ruchy i ustawienia zablokowane. Zbazuj maszynę w zakładce <b>Bazowanie</b>.</p>
 
       <div class="tab" data-tab="stone">
+        <!-- Ustawienia: podekrany Stol i kamien, Bity serwisowe -->
+        <div class="seg sub" id="setPages">
+          <button type="button" data-set="area" class="active" title="Stół i kamień"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg><span>Stół i kamień</span></button>
+          <button type="button" data-set="svc" data-level="2" title="Bity serwisowe (HMI.bService…)"><svg class="ic" aria-hidden="true"><use href="#i-wrench"/></svg><span>Serwis</span></button>
+        </div>
+        <div data-setpage="area">
         <p class="hint">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. Przycisk z pinezką wpisuje aktualną pozycję osi.</p>
         <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
         <label class="inline" data-lock>Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
@@ -88,6 +96,12 @@
           <button id="stoneShow" title="Pokaż stół i kamień z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
         </div>
         <div id="stoneInfo" class="info"></div>
+        </div>
+        <!-- bity serwisowe HMI.bService... (service.js) - od poziomu Serwis -->
+        <div id="serviceBox" data-setpage="svc" data-level="2" data-lock hidden>
+          <h3>Bity serwisowe <span class="muted">HMI.bService…</span></h3>
+          <div id="serviceBits"></div>
+        </div>
       </div>
 
       <div class="tab" data-tab="cut" hidden>
@@ -121,9 +135,7 @@
           <div class="saveRow wide" id="autoSaveRow"><button id="autoSaveStart" title="Zapisz punkt startowy – aktualna pozycja osi X / Y (jak w PLC: bProgramSaveStartPosition, frez: bProgramMillStartPointSave)"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg></button></div>
           <label data-prof>Skok profilu [mm] <input id="autoPJump" type="number" step="any" min="0.1"></label>
           <label data-prof>Skok wygładzania [mm] <input id="autoSJump" type="number" step="any" min="1"></label>
-          <label class="cb wide" data-modes="saw" data-level="2"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
           <label class="cb wide" data-modes="mill"><input type="checkbox" id="autoRepeatOver"> Zamknięte kształty w całości na każdej głębokości (bProgramReapitingOver)</label>
-          <label class="cb wide" data-prof data-level="2"><input type="checkbox" id="autoSArrays"> Wygładzanie łańcuchem wierszy (bServiceSmoothingArrays)</label>
         </div>
         <details id="figBox" open>
           <summary>Figura – wypełnij bufor jak PLC (FiguresGeometricSt)</summary>
@@ -193,7 +205,7 @@
         <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Operacja / Automat / Ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
         <div class="row">
-          <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+          <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
           <button class="stopBtn" id="homeStop" title="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
         </div>
         <div id="homeInfo" class="info"></div>
@@ -295,7 +307,6 @@
         <button type="button" id="sawStop" class="sawStop" title="Stop piły (bManualMainDriveOff)"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
         <label class="inline" title="Kierunek obrotów"><svg class="ic" aria-hidden="true"><use href="#i-fwd"/></svg><select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
         <label class="inline" title="Częstotliwość [Hz]"><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><input id="sawFreq" type="number" step="any" min="0" max="120"></label>
-        <label class="cb" data-level="2" title="Przy włączonej pile prędkość jog X / Y = prędkość cięcia, Z = prędkość robocza Z (ManualST)"><input type="checkbox" id="manRewrite"> Jog z prędkością cięcia przy pile (bServiceManualRewriteJogSpeed)</label>
       </div>
       <div id="manInfo" class="info"></div>
     </div>
