@@ -161,3 +161,5 @@ label.cb .lt { display: inline-flex; }
 .filebtn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 4px 14px; flex: 1;
   border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 15px; }
 .filebtn input { display: none; }
+.cncPreview { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #8f8a80;
+  image-rendering: auto; margin: 4px 0 6px; }

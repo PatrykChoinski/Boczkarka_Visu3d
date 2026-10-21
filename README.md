@@ -365,7 +365,7 @@ Zakładka „G-kod” (widoczna w trybie frezu po bazowaniu) wczytuje program `.
 w materiale – jak moduł CNC w PLC:
 - **Parser** (`src/shared/gcode.js`) jak preprocesor PLC: G0 / G1 (domyślnie G1), G2 / G3 z I / J (R liczone, ale
   z ostrzeżeniem – PLC go nie obsługuje), G90 / G91, G20 / G21, G53 (reszta linii pomijana, jak w PLC), F w mm/min,
-  M03 / M05, koniec na M30, komentarze `( )` i `;`.
+  M03 / M05, koniec na M30, komentarze `( )` i `;`; G4 postój, G70 / G71; G28, G55–G59 i cykle G81–G84 pomijane z uwagą.
 - **Punkt początkowy G54** = pozycja osi (`HMI.G54_X / Y / Z`, CNCInfo): X osi = G54_X + X, Y osi = G54_Y − Y
   (odwrócona oś Y), Z osi = G54_Z + Z (Z w głąb). Przyciski „= aktualna” i „bez promienia” (+ `fParameterMillWidth / 2`)
   jak `bSetG54_*`. Online G54 czytane z PLC. A i B bez zmian (frez B 90° po bazowaniu).
@@ -375,6 +375,7 @@ w materiale – jak moduł CNC w PLC:
   `fParameterMillWidth` obniża powierzchnię (nie niżej niż spód kamienia), kolor wg głębokości. „Start” – animacja
   (tempo jak w innych programach), „Wynik od razu” – cały program bez animacji (przykładowy plik 54 tys. linii ≈ 2 s),
   „Wyczyść materiał”. Online – gdy plik jest wczytany, ruchy z PLC wycinają mapę wysokości.
+- **Podgląd 2D** w panelu: wynik z góry z cieniowaniem jak płaskorzeźba (światło z lewej góry) i pozycją frezu – czytelniejszy niż płaski relief w scenie 3D; w 3D kamień nad reliefem jest wtedy prawie przezroczysty.
 - Tor programu w widoku: G1 pomarańczowy, G0 niebieski przerywany. Podsumowanie: ruchy, długości, szacowany czas,
   zakres X / Y / Z, ostrzeżenie, gdy program schodzi głębiej niż grubość kamienia.
 

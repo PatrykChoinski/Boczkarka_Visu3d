@@ -150,6 +150,8 @@ export class View3D {
       color: COLORS.material, roughness: 0.9, transparent: true, opacity: 0.72, depthWrite: false,
     }));
     box.renderOrder = 2;
+    this.materialBox = box;
+    if (this.materialOpacity !== undefined) box.material.opacity = this.materialOpacity;
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: COLORS.materialEdge }));
     const size = Math.max(x1 - x0, y1 - y0) * 1.4;
     const grid = new THREE.GridHelper(size, Math.max(4, Math.round(size / 100)), COLORS.grid, COLORS.grid);
@@ -301,6 +303,12 @@ export class View3D {
       if (full) a.clearUpdateRanges?.();
       else a.addUpdateRange?.(j0 * nx * 3, ((j1 - j0 + 1) * nx) * 3);
     }
+  }
+
+  // Krycie bryly kamienia (G-kod: prawie przezroczysta, zeby nie zakrywala reliefu z mapy wysokosci)
+  setMaterialOpacity(o) {
+    this.materialOpacity = o;
+    if (this.materialBox && this.materialBox.material.opacity !== o) this.materialBox.material.opacity = o;
   }
 
   // Tor programu: [{kind: 'rapid' | 'feed', pts: [[x, y, z], ...]}] (swiat, czubek narzedzia); null - brak

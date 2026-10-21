@@ -39,12 +39,18 @@ export function parseGcode(text) {
       else words[letter] = v;
     }
     let machine = false;
+    let dwell = false;
+    let skip = false;
     for (const g of gs) {
       if (g === 0 || g === 1 || g === 2 || g === 3) motion = g;
       else if (g === 90) absolute = true;
       else if (g === 91) absolute = false;
-      else if (g === 20) { scale = 25.4; warnings.push(`linia ${n + 1}: G20 - w PLC kasuje G54 i odwrocenie Y`); }
-      else if (g === 21) scale = 1;
+      else if (g === 20 || g === 70) { scale = 25.4; warnings.push(`linia ${n + 1}: G${g} (cale) - w PLC kasuje G54 i odwrocenie Y`); }
+      else if (g === 21 || g === 71) scale = 1;
+      else if (g === 4) dwell = true;
+      else if (g === 28) { skip = true; warnings.push(`linia ${n + 1}: G28 (bazowanie) pominiete - linia bez ruchu`); }
+      else if (g >= 55 && g <= 59) warnings.push(`linia ${n + 1}: G${g} - uklad G54 z HMI (inne uklady pominiete)`);
+      else if (g >= 81 && g <= 84) { skip = true; warnings.push(`linia ${n + 1}: cykl G${g} pominiety - linia bez ruchu`); }
       else if (g === 53) machine = true;
       else if (![17, 40, 49, 54, 80, 94, 64, 61].includes(g)) warnings.push(`linia ${n + 1}: G${g} pominiete`);
     }
@@ -53,6 +59,14 @@ export function parseGcode(text) {
       if (m === 3 || m === 4) spindle.push({ line: n + 1, on: true });
       else if (m === 5) spindle.push({ line: n + 1, on: false });
       else if (m === 30 || m === 2) end = n + 1;
+    }
+    if (skip) { if (end) break; continue; }
+    // G4: postoj P [ms] (albo X [s]) - bez ruchu
+    if (dwell) {
+      const t = words.P !== undefined ? words.P / 1000 : (words.X ?? 0);
+      if (t > 0) moves.push({ kind: 'dwell', from: [...pos], to: [...pos], t, f: feed, line: n + 1 });
+      if (end) break;
+      continue;
     }
     // G53: PLC kasuje reszte linii (M1053 + G53) - bez ruchu
     if (machine) { if (end) break; continue; }
@@ -119,7 +133,7 @@ export function arcPoints(m, step = 2) {
 }
 
 // Ruch jako lamana (punkty co najwyzej step mm dla lukow, odcinki - konce)
-export const movePoints = (m, step = 2) => (m.kind === 'arc' ? arcPoints(m, step) : [m.from, m.to]);
+export const movePoints = (m, step = 2) => (m.kind === 'arc' ? arcPoints(m, step) : m.kind === 'dwell' ? [m.to] : [m.from, m.to]);
 
 // Podsumowanie programu: zakres XYZ ruchow roboczych (bez G53), dlugosci, szacowany czas (rapid - podany posuw)
 export function gcodeSummary(prog, rapidFeed = 9000) {
@@ -133,7 +147,8 @@ export function gcodeSummary(prog, rapidFeed = 9000) {
     for (const p of pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
     let len = 0;
     for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1], pts[k][2] - pts[k - 1][2]);
-    if (m.kind === 'rapid') { rapidLen += len; time += len / rapidFeed * 60; } else { feedLen += len; time += m.f > 0 ? len / m.f * 60 : 0; }
+    if (m.kind === 'dwell') time += m.t;
+    else if (m.kind === 'rapid') { rapidLen += len; time += len / rapidFeed * 60; } else { feedLen += len; time += m.f > 0 ? len / m.f * 60 : 0; }
   }
   return { lo, hi, feedLen, rapidLen, time, moves: prog.moves.length };
 }

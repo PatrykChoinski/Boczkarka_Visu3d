@@ -74,3 +74,29 @@ export class HeightMap {
   at(i, j) { return this.z[j * this.nx + i]; }
   minZ() { let m = this.top; for (const v of this.z) if (v < m) m = v; return m; }
 }
+
+// Podglad 2D (#124): cieniowanie mapy wysokosci jak plaskorzezba - swiatlo z lewej gory (spadki z roznic sasiadow)
+// i kolor wg glebokosci. Wynik: RGBA nx x ny, wiersz 0 = najwieksze Y (+Y do gory jak w widoku "Gora").
+// gain - wzmocnienie spadkow (plytkie reliefy wyrazniej)
+export function shadeHeightMap(hm, gain = 0.6) {
+  const { nx, ny, z } = hm;
+  const out = new Uint8ClampedArray(nx * ny * 4);
+  const depth = Math.max(1, hm.top - hm.bottom);
+  for (let j = 0; j < ny; j++) {
+    const row = (ny - 1 - j) * nx;
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      const gx = (z[j * nx + Math.min(nx - 1, i + 1)] - z[j * nx + Math.max(0, i - 1)]) / (2 * hm.res);
+      const gy = (z[Math.min(ny - 1, j + 1) * nx + i] - z[Math.max(0, j - 1) * nx + i]) / (2 * hm.res);
+      // swiatlo z lewej gory (-X, +Y): normalna (-gx, -gy, 1) . (-1, 1, h) ~ gx - gy - jasniej sciany zwrocone w lewo-gore
+      const light = Math.min(1, Math.max(0, 0.6 + (0.7 * gx - 0.7 * gy) * gain));
+      const d = Math.min(1, Math.max(0, (hm.top - z[k]) / depth));
+      const o = (row + i) * 4;
+      out[o] = (205 - 140 * d) * light;
+      out[o + 1] = (198 - 150 * d) * light;
+      out[o + 2] = (184 - 160 * d) * light;
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}

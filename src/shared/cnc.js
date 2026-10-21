@@ -47,6 +47,14 @@ export function addCncProgram(pb, prog, g54, opts = {}) {
     run = null;
   };
   for (const m of prog.moves) {
+    // G4 - postoj w miejscu
+    if (m.kind === 'dwell') {
+      flush();
+      pb.label = `G-kod: linia ${m.line}`;
+      pb.stepIndex = m.line;
+      pb.dwell(m.t, 'G4');
+      continue;
+    }
     const pts = movePoints(m, opts.step ?? 2);
     const kind = m.kind === 'rapid' ? 'rapid' : 'feed';
     for (let k = 1; k < pts.length; k++) {
@@ -79,6 +87,7 @@ export function cncTipPath(prog, g54, pose, m, step = 2) {
   const out = [];
   let cur = null;
   for (const mv of prog.moves) {
+    if (mv.kind === 'dwell') continue;
     const kind = mv.kind === 'rapid' ? 'rapid' : 'feed';
     const pts = movePoints(mv, step);
     if (!cur || cur.kind !== kind) {

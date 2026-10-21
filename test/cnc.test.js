@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseGcode, gcodeSummary, arcCenterR, arcPoints } from '../src/shared/gcode.js';
 import { cncAxis, g54FromPose, cncProgram, cncTipPath, CNC_LIMITS } from '../src/shared/cnc.js';
-import { HeightMap } from '../src/shared/heightmap.js';
+import { HeightMap, shadeHeightMap } from '../src/shared/heightmap.js';
 import { machine, toolFrame, plcToolAxisZ, topZ } from '../src/shared/geometry.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -162,4 +162,31 @@ test('przyklad w Visu3D/examples jest tym samym plikiem co w Dodatkowe Programy'
   assert.ok(fs.existsSync(ex));
   const orig = path.join(dir, '..', '..', 'Dodatkowe Programy', 'madonna_frez_fi25mm_fixed.nc');
   if (fs.existsSync(orig)) assert.ok(fs.readFileSync(ex).equals(fs.readFileSync(orig)));
+});
+
+test('kody z listy PLC (GCodes): G4 postoj w programie i czasie, G70 / G71 jak cale / mm, G28 / G55 / G81 - uwaga', () => {
+  const p = parseGcode('G00 X0 Y0 Z0\nG01 X10 F600\nG04 P1500\nG4 X2\nG70\nG01 X1\nG71\nG28\nG55\nG81 X0 Y0 Z5 R2');
+  const dw = p.moves.filter((m) => m.kind === 'dwell');
+  assert.deepEqual(dw.map((m) => m.t), [1.5, 2]);
+  near(p.moves.find((m) => m.line === 6).to[0], 25.4);
+  assert.ok(['G28', 'G55', 'G81'].every((g) => p.warnings.some((w) => w.includes(g))));
+  const s = gcodeSummary(p, 6000);
+  near(s.time, 10 / 600 * 60 + 3.5 + (25.4 - 10) / 600 * 60 + 0, 0.5);
+  const prog = cncProgram({ x: 0, y: 0, z: 0, a: 0, b: 90 }, p, { x: 500, y: 500, z: 100 }, M, DYN, { zAbove: 20 });
+  assert.equal(prog.segments.filter((sg) => sg.step === 'G4').length, 2);
+  near(prog.segments.filter((sg) => sg.step === 'G4').reduce((a, sg) => a + sg.duration, 0), 3.5);
+});
+
+test('podglad 2D: +Y do gory obrazu, sciana od strony swiatla (lewa gora) jasniejsza, dno ciemniejsze', () => {
+  const hm = new HeightMap([0, 0, 100, 60], 0, -40, 1);
+  // kieszen w gornej czesci (duze Y): x 30..70, y 35..55, glebokosc 20
+  for (let y = 35; y <= 55; y += 1) hm.carve([30, y, -20], [70, y, -20], 0.5);
+  const img = shadeHeightMap(hm);
+  const px = (x, y) => { const o = ((hm.ny - 1 - y) * hm.nx + x) * 4; return img[o]; };
+  assert.ok(px(50, 45) < px(50, 10), 'dno kieszeni ciemniejsze niz gora kamienia');
+  // gora obrazu (wiersz 0) = najwieksze Y: kieszen jest w gornej polowie obrazu
+  const row = (r) => { let m = 255; for (let x = 0; x < hm.nx; x++) m = Math.min(m, img[(r * hm.nx + x) * 4]); return m; };
+  assert.ok(row(hm.ny - 1 - 45) < row(hm.ny - 1 - 10));
+  // sciana prawa (opada w lewo, czyli wznosi sie w prawo) ciemniejsza od lewej (wznosi sie w lewo, do swiatla)
+  assert.ok(px(70, 45) > px(30, 45) || px(71, 45) > px(29, 45));
 });

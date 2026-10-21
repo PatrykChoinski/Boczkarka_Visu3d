@@ -19,7 +19,7 @@ import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill 
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
 import { parseGcode, gcodeSummary } from '../shared/gcode.js';
 import { cncProgram, cncTipPath } from '../shared/cnc.js';
-import { HeightMap } from '../shared/heightmap.js';
+import { HeightMap, shadeHeightMap } from '../shared/heightmap.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1424,6 +1424,34 @@ function bindCnc() {
   if (state.forms?.cnc) writeCncG54(state.forms.cnc);
 }
 
+// Podglad 2D w panelu (#124): mapa wysokosci z cieniowaniem i pozycja frezu; odswiezanie najwyzej co 0,3 s
+function drawCncPreview(now) {
+  const cv = $('#cncPreview');
+  const hm = cncState.hm;
+  if (!cv || $('.tab[data-tab="cnc"]').hidden) return;
+  if (!hm || !hm.cut || currentMode() !== 'mill') { cv.hidden = true; $('#cncPreviewHint').hidden = false; return; }
+  const key = `${hm.version}|${state.pose?.x}|${state.pose?.y}`;
+  if (key === cncState.previewKey || now - (cncState.previewAt || 0) < 300) return;
+  cncState.previewKey = key;
+  cncState.previewAt = now;
+  cv.hidden = false;
+  $('#cncPreviewHint').hidden = true;
+  if (cv.width !== hm.nx || cv.height !== hm.ny) { cv.width = hm.nx; cv.height = hm.ny; }
+  const ctx = cv.getContext('2d');
+  ctx.putImageData(new ImageData(shadeHeightMap(hm), hm.nx, hm.ny), 0, 0);
+  if (state.pose) {
+    const tip = toolFrame(state.pose, cncMachine()).tip;
+    const px = (tip[0] - hm.x0) / hm.res;
+    const py = hm.ny - 1 - (tip[1] - hm.y0) / hm.res;
+    const r = Math.max(2, toolSize(cncMachine()).diameter / 2 / hm.res);
+    ctx.strokeStyle = '#d62728';
+    ctx.lineWidth = Math.max(1.5, hm.nx / 200);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = '#d62728';
+    ctx.beginPath(); ctx.arc(px, py, Math.max(1.5, hm.nx / 150), 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
 // Widok: mapa wysokosci i tor - tylko w trybie frezu
 function drawCnc() {
   const show = cncState.prog && currentMode() === 'mill';
@@ -1434,6 +1462,9 @@ function drawCnc() {
     updateCncInfo();
   }
   view.setHeightMap(show ? cncState.hm : null);
+  // kamien nad reliefem prawie przezroczysty (inaczej gorna sciana bryly rozmywa wynik)
+  view.setMaterialOpacity(show && cncState.hm && cncState.hm.cut ? 0.18 : 0.72);
+  drawCncPreview(now);
   const paths = show && $('#cncShowPath').checked ? cncPaths() : null;
   view.setCncPath(paths, paths ? cncState.pathsKey : null);
 }

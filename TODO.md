@@ -142,4 +142,7 @@ Gałąź `develop/WizuGCode` (Visu3D i repo główne). Przykładowy plik: `Dodat
 - [x] Poprawka: po przeładowaniu strony zbazowany tryb wracał z B 0° (frez poziomo, program CNC nic nie ciął) – teraz B jak po bazowaniu; ostrzeżenie w zakładce G-kod, gdy B ≠ 90°
 - [x] Tempo animacji 500× i 1000× (program Madonny ≈ 5 h ruchu)
 - [x] Wydajność: widok aktualizuje tylko zmieniony fragment mapy (`HeightMap.takeDirty`), normalne z różnic wysokości – 0,17 ms zamiast ok. 35 ms na zmianę przy siatce Madonny (201 tys. punktów)
+- [x] Podgląd 2D w panelu zakładki G-kod (prośba użytkownika): cieniowanie mapy wysokości jak płaskorzeźba (światło z lewej góry), czerwona kropka i okrąg – frez, odświeżanie co 0,3 s w trakcie animacji
+- [x] 3D: bryła kamienia prawie przezroczysta (0,18) nad obrobionym reliefem – wcześniej górna ściana (krycie 0,72) rozmywała wynik
+- [x] Kody z listy PLC (GCodes): G4 postój (P ms / X s), G70 / G71 jak cale / mm; G28, G55–G59, cykle G81–G84 – linia bez ruchu + uwaga
 - [x] Przycisk „Przykład” – `examples/madonna_frez_fi25mm_fixed.nc` (kopia z `Dodatkowe Programy`, w paczce na maszynę)
