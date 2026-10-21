@@ -152,8 +152,8 @@ export const DEFAULTS = {
   // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa
   laser: { side: 1, length: 2500 },
   // naped tarczy: czestotliwosc z PLC * freqScale = Hz; obroty na ekranie umowne - visualRps obr/s przy 50 Hz;
-  // fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
-  saw: { freqScale: 0.01, visualRps: 1.5, fwdSign: 1 },
+  // toolVisualRps - to samo dla frezu / wiertla / polerki (#136); fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
+  saw: { freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1 },
   // tryb offline: wartosci poczatkowe formularzy (mm; m/min, m/s2; deg/s, deg/s2)
   offline: {
     machine: {

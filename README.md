@@ -283,6 +283,18 @@ zbazowana piła. Ślad frezu i wiertła jest rysowany jako rowek / otwór o
 średnicy narzędzia, polerka zostawia jasny ślad na powierzchni. Rzazy piły
 zostają po zmianie trybu.
 
+### Obroty narzędzi (#136)
+
+Frez, wiertło (koronka) i polerka kręcą się razem z wrzecionem, tym samym napędem co tarcza (`bMainDriveOn`,
+`iMainDriveFreqAct`; offline „Piła / Wrzeciono ON” w „Ręczne”, częstotliwość i kierunek FWD / REV):
+- frez: 4 spiralne ostrza na części roboczej i ostrza na czole,
+- wiertło: 6 segmentów na obwodzie czoła i pasy wzdłuż rury,
+- polerka: 8 sektorów na spodzie talerza i znacznik na boku,
+- czerwony znacznik: pierwsze ostrze / segment / sektor i kreska na chwycie (widać kierunek, także gdy czoło jest w materiale).
+
+Prędkość na ekranie jest umowna: `saw.toolVisualRps` obr/s przy 50 Hz (domyślnie 3; tarcza – `saw.visualRps`).
+Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`), testy `test/toolspin.test.js`.
+
 ## Konfiguracja (`config.json` obok `vizu.ps1`)
 
 | Klucz | Domyślnie | Opis |
@@ -298,7 +310,7 @@ zostają po zmianie trybu.
 | `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm) |
-| `saw` | `{freqScale: 0.01, visualRps: 1.5, fwdSign: 1}` | napęd tarczy: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz); kierunek dla FWD |
+| `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD |
 | `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}`; `mode` - tryb po bazowaniu na starcie (`saw`, `mill`, `drill`, `polishing`) |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
