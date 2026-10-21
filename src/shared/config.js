@@ -156,7 +156,8 @@ export const DEFAULTS = {
   laser: { side: 1, length: 2500, mountAngle: 50 },
   // naped tarczy: czestotliwosc z PLC * freqScale = Hz; obroty na ekranie umowne - visualRps obr/s przy 50 Hz;
   // toolVisualRps - to samo dla frezu / wiertla / polerki (#136); fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
-  saw: { freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1 },
+  // (-1: strona -u tarczy schodzi w material - tam celuja dysze wody, jak na zdjeciu w #141)
+  saw: { freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1 },
   // tryb offline: wartosci poczatkowe formularzy (mm; m/min, m/s2; deg/s, deg/s2)
   offline: {
     machine: {

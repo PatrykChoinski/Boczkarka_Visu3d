@@ -163,16 +163,31 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   STOP oraz przyciskami. Na płycie stołu, pod kamieniem, leży zielona gumowa
   mata łapiąca wodę. Oba elementy da się wyłączyć: `frame.panel`,
   `frame.mat`.
-- **Osłona tarczy i woda (#141, wg zdjęcia w zgłoszeniu):** osłona tarczy
-  (osłonka na wodę) jest kanciastą aluminiową płytą: pionowy przód, skos,
-  płaska góra. Tarcza siedzi w szczelinie i pod osłoną jest odsłonięta.
-  Stalowy oplatany przewód schodzi z głowicy do rozdzielacza przy dolnym
-  tylnym rogu osłony. Z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line)
-  biegną pod dolną krawędzią osłony, po obu stronach tarczy, do pomarańczowych
-  dysz przy piaście. Przy frezie, wierceniu i polerowaniu dysze są po obu
-  stronach narzędzia. Przy włączonych obrotach woda leci z dysz na dolny przód
-  tarczy (stronę wejścia w materiał) albo na czoło narzędzia, jako struga z
-  kroplami. Online woda zależy od zaworów z PLC (`IOVars.yWaterCut` dla
+- **Osłona tarczy i woda (#141, wg zdjęcia i filmu w zgłoszeniu):**
+  - **Osłona tarczy** (osłonka na wodę) to kanciasta, jasna aluminiowa płyta
+    z wymiarami zmierzonymi na zdjęciu (w promieniach tarczy): pionowa
+    krawędź na 0,96, skos, płaska góra na 0,87, druga krawędź na 0,81, dół na
+    −0,57 / −0,40. Ma okrągłe wybranie wokół piasty, w którym widać nakrętkę.
+  - **Woda jak na zdjęciu:**
+    - wszystko jest po zewnętrznej stronie osłony;
+    - stalowy oplatany przewód schodzi do srebrnego rozdzielacza przy dolnym
+      rogu osłony;
+    - z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line) idą do dwóch
+      pomarańczowych dysz tuż obok piasty, a trzeci wąż do dyszy przy dolnej
+      części tarczy.
+  - **Narzędzia:** przy frezie, wierceniu i polerowaniu dysze są po obu
+    stronach narzędzia.
+  - **Przy włączonych obrotach** (jak na filmie) leci dużo wody (ok. 380
+    kropli na dyszę i mgła):
+    1. Woda trafia w początek tarczy, czyli w stronę, która przy danym
+       kierunku obrotu schodzi w materiał, tuż nad powierzchnią.
+    2. Część rozlewa się po tarczy i ją zasłania.
+    3. Reszta obrót wciąga przez rzaz. Przy wyjściu z rzazu woda odrywa się w
+       kierunku obrotu i nisko wzdłuż cięcia spada na materiał za tarczą.
+       Kamień za tarczą jest mokry (połyskująca plama).
+  - **Kierunek obrotu** dla FWD to `saw.fwdSign` (domyślnie −1: w materiał
+    schodzi strona tarczy, w którą celują dysze).
+  - **Online** woda zależy od zaworów z PLC (`IOVars.yWaterCut` dla
   piły, `IOVars.yWaterMill` dla frezu i wiercenia); bez tych zmiennych woda
   leci przy obrotach, tak jak offline.
 - **Cięcie w stół:** gdy tarcza schodzi poniżej spodu kamienia, rzaz w płycie
@@ -384,7 +399,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem), `mat` (zielona mata łapiąca wodę na stole) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500, mountAngle: 50}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
-| `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD |
+| `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD (−1: strona −u tarczy schodzi w materiał - tam leci woda z dysz) |
 | `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}`; `mode` - tryb po bazowaniu na starcie (`saw`, `mill`, `drill`, `polishing`) |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):

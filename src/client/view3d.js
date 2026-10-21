@@ -8,7 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
 import { planMarks, planDistances } from '../shared/planmarks.js';
-import { waterDrops } from '../shared/water.js';
+import { waterDrops, waterSpray } from '../shared/water.js';
 import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
@@ -75,13 +75,20 @@ export class View3D {
     this.laserFanMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false });
     // woda z dysz na tarcze (krople)
     this.water = new THREE.Group();
-    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x2f80e0, size: 14, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x3f93e8, size: 16, transparent: true, opacity: 0.9, depthWrite: false }));
     this.waterDrops.frustumCulled = false;
+    // mgla wodna przy rozbryzgu (duze, prawie przezroczyste punkty)
+    this.waterMist = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x9fd0ff, size: 110, transparent: true, opacity: 0.22, depthWrite: false }));
+    this.waterMist.frustumCulled = false;
+    // mokra plama na materiale wzdluz ciecia (polysk)
+    this.waterWet = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x9fb3c4, roughness: 0.08, metalness: 0.35,
+      transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    this.waterWet.frustumCulled = false;
     // strumien: polprzezroczysta struga od dyszy do tarczy (przebudowa przy zmianie polozenia)
-    const streamMat = new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.35, depthWrite: false });
-    this.waterStreams = [0, 1].map(() => new THREE.Mesh(new THREE.BufferGeometry(), streamMat));
+    const streamMat = new THREE.MeshBasicMaterial({ color: 0x6fb4f5, transparent: true, opacity: 0.45, depthWrite: false });
+    this.waterStreams = [0, 1, 2].map(() => new THREE.Mesh(new THREE.BufferGeometry(), streamMat));
     this.waterKey = '';
-    this.water.add(this.waterDrops, ...this.waterStreams);
+    this.water.add(this.waterDrops, this.waterMist, this.waterWet, ...this.waterStreams);
     this.water.visible = false;
     this.scene.add(this.water);
     this.laserKey = '';
@@ -423,24 +430,43 @@ export class View3D {
     this.toolLowest.scale.setScalar(Math.max(4, r * 0.08));
   }
 
-  // Woda (#141): layout z waterLayout (dysze -> tarcza / narzedzie) albo null, on - woda leci (zawor + obroty),
-  // phase - czas [s] (ruch kropli)
+  // Woda (#141): layout z waterLayout (dysze -> poczatek tarczy / narzedzie) albo null, on - woda leci (zawor + obroty),
+  // phase - czas [s] (ruch kropli); kierunek obrotu (rozbryzg) w layout.spray (waterLayout z kierunkiem obrotu)
   setWater(layout, on, phase = 0) {
     this.water.visible = Boolean(layout && on);
     if (!this.water.visible) return;
-    const pts = [];
-    layout.nozzles.forEach((n, i) => pts.push(...waterDrops(n, layout.targets[i], 80, (phase * 2.2) % 1).flat()));
-    this.waterDrops.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.waterDrops.geometry.computeBoundingSphere();
+    const { drops, mist } = waterSpray(layout, phase % 1000);
+    this.waterDrops.geometry.setAttribute('position', new THREE.Float32BufferAttribute(drops, 3));
+    this.waterMist.geometry.setAttribute('position', new THREE.Float32BufferAttribute(mist, 3));
+    // mokra plama: prostokat od tarczy wzdluz ciecia w strone rozbryzgu, na gorze materialu
+    const wet = layout.spray?.wet;
+    this.waterWet.visible = Boolean(wet);
+    if (wet) {
+      const [o, dir, len, wid] = wet;
+      const z = layout.spray.top + 0.8;
+      const ax = [dir[0], dir[1]];
+      const l = Math.hypot(...ax) || 1;
+      const ux = ax[0] / l;
+      const uy = ax[1] / l;
+      const px = -uy * wid / 2;
+      const py = ux * wid / 2;
+      const a = [o[0] - ux * 0.3 * len, o[1] - uy * 0.3 * len];
+      const b = [o[0] + ux * len, o[1] + uy * len];
+      const pos = [a[0] + px, a[1] + py, z, a[0] - px, a[1] - py, z, b[0] - px * 1.6, b[1] - py * 1.6, z, b[0] + px * 1.6, b[1] + py * 1.6, z];
+      this.waterWet.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      this.waterWet.geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      this.waterWet.geometry.computeVertexNormals();
+    }
     const key = JSON.stringify([layout.nozzles, layout.targets].map((a) => a.map((p) => p.map((c) => Math.round(c)))));
     if (key !== this.waterKey) {
       this.waterKey = key;
+      this.waterStreams.forEach((st, i) => { st.visible = i < layout.nozzles.length; });
       layout.nozzles.forEach((n, i) => {
         // os strugi bez rozrzutu kropli (spread 0), rurka zwezajaca sie nie jest potrzebna - stala 6 mm
         const axis = waterDrops(n, layout.targets[i], 16, 0, 0).sort((p, q) => dist2(p, n) - dist2(q, n));
         axis.push(layout.targets[i]);
         this.waterStreams[i].geometry.dispose();
-        this.waterStreams[i].geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(axis.map(v3)), 24, 6, 8, false);
+        this.waterStreams[i].geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(axis.map(v3)), 24, 9, 8, false);
       });
     }
   }

@@ -7,7 +7,7 @@
 
 import * as THREE from 'three';
 import { headFrame, isToolMode, add, mul, dot, topZ } from '../shared/geometry.js';
-import { waterLayout, laserMount, GUARD_OUTLINE, GUARD_SIDES } from '../shared/water.js';
+import { waterLayout, laserMount, GUARD_OUTLINE, GUARD_SIDES, GUARD_HUB_HOLE } from '../shared/water.js';
 import { isArea, bounds } from '../shared/area.js';
 import { prismGeometry } from './view3d.js';
 
@@ -16,8 +16,8 @@ const GREY = 0xe4e6e8;
 const DARK = 0x6f6152;
 const STEEL = 0x7d8790;
 const HOSE = 0x1e4fbf;        // niebieskie weze segmentowe (Loc-Line)
-const ALU = 0xc4c8cc;         // aluminiowa oslona tarczy
-const BRAID = 0xaeb3b8;       // stalowy oplatany przewod zasilajacy
+const ALU = 0xe4e7ea;         // aluminiowa oslona tarczy (jasna jak na zdjeciu w #141)
+const BRAID = 0xdadde0;       // stalowy oplatany przewod zasilajacy (srebrny)
 const MAT = 0x2f8f46;
 const NOZZLE = 0xe5532a;     // pomaranczowo-czerwone koncowki dysz
 const HOSE_BEADS = 64;        // segmenty jednego weza
@@ -82,20 +82,20 @@ export class MachineModel {
     this.motor = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32), new THREE.MeshStandardMaterial({ color: YELLOW, roughness: 0.5 }));
     this.spindle = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 24), new THREE.MeshStandardMaterial({ color: STEEL, metalness: 0.6, roughness: 0.3 }));
     // oslona tarczy (oslonka na wode, #141): kanciasta aluminiowa plyta z GUARD_OUTLINE, tarcza w szczelinie
-    this.guard = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: ALU, roughness: 0.45, metalness: 0.35 }));
+    this.guard = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: ALU, roughness: 0.6, metalness: 0.12 }));
     this.guardEdges = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x7c8288 }));
     this.guard.add(this.guardEdges);
     this.guardKey = '';
     // weze z woda: segmentowe (kulki wzdluz krzywej - InstancedMesh), dysze, rozdzielacz, stalowy przewod zasilajacy
     const hoseMat = new THREE.MeshStandardMaterial({ color: HOSE, roughness: 0.35, metalness: 0.1 });
-    this.hoses = [0, 1].map(() => {
+    this.hoses = [0, 1, 2].map(() => {
       const h = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), hoseMat, HOSE_BEADS);
       h.frustumCulled = false;
       return h;
     });
-    this.nozzles = [0, 1].map(() => new THREE.Mesh(new THREE.CylinderGeometry(1, 0.55, 1, 16), new THREE.MeshStandardMaterial({ color: NOZZLE, roughness: 0.4 })));
-    this.manifold = box(0x8d949a, { metalness: 0.5, roughness: 0.35 });
-    this.supply = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: BRAID, metalness: 0.7, roughness: 0.35 }));
+    this.nozzles = [0, 1, 2].map(() => new THREE.Mesh(new THREE.CylinderGeometry(1, 0.55, 1, 16), new THREE.MeshStandardMaterial({ color: NOZZLE, roughness: 0.4 })));
+    this.manifold = box(0xcfd3d6, { metalness: 0.3, roughness: 0.4 });     // srebrny rozdzielacz
+    this.supply = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: BRAID, metalness: 0.25, roughness: 0.45 }));
     this.hoseKey = '';
     // modul lasera: obudowa i okienko (swieci, gdy laser wlaczony)
     this.laserBody = box(0x2b2f33, { roughness: 0.5 });
@@ -141,7 +141,7 @@ export class MachineModel {
       // oslona: plyta z obrysu GUARD_OUTLINE w plaszczyznie tarczy (lokalne x - przod u, y - w gore, z - normalna)
       this.guard.visible = !tool;
       if (!tool) this.updateGuard(f, m);
-      this.updateWater(pose, m);
+      this.updateWater(pose, m, extra.spin ?? 1);
       this.updateLaser(pose, m, extra.laser || {}, extra.laserOn);
     }
 
@@ -157,6 +157,9 @@ export class MachineModel {
     if (key !== this.guardKey) {
       this.guardKey = key;
       const shape = new THREE.Shape(GUARD_OUTLINE.map(([s, t]) => new THREE.Vector2(s * R, t * R)));
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, GUARD_HUB_HOLE * R, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
       const depth = m.bladeWidth + GUARD_SIDES.inner + GUARD_SIDES.outer;
       const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
       geo.translate(0, 0, -(m.bladeWidth / 2 + GUARD_SIDES.inner));
@@ -170,12 +173,13 @@ export class MachineModel {
 
   // Weze: segmenty (kulki) wzdluz krzywej przez punkty z waterLayout (rozdzielacz -> pod oslona -> dysza), dysze
   // skierowane na tarcze, stalowy przewod z gory glowicy do rozdzielacza
-  updateWater(pose, m) {
-    const w = waterLayout(pose, m);
+  updateWater(pose, m, spin = 1) {
+    const w = waterLayout(pose, m, spin);
     const key = JSON.stringify([w.hoses, w.supply].map((a) => JSON.stringify(a, (k, v) => (typeof v === 'number' ? Math.round(v) : v))));
     if (key !== this.hoseKey) {
       this.hoseKey = key;
       const mtx = new THREE.Matrix4();
+      this.hoses.forEach((h, i) => { h.visible = i < w.hoses.length; });
       w.hoses.forEach((pts, i) => {
         const curve = new THREE.CatmullRomCurve3(pts.map(v3));
         curve.getSpacedPoints(HOSE_BEADS - 1).forEach((p, k) => {
@@ -188,6 +192,7 @@ export class MachineModel {
       this.supply.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(w.supply.map(v3)), 48, 12, 10, false);
     }
     placeBox(this.manifold, w.manifold.map((c) => c - 28), w.manifold.map((c) => c + 28));
+    this.nozzles.forEach((nz, i) => { nz.visible = i < w.nozzles.length; });
     w.nozzles.forEach((p, i) => {
       const dir = new THREE.Vector3(...w.targets[i]).sub(v3(p)).normalize();
       const nz = this.nozzles[i];

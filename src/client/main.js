@@ -176,12 +176,14 @@ function redraw() {
   const lcfg = state.cfg.laser || { side: 1, length: 2500 };
   const head = $('#showBlade').checked && state.pose;
   view.setLaser(laserPoints(m, rock), 8, head && laserOn() ? laserMount(state.pose, m, lcfg.side, lcfg.mountAngle).pos : null);
-  view.setWater(head ? waterLayout(state.pose, m) : null, waterOn(), performance.now() / 1000);
+  // kierunek obrotu tarczy (jak szprychy): woda na strone schodzaca w material, rozbryzg w kierunku obrotu
+  const spin = sawState().dir * (state.cfg.saw?.fwdSign ?? 1);
+  view.setWater(head ? waterLayout(state.pose, m, spin) : null, waterOn(), performance.now() / 1000);
   view.setPlan(planItems(), topZ(m), { xy: $('#showMarks').checked, dist: $('#showDist').checked });
   view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setTool(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked,
-    { laser: lcfg, laserOn: laserOn() });
+    { laser: lcfg, laserOn: laserOn(), spin });
   view.render();
 
   const tool = isToolMode(m);
