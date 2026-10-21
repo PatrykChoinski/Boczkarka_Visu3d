@@ -6,6 +6,19 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Węże z wodą i moduł lasera na głowicy (#141)
+- Dwa niebieskie węże z głowicy (od korpusu obrotu A) do dysz po obu stronach osłony tarczy, na przodzie osłony. Przy frezie, wierceniu i polerowaniu idą do dysz po obu stronach narzędzia.
+- Przy włączonych obrotach woda leci z obu dysz na tarczę (przy krawędzi wchodzącej w materiał) albo na czoło narzędzia: półprzezroczysta struga i animowane krople.
+  - Offline: woda leci, gdy pracuje piła / wrzeciono.
+  - Online: woda zależy od zaworów `IOVars.yWaterCut` (piła) i `IOVars.yWaterMill` (frez, wiercenie). Gdy PLC nie podaje tych zmiennych, woda leci przy obrotach.
+  - Pasek stanu: „woda” / „woda (frez)”.
+- Moduł lasera (obudowa i okienko, które świeci na czerwono przy włączonym laserze) jest zamontowany na osłonie tarczy od strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Przy włączonym laserze półprzezroczysty wachlarz wiązki prowadzi od modułu do linii lasera na materiale.
+- Geometria w `src/shared/water.js` (`waterLayout`, `waterDrops`, `laserMount`, `headDims`), rysowanie w `machine3d.js` (węże, dysze, moduł) i `view3d.js` (`setWater`, wachlarz w `setLaser`). Testowy PLC podaje `waterMill` w trybach narzędzi.
+- Sprawdzone:
+  - `npm test` 120/120 (nowy `test/water.test.js`: dysze po obu stronach tarczy, woda na tarczę / czoło narzędzia, krople, moduł lasera na osłonie);
+  - `scripts/smoke-test.mjs` OK;
+  - w przeglądarce piła i frez z włączonymi obrotami i laserem.
+
 ### CI: testy na Windows przy każdym pushu / PR, publikacja Pages po testach
 - `.github/workflows/ci.yml` (zastępuje `pages.yml`):
   - przy każdym pushu (każda gałąź) i pull requeście job `test-windows` na `windows-latest`: `npm ci`, `npm test`, `scripts/smoke-test.mjs`, zrzuty ekranu jako artefakt;

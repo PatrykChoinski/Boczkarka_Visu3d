@@ -21,7 +21,7 @@ import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
+const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
   'progMillStart', 'systemBased', 'modeSaw', 'modeMill', 'modeDrill', 'modePolishing']);
 const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn',
   'progMillCount', 'progMillIndex']);
@@ -81,7 +81,8 @@ export function plcTimeline(mode = 'saw') {
     const step = STEP_CODES[r.step] ?? (t < p1.duration ? 50 : 100);
     return {
       ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
-      cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: step === 20 || step === 50 || step === 60,
+      cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
+      waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu
       laser: step === 50 || step === 60, sawFreq: step !== 100 ? 5000 : 0, sawFwd: step !== 100, sawRev: false,
     };

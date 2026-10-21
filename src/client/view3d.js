@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
 import { planMarks, planDistances } from '../shared/planmarks.js';
+import { waterDrops } from '../shared/water.js';
 import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
@@ -39,6 +40,7 @@ const COLORS = {
 };
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+const dist2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
 
 export class View3D {
   constructor(container) {
@@ -69,6 +71,19 @@ export class View3D {
     this.laserGroup = new THREE.Group();
     this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.toolGroup, this.machineModel.group, this.planGroup, this.laserGroup);
     this.laserMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 });
+    // wiazka lasera (wachlarz od modulu na oslonie do linii na materiale)
+    this.laserFanMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false });
+    // woda z dysz na tarcze (krople)
+    this.water = new THREE.Group();
+    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x2f80e0, size: 14, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.waterDrops.frustumCulled = false;
+    // strumien: polprzezroczysta struga od dyszy do tarczy (przebudowa przy zmianie polozenia)
+    const streamMat = new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.35, depthWrite: false });
+    this.waterStreams = [0, 1].map(() => new THREE.Mesh(new THREE.BufferGeometry(), streamMat));
+    this.waterKey = '';
+    this.water.add(this.waterDrops, ...this.waterStreams);
+    this.water.visible = false;
+    this.scene.add(this.water);
     this.laserKey = '';
     this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
     this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
@@ -253,9 +268,10 @@ export class View3D {
 
   // --- laser -----------------------------------------------------------------
 
-  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm
-  setLaser(points, width = 8) {
-    const key = points ? JSON.stringify(points.map((p) => p.map((c) => Math.round(c * 2) / 2))) : '';
+  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm;
+  // mount - polozenie modulu lasera na glowicy [x, y, z] (wiazka - wachlarz do linii) albo null
+  setLaser(points, width = 8, mount = null) {
+    const key = points ? JSON.stringify([points, mount].map((a) => a && JSON.stringify(a, (k, v) => (typeof v === 'number' ? Math.round(v * 2) / 2 : v)))) : '';
     if (key === this.laserKey) return;
     this.laserKey = key;
     disposeGroup(this.laserGroup);
@@ -281,6 +297,15 @@ export class View3D {
     const dot = new THREE.Mesh(new THREE.SphereGeometry(width, 12, 8), this.laserMat);
     dot.position.copy(v3(points[0]));
     this.laserGroup.add(strip, dot);
+    if (mount) {
+      const fan = [];
+      for (let i = 0; i + 1 < points.length; i++) fan.push(...mount, ...points[i], ...points[i + 1]);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(fan, 3));
+      const beam = new THREE.Mesh(g, this.laserFanMat);
+      beam.renderOrder = 6;
+      this.laserGroup.add(beam);
+    }
   }
 
   // --- tarcza -----------------------------------------------------------------
@@ -398,9 +423,31 @@ export class View3D {
     this.toolLowest.scale.setScalar(Math.max(4, r * 0.08));
   }
 
-  // glowica i suport (pila mostowa)
-  setMachine(pose, m, frameCfg, board, showHead, showFrame) {
-    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame);
+  // Woda (#141): layout z waterLayout (dysze -> tarcza / narzedzie) albo null, on - woda leci (zawor + obroty),
+  // phase - czas [s] (ruch kropli)
+  setWater(layout, on, phase = 0) {
+    this.water.visible = Boolean(layout && on);
+    if (!this.water.visible) return;
+    const pts = [];
+    layout.nozzles.forEach((n, i) => pts.push(...waterDrops(n, layout.targets[i], 80, (phase * 2.2) % 1).flat()));
+    this.waterDrops.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    this.waterDrops.geometry.computeBoundingSphere();
+    const key = JSON.stringify([layout.nozzles, layout.targets].map((a) => a.map((p) => p.map((c) => Math.round(c)))));
+    if (key !== this.waterKey) {
+      this.waterKey = key;
+      layout.nozzles.forEach((n, i) => {
+        // os strugi bez rozrzutu kropli (spread 0), rurka zwezajaca sie nie jest potrzebna - stala 6 mm
+        const axis = waterDrops(n, layout.targets[i], 16, 0, 0).sort((p, q) => dist2(p, n) - dist2(q, n));
+        axis.push(layout.targets[i]);
+        this.waterStreams[i].geometry.dispose();
+        this.waterStreams[i].geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(axis.map(v3)), 24, 6, 8, false);
+      });
+    }
+  }
+
+  // glowica i suport (pila mostowa); extra - {laser: {side, mountAngle}, laserOn}
+  setMachine(pose, m, frameCfg, board, showHead, showFrame, extra = {}) {
+    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame, extra);
     // przy suporcie stol zastepuje siatke podlogi
     if (this.grid) this.grid.visible = !this.machineModel.frame.visible;
   }

@@ -29,6 +29,7 @@ export const VARIABLES = {
   cutStart: 'HMI2.bCutStart',
   sawRunning: 'Communication.bMainDriveRunning',
   waterCut: 'IOVars.yWaterCut',
+  waterMill: 'IOVars.yWaterMill',
   // laser (wyjscie) i naped glowny tarczy: czestotliwosc (falownik, 0.01 Hz), kierunek
   laser: 'IOVars.yLaser',
   sawFreq: 'Communication.iMainDriveFreqAct',
@@ -149,8 +150,9 @@ export const DEFAULTS = {
   frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700 },
   // plyta stolu pod kamieniem [mm] - ciecie w stol rysowane na czerwono do tej glebokosci
   tableThickness: 80,
-  // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa
-  laser: { side: 1, length: 2500 },
+  // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa;
+  // mountAngle - modul lasera na oslonie tarczy: kat od gory w strone lasera [deg] (#141)
+  laser: { side: 1, length: 2500, mountAngle: 50 },
   // naped tarczy: czestotliwosc z PLC * freqScale = Hz; obroty na ekranie umowne - visualRps obr/s przy 50 Hz;
   // toolVisualRps - to samo dla frezu / wiertla / polerki (#136); fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
   saw: { freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1 },

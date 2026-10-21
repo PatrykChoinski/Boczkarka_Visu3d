@@ -1,11 +1,12 @@
 // Model maszyny (pila mostowa): suport - sciany z prowadnicami, most z wozkiem, stol pod kamieniem;
 // glowica - slup Z, korpus obrotu A, silnik wrzeciona z wychylem B, oslona tarczy (frez / wiertlo / polerka - bez oslony,
-// wrzeciono do kolnierza narzedzia).
+// wrzeciono do kolnierza narzedzia), dwa niebieskie weze z woda do dysz i modul lasera na oslonie (#141).
 // Bryly uproszczone, polozenie wg pozycji osi (shared/geometry.js); stol i rozstaw maszyny wg punktow
 // stolu (aCuttingBoard), niezalezne od kamienia; reszta wymiarow z frame w configu.
 
 import * as THREE from 'three';
 import { headFrame, isToolMode, add, mul, dot, topZ } from '../shared/geometry.js';
+import { waterLayout, laserMount } from '../shared/water.js';
 import { isArea, bounds } from '../shared/area.js';
 import { prismGeometry } from './view3d.js';
 
@@ -13,6 +14,8 @@ const YELLOW = 0xf2b705;
 const GREY = 0xe4e6e8;
 const DARK = 0x6f6152;
 const STEEL = 0x7d8790;
+const HOSE = 0x1e5aa8;
+const NOZZLE = 0x0f2f5c;
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
 const cross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
@@ -64,12 +67,20 @@ export class MachineModel {
     // oslona tarczy - polowa walca (gorna polowa tarczy)
     this.guard = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1, false, -Math.PI / 2, Math.PI),
       new THREE.MeshStandardMaterial({ color: YELLOW, roughness: 0.5, side: THREE.DoubleSide }));
-    this.head.add(this.ram, this.rotary, this.motor, this.spindle, this.guard);
+    // weze z woda (TubeGeometry przebudowywana przy zmianie polozenia) i dysze
+    const hoseMat = new THREE.MeshStandardMaterial({ color: HOSE, roughness: 0.55 });
+    this.hoses = [0, 1].map(() => new THREE.Mesh(new THREE.BufferGeometry(), hoseMat));
+    this.nozzles = [0, 1].map(() => new THREE.Mesh(new THREE.CylinderGeometry(1, 0.6, 1, 16), new THREE.MeshStandardMaterial({ color: NOZZLE, metalness: 0.4 })));
+    this.hoseKey = '';
+    // modul lasera: obudowa i okienko (swieci, gdy laser wlaczony)
+    this.laserBody = box(0x2b2f33, { roughness: 0.5 });
+    this.laserLens = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 20), new THREE.MeshBasicMaterial({ color: 0x5a1a1a }));
+    this.head.add(this.ram, this.rotary, this.motor, this.spindle, this.guard, ...this.hoses, ...this.nozzles, this.laserBody, this.laserLens);
     this.group.add(this.frame, this.head);
   }
 
-  // cfg - frame z configu, board - punkty stolu [[x, y, z], ...]
-  update(pose, m, cfg, board, showHead, showFrame) {
+  // cfg - frame z configu, board - punkty stolu [[x, y, z], ...], extra {laser: {side, mountAngle}, laserOn}
+  update(pose, m, cfg, board, showHead, showFrame, extra = {}) {
     this.head.visible = Boolean(pose && showHead);
     this.frame.visible = Boolean(pose && showFrame);
     if (!pose) return;
@@ -107,50 +118,90 @@ export class MachineModel {
       const flip = dot(zAxis, upInPlane) >= 0 ? 1 : -1;
       orient(this.guard, mul(xAxis, flip), yAxis, mul(zAxis, flip), add(f.center, mul(f.normal, -m.bladeWidth / 2 - 10)),
         [r * 1.08, Math.max(m.bladeWidth, 1) + 60, r * 1.08]);
+      this.updateWater(pose, m);
+      this.updateLaser(pose, m, extra.laser || {}, extra.laserOn);
     }
 
     if (this.frame.visible) {
-      const alongX = cfg.bridgeAlong !== 'y';
-      // (wzdluz mostu, w poprzek) -> (x, y)
-      const P = (a, c, z) => (alongX ? [a, c, z] : [c, a, z]);
-      const [x0, y0, x1, y1] = tableExtent(board);
-      const [a0, a1, c0, c1] = alongX ? [x0, x1, y0, y1] : [y0, y1, x0, x1];
-      const mg = cfg.margin;
-      const top = topZ(m);
-      const tableTop = top - m.materialThickness;
-      const floor = tableTop - cfg.tableHeight;
-      const wall = 300;
-      const wa0 = a0 - mg - wall;
-      const wa1 = a1 + mg + wall;
-      const cl0 = c0 - mg;
-      const cl1 = c1 + mg;
-      const box2 = (mesh, p, q) => {
-        const lo = P(Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.min(p[2], q[2]));
-        const hi = P(Math.max(p[0], q[0]), Math.max(p[1], q[1]), Math.max(p[2], q[2]));
-        placeBox(mesh, [Math.min(lo[0], hi[0]), Math.min(lo[1], hi[1]), lo[2]], [Math.max(lo[0], hi[0]), Math.max(lo[1], hi[1]), hi[2]]);
-      };
-      box2(this.wallA, [wa0, cl0, floor], [wa0 + wall, cl1, zBridge - 60]);
-      box2(this.wallB, [wa1 - wall, cl0, floor], [wa1, cl1, zBridge - 60]);
-      box2(this.railA, [wa0 + 40, cl0, zBridge - 60], [wa0 + wall - 40, cl1, zBridge]);
-      box2(this.railB, [wa1 - wall + 40, cl0, zBridge], [wa1 - 40, cl1, zBridge - 60]);
-      // plyta stolu - wielokat z punktow stolu (bez punktow - prostokat)
-      const tablePts = isArea(board) ? board : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-      const tableKey = JSON.stringify([tablePts, tableTop]);
-      if (tableKey !== this.tableKey) {
-        this.tableKey = tableKey;
-        this.table.geometry.dispose();
-        this.table.geometry = prismGeometry(tablePts, tableTop - 80, 79.5);
-        this.table.position.set(0, 0, 0);
-        this.table.scale.set(1, 1, 1);
-        this.table.quaternion.identity();
-      }
-      // most jedzie z osia poprzeczna (Y), wozek z osia wzdluz mostu (X); slup przed mostem
-      const posA = alongX ? f.axis[0] : f.axis[1];
-      const posC = alongX ? f.axis[1] : f.axis[0];
-      const bridgeC = posC + ramW / 2 + 200;
-      box2(this.bridge, [wa0, bridgeC, zBridge], [wa1, bridgeC + 380, zBridge + 140]);
-      box2(this.bridgeFace, [wa0 + wall, bridgeC, zBridge + 140], [wa1 - wall, bridgeC + 380, zBridge + 420]);
-      box2(this.carriage, [posA - ramW, posC - ramW / 2 - 40, zBridge + 60], [posA + ramW, bridgeC, zBridge + 560]);
+      this.updateFrame(f, m, cfg, board, ramW, zBridge);
     }
+  }
+
+  // Weze: krzywa przez punkty z waterLayout (wyjscie z korpusu A -> nad oslona -> dysza), dysze skierowane na tarcze
+  updateWater(pose, m) {
+    const w = waterLayout(pose, m);
+    const key = JSON.stringify(w.hoses.map((h) => h.map((p) => p.map((c) => Math.round(c)))));
+    if (key !== this.hoseKey) {
+      this.hoseKey = key;
+      w.hoses.forEach((pts, i) => {
+        const curve = new THREE.CatmullRomCurve3(pts.map(v3));
+        this.hoses[i].geometry.dispose();
+        this.hoses[i].geometry = new THREE.TubeGeometry(curve, 40, 9, 8, false);
+      });
+    }
+    w.nozzles.forEach((p, i) => {
+      const dir = new THREE.Vector3(...w.targets[i]).sub(v3(p)).normalize();
+      const nz = this.nozzles[i];
+      nz.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);   // waski koniec (dol walca) w strone tarczy
+      nz.scale.set(14, 50, 14);
+      nz.position.copy(v3(p)).addScaledVector(dir, 10);
+    });
+  }
+
+  // Modul lasera na oslonie: obudowa wzdluz kierunku lasera, okienko od strony linii lasera
+  updateLaser(pose, m, cfg, on) {
+    const mt = laserMount(pose, m, cfg.side ?? 1, cfg.mountAngle ?? 50);
+    const z = cross(mt.u, mt.normal);
+    const up = dot(z, mt.up) >= 0 ? z : mul(z, -1);
+    orient(this.laserBody, mt.u, mt.normal, up, add(mt.pos, mul(up, 35)), [110, 60, 70]);
+    orient(this.laserLens, mt.u, up, mt.normal, add(add(mt.pos, mul(up, 35)), mul(mt.u, 56)), [16, 6, 16]);
+    this.laserLens.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v3(mt.u));
+    this.laserLens.material.color.setHex(on ? 0xff2a1a : 0x5a1a1a);
+    this.laserMount = mt;
+  }
+
+  // Suport: sciany z prowadnicami, stol, most i wozek
+  updateFrame(f, m, cfg, board, ramW, zBridge) {
+    const alongX = cfg.bridgeAlong !== 'y';
+    // (wzdluz mostu, w poprzek) -> (x, y)
+    const P = (a, c, z) => (alongX ? [a, c, z] : [c, a, z]);
+    const [x0, y0, x1, y1] = tableExtent(board);
+    const [a0, a1, c0, c1] = alongX ? [x0, x1, y0, y1] : [y0, y1, x0, x1];
+    const mg = cfg.margin;
+    const top = topZ(m);
+    const tableTop = top - m.materialThickness;
+    const floor = tableTop - cfg.tableHeight;
+    const wall = 300;
+    const wa0 = a0 - mg - wall;
+    const wa1 = a1 + mg + wall;
+    const cl0 = c0 - mg;
+    const cl1 = c1 + mg;
+    const box2 = (mesh, p, q) => {
+      const lo = P(Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.min(p[2], q[2]));
+      const hi = P(Math.max(p[0], q[0]), Math.max(p[1], q[1]), Math.max(p[2], q[2]));
+      placeBox(mesh, [Math.min(lo[0], hi[0]), Math.min(lo[1], hi[1]), lo[2]], [Math.max(lo[0], hi[0]), Math.max(lo[1], hi[1]), hi[2]]);
+    };
+    box2(this.wallA, [wa0, cl0, floor], [wa0 + wall, cl1, zBridge - 60]);
+    box2(this.wallB, [wa1 - wall, cl0, floor], [wa1, cl1, zBridge - 60]);
+    box2(this.railA, [wa0 + 40, cl0, zBridge - 60], [wa0 + wall - 40, cl1, zBridge]);
+    box2(this.railB, [wa1 - wall + 40, cl0, zBridge], [wa1 - 40, cl1, zBridge - 60]);
+    // plyta stolu - wielokat z punktow stolu (bez punktow - prostokat)
+    const tablePts = isArea(board) ? board : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    const tableKey = JSON.stringify([tablePts, tableTop]);
+    if (tableKey !== this.tableKey) {
+      this.tableKey = tableKey;
+      this.table.geometry.dispose();
+      this.table.geometry = prismGeometry(tablePts, tableTop - 80, 79.5);
+      this.table.position.set(0, 0, 0);
+      this.table.scale.set(1, 1, 1);
+      this.table.quaternion.identity();
+    }
+    // most jedzie z osia poprzeczna (Y), wozek z osia wzdluz mostu (X); slup przed mostem
+    const posA = alongX ? f.axis[0] : f.axis[1];
+    const posC = alongX ? f.axis[1] : f.axis[0];
+    const bridgeC = posC + ramW / 2 + 200;
+    box2(this.bridge, [wa0, bridgeC, zBridge], [wa1, bridgeC + 380, zBridge + 140]);
+    box2(this.bridgeFace, [wa0 + wall, bridgeC, zBridge + 140], [wa1 - wall, bridgeC + 380, zBridge + 420]);
+    box2(this.carriage, [posA - ramW, posC - ramW / 2 - 40, zBridge + 60], [posA + ramW, bridgeC, zBridge + 560]);
   }
 }

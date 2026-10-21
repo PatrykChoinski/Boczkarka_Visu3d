@@ -6,6 +6,7 @@ import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
 import { machine as makeMachine, headFrame, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { waterLayout, laserMount } from '../shared/water.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
 import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor } from '../shared/tools.js';
@@ -172,11 +173,15 @@ function redraw() {
   view.setCuts(state.tableRecorder, 'table');
   view.setToolCuts(state.toolRecorder, 'stone');
   view.setToolCuts(state.toolTableRecorder, 'table');
-  view.setLaser(laserPoints(m, rock));
+  const lcfg = state.cfg.laser || { side: 1, length: 2500 };
+  const head = $('#showBlade').checked && state.pose;
+  view.setLaser(laserPoints(m, rock), 8, head && laserOn() ? laserMount(state.pose, m, lcfg.side, lcfg.mountAngle).pos : null);
+  view.setWater(head ? waterLayout(state.pose, m) : null, waterOn(), performance.now() / 1000);
   view.setPlan(planItems(), topZ(m), { xy: $('#showMarks').checked, dist: $('#showDist').checked });
   view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setTool(state.pose, m, $('#showBlade').checked, state.saw.angle);
-  view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
+  view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked,
+    { laser: lcfg, laserOn: laserOn() });
   view.render();
 
   const tool = isToolMode(m);
@@ -219,7 +224,7 @@ function redraw() {
     if (auto.running) text = `Automat: krok ${auto.index + 1} / ${auto.count} – ${stepName(auto.rows[auto.index]?.step)}   `;
     if (v.cutStep !== undefined) text += `CutStep: ${state.cfg.cutSteps[v.cutStep] ?? v.cutStep}`;
     text += sawText();
-    if (v.waterCut) text += '   woda';
+    if (v.waterCut || v.waterMill) text += `   woda${v.waterMill && !v.waterCut ? ' (frez)' : ''}`;
     if (v.laser) text += '   laser';
     $('#step').textContent = text;
   } else {
@@ -250,6 +255,17 @@ function laserPoints(m, rock) {
   if (!laserOn()) return null;
   const l = state.cfg.laser || { side: 1, length: 2500 };
   return laserLine(state.pose, m, l.side, l.length, surfaceZ(m, rock));
+}
+
+// Woda na tarcze / narzedzie (#141): przy obrotach; online zawor z PLC (yWaterCut - pila, yWaterMill - frez, wiercenie),
+// bez tych zmiennych w PLC - jak offline (woda przy obrotach)
+function waterOn() {
+  const s = sawState();
+  if (!s.running || s.freq <= 0) return false;
+  if (state.mode !== 'online') return true;
+  const v = state.online.values;
+  if (v.waterCut === undefined && v.waterMill === undefined) return true;
+  return Boolean(v.waterCut || v.waterMill);
 }
 
 // Stan napedu tarczy: {running, freq [Hz], dir: 1 FWD / -1 REV}
