@@ -11,18 +11,24 @@ opisuje [CHANGELOG.md](CHANGELOG.md).
 Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
 mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
 silnik z wychyłem B, osłona tarczy), stół i kamień z punktów jak w PLC,
-tarczę oraz wycięty rzaz (ściany cięcia z obwiednią głębokości i szczelinę na
-górnej powierzchni).
+tarczę (z obrotami wg napędu głównego), laser oraz wycięty rzaz: ściany cięcia
+z obwiednią głębokości, szczelina na górnej powierzchni, a cięcie w stół na
+czerwono.
 
 - **Online (PLC):** pozycje osi i parametry są czytane przez **OPC UA z
   localhost** (serwer CODESYS na sterowniku), czyli te same zmienne co HMI.
-- **Offline:** bez PLC. Na ekranie zadajesz cięcie albo pozycję osi i oglądasz
-  animację ruchu z **prędkościami, przyspieszeniami i hamowaniem jak w
-  napędach** (profil trapezowy). Parametry wpisujesz ręcznie albo pobierasz z
-  PLC.
+- **Offline:** bez PLC. Animacja ruchu z **prędkościami, przyspieszeniami i
+  hamowaniem jak w napędach** (profil trapezowy). Do wyboru:
+  - operacje piły jak w PLC,
+  - automat (bufor kroków),
+  - ruchy ręczne (jog, pozycje A/B, ruchy interpolowane wzdłuż lasera),
+  - dojazd do pozycji.
 
-Na razie tylko **pojedyncze cięcie piłą**. Inne operacje (frez, łuki, profile)
-dojdą później.
+  Parametry wpisujesz ręcznie albo pobierasz z PLC.
+
+Operacje piły: cięcie proste (`CutST`), pasy, bloki, krawędzie, zakoszenie,
+łuk, okrąg, elipsa, profil krawędzi i wygładzanie. Frez, wiercenie i
+polerowanie są na razie pominięte.
 
 Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 **three.js** (WebGL), budowana przez esbuild do `public/`.
@@ -36,6 +42,9 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
 | `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne, jednostki (m/min, m/s²) |
 | `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
+| `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
+| `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
+| `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
 | `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
@@ -103,8 +112,28 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   przyciskiem, kółko przybliża, dwuklik dopasowuje.
 - **Wyczyść**: usuwa narysowane cięcia. **Głowica** (tarcza, słup Z, silnik,
   osłona) i **Suport** (ściany, most, wózek, stół): pokaż / ukryj.
-- Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, piła,
-  woda; offline krok programu, czas i prędkość.
+- **Plan**: podgląd toru operacji / automatu. **Laser**: offline laser
+  włączony; online pokazywany, gdy w PLC świeci (`IOVars.yLaser`).
+- Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, krok
+  automatu, piła (częstotliwość i kierunek), woda, laser. Offline: krok
+  programu, czas i prędkość.
+
+### Tarcza, laser, cięcie w stół (oba tryby)
+
+- **Obroty tarczy:** szprychy i czerwony znacznik zęba obracają się, gdy piła
+  pracuje. Kierunek jest wg `bMainDriveRunFWD` / `bMainDriveRunREV`, a
+  częstotliwość wg `iMainDriveFreqAct` (w 0,01 Hz, `saw.freqScale`); wartość
+  w Hz widać na pasku. Szybkość obrotu na ekranie jest umowna: `saw.visualRps`
+  obr/s przy 50 Hz, bo prawdziwe ~50 obr/s zlałyby się w obraz. Offline piła
+  pracuje w trakcie programu albo po „Piła ON” w zakładce Ręczne.
+- **Laser:** żółta linia na powierzchni (kamień albo stół) w płaszczyźnie
+  tarczy, wzdłuż kierunku cięcia przy danym A. Domyślnie świeci w prawą
+  stronę (`laser.side` = 1, czyli +kierunek cięcia); długość to
+  `laser.length`.
+- **Cięcie w stół:** gdy tarcza schodzi poniżej spodu kamienia, rzaz w płycie
+  stołu (grubość `tableThickness`) rysuje się na czerwono, a na górze ekranu
+  pojawia się czerwona informacja o długości i głębokości. Rzaz w kamieniu
+  zapisuje się tylko nad kamieniem.
 
 ### Stół i kamień (oba tryby)
 
@@ -131,15 +160,33 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
 
 ### Tryb offline (panel po prawej)
 
-- **Cięcie**: początek i koniec linii cięcia na górnej powierzchni materiału
-  (jak punkty z HMI; kąt A wynika z punktów), wychył B, głębokość, liczba
-  przejść, odjazd nad materiał.
-  - Przebieg jak w `CutST`: najpierw Z w górę na wysokość bezpieczną dla
-    całego obrotu B, potem dojazd X/Y/A/B. Dla każdej głębokości zjazd w Z i
-    cięcie wzdłuż linii (na zmianę w obie strony, ostatnie jako
-    `StartLastCut`). Na koniec wyjazd w Z.
-  - Przyciski: Start / Pauza / Stop. **Tempo animacji** 1× to czas
-    rzeczywisty, do wyboru też 2×, 5× i 10×.
+- **Operacja**: wybór programu piły i formularz jak na ekranach HMI.
+  - Programy: cięcie proste (zewnętrzne / wewnętrzne / odwrócone), pasy,
+    bloki, krawędzie, zakoszenie, łuk (promień / trzy punkty / cięciwa),
+    okrąg, elipsa, profil krawędzi z wygładzaniem.
+  - Wspólne parametry cięcia: tablica głębokości, skos, wyjazd nad materiał,
+    wolniejsza końcówka.
+  - Przebieg jak w PLC (`CutST` i programy z zadania `Programs`), dojazd jak
+    `GoToPositionST`.
+  - Przyciski: Start / Pauza / Stop. **Tempo animacji** (pasek u góry): 1× to
+    czas rzeczywisty, do wyboru też 2×–100×.
+- **Automat** (oba tryby): bufor kroków jak lista programu w HMI
+  (`ProgramAutoCutST` / `ProgramAutoProfileST`), czyli X, Y, krok, R, kąt,
+  głębokość, we/zew i punkt startowy.
+  - Krok wiersza i działa od punktu i do i+1: cięcie, przejazd, łuki, okręgi,
+    skosy, profile, wygładzanie, zmiana głębokości.
+  - Offline: tabela do edycji i „Przykład”.
+  - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
+- **Ręczne** (offline, wizualizacja nie steruje maszyną): jak ekran ruchów
+  ręcznych w HMI.
+  - **Jog X/Y/Z/A/B ±**: oś jedzie, dopóki przycisk jest wciśnięty, z
+    prędkością jog (`fJog[XYZAB]Velocity`) i rampą osi; po puszczeniu hamuje.
+  - **Obrót A**: 0 / 90 / −90 / 180 / −180°. **Wychył B**: 0 / 30 / 45 / 60 /
+    90° (dojazd z prędkością i rampą osi).
+  - **Ruchy interpolowane** względem lasera: wzdłuż lasera, przeciwnie do
+    lasera, prostopadle, prostopadle odwrotnie. Ruch w XY z prędkością cięcia i
+    `Acc` / `Dec`, także w materiale, więc tnie.
+  - **Piła ON/OFF**, kierunek FWD / REV i częstotliwość.
 - **Pozycja**: zadane X/Y/Z/A/B.
   - **Jedź**: animowany dojazd; najpierw Z w górę, jeśli trzeba, potem
     wszystkie osie naraz, każda z własną rampą.
@@ -153,6 +200,8 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
 | dojazd X/Y | m/min | m/s² | `fVelocityFast`, `DecX` |
 | oś Z | m/min | m/s² | `fVelocityAxisZWork`, `DecZ` |
 | oś A / B | °/s | °/s² | `VelA`, `DecA` / `VelB`, `DecB` |
+| jog X / Y / Z | m/min | jak dojazd X/Y, oś Z | `fJogXVelocity`, `fJogYVelocity`, `fJogZVelocity` |
+| jog A / B | °/s | jak oś A / B | `fJogAVelocity`, `fJogBVelocity` |
 
 W PLC wartości są w mm/s i mm/s². „Pobierz z PLC” przelicza je na m/min i
 m/s², np. 150 mm/s = 9 m/min, a 300 mm/s² = 0,3 m/s². W PLC
@@ -173,7 +222,10 @@ Formularze są zapamiętywane w przeglądarce.
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
 | `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
-| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}` |
+| `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
+| `laser` | `{side: 1, length: 2500}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm) |
+| `saw` | `{freqScale: 0.01, visualRps: 1.5, fwdSign: 1}` | napęd tarczy: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz); kierunek dla FWD |
+| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}` |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
 
@@ -184,8 +236,10 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 | głowica | `HMI.fParameterCutTiltDiameter`, `HMI.fParameterHeadRotationDiameter` |
 | materiał | `HMI.fCutMaterialHeight` (Z górnej powierzchni), `HMI.fParameterMaterialThickness` |
 | stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut` |
+| laser, napęd tarczy | `IOVars.yLaser`, `Communication.iMainDriveFreqAct`, `Communication.bMainDriveRunFWD`, `Communication.bMainDriveRunREV` |
+| automat | `HMI2.aProgramXPosition/YPosition/NextStep/Radius/Angle/Depth/DepthEnd/Length/OutIn`, `HMI.fProgramStartPositionX/Y`, `HMI2.iProgramCutNumber`, `HMI2.iActualNumberOfProgramCuts` (i odpowiedniki profili) |
 | stół, kamień | `HMI.aCuttingBoardX/Y/Z`, `HMI.iCuttingBoardApexNumber`, `HMI.aCuttingRockX/Y/Z`, `HMI.iCuttingRockApexNumber` |
-| dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `VelA`, `DecA`, `VelB`, `DecB` |
+| dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `fVelocityAxisZApproach`, `VelA`, `DecA`, `VelB`, `DecB`, `fJog[XYZAB]Velocity` |
 
 ## Geometria
 
@@ -205,7 +259,7 @@ Wymagany Node.js 20+ (sprawdzone na 24).
 
 ```powershell
 npm ci
-npm test                 # geometria, ruch, OPC UA (testowy serwer), SSE
+npm test                 # geometria, ruch, operacje, automat, jog / laser, OPC UA (testowy serwer), SSE
 npm run offline          # strona bez PLC: http://localhost:8128
 npm run fake-plc         # udawany CODESYS na opc.tcp://localhost:4840 ...
 npm start                # ... i strona z danymi z niego (tryb Online)

@@ -20,6 +20,16 @@
     "ramLength": 1400,
     "tableHeight": 700
   },
+  "tableThickness": 80,
+  "laser": {
+    "side": 1,
+    "length": 2500
+  },
+  "saw": {
+    "freqScale": 0.01,
+    "visualRps": 1.5,
+    "fwdSign": 1
+  },
   "offline": {
     "machine": {
       "discDiameter": 625,
@@ -90,7 +100,12 @@
       "aVel": 30,
       "aAcc": 60,
       "bVel": 10,
-      "bAcc": 20
+      "bAcc": 20,
+      "jogXVel": 6,
+      "jogYVel": 6,
+      "jogZVel": 1.2,
+      "jogAVel": 20,
+      "jogBVel": 10
     },
     "cut": {
       "x0": 200,
@@ -108,6 +123,10 @@
       "z": 0,
       "a": 0,
       "b": 0
+    },
+    "saw": {
+      "freq": 50,
+      "dir": "FWD"
     }
   }
 }

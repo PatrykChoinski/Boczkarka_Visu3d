@@ -109,3 +109,14 @@ footer { background: var(--bar); }
   #panel { width: auto; max-height: 45vh; border-left: none; border-top: 1px solid var(--border); }
   #viewWrap { min-height: 50vh; }
 }
+
+/* ekran reczny */
+table.jog { width: 100%; border-collapse: collapse; }
+table.jog td { padding: 3px; }
+table.jog td:first-child { width: 22px; font-weight: 600; }
+table.jog button, .tab[data-tab="man"] .grid2 button { width: 100%; min-height: 46px; }
+button.hold.pressed { background: var(--accent); border-color: var(--accent); color: #fff; }
+.presets { gap: 4px; margin-top: 4px; }
+.presets button { flex: 1; min-width: 0; padding: 4px; }
+#sawToggle.on { background: #c62828; border-color: #c62828; color: #fff; }
+#hudTable { color: #c62828; font-size: 15px; font-weight: 600; }

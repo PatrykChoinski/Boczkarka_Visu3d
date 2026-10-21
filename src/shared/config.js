@@ -16,6 +16,11 @@ export const VARIABLES = {
   cutStart: 'HMI2.bCutStart',
   sawRunning: 'Communication.bMainDriveRunning',
   waterCut: 'IOVars.yWaterCut',
+  // laser (wyjscie) i naped glowny tarczy: czestotliwosc (falownik, 0.01 Hz), kierunek
+  laser: 'IOVars.yLaser',
+  sawFreq: 'Communication.iMainDriveFreqAct',
+  sawFwd: 'Communication.bMainDriveRunFWD',
+  sawRev: 'Communication.bMainDriveRunREV',
   // stol i kamien (Settings/WorkArea): do 8 wierzcholkow XYZ
   boardX: 'HMI.aCuttingBoardX',
   boardY: 'HMI.aCuttingBoardY',
@@ -38,6 +43,12 @@ export const VARIABLES = {
   aAcc: 'HMI.DecA',
   bVel: 'HMI.VelB',
   bAcc: 'HMI.DecB',
+  // ruchy reczne (Manual): predkosci jog
+  jogXVel: 'HMI.fJogXVelocity',
+  jogYVel: 'HMI.fJogYVelocity',
+  jogZVel: 'HMI.fJogZVelocity',
+  jogAVel: 'HMI.fJogAVelocity',
+  jogBVel: 'HMI.fJogBVelocity',
   // automat (ProgramAutoCutST / ProgramAutoProfileST): tablice programu [0..249], punkt startowy, licznik krokow
   progX: 'HMI2.aProgramXPosition',
   progY: 'HMI2.aProgramYPosition',
@@ -70,7 +81,8 @@ export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
 export const MACHINE_KEYS = ['discDiameter', 'bladeWidth', 'cutTiltDiameter', 'headRotationDiameter', 'materialHeight', 'materialThickness'];
-export const DYNAMICS_KEYS = ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'fastAcc', 'zVel', 'zAcc', 'zUpVel', 'aVel', 'aAcc', 'bVel', 'bAcc'];
+export const DYNAMICS_KEYS = ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'fastAcc', 'zVel', 'zAcc', 'zUpVel', 'aVel', 'aAcc', 'bVel', 'bAcc',
+  'jogXVel', 'jogYVel', 'jogZVel', 'jogAVel', 'jogBVel'];
 
 // Jednostki dynamiki: w PLC i w obliczeniach mm/s, mm/s2 (deg/s, deg/s2), na ekranie i w config.json
 // predkosci liniowe w m/min, przyspieszenia w m/s2 (osie obrotowe bez zmian)
@@ -78,6 +90,7 @@ const DISPLAY_FACTOR = { vel: 1000 / 60, acc: 1000, rot: 1 };
 const DYNAMICS_UNITS = {
   cutVel: 'vel', cutAcc: 'acc', cutDec: 'acc', fastVel: 'vel', fastAcc: 'acc', zVel: 'vel', zAcc: 'acc', zUpVel: 'vel',
   aVel: 'rot', aAcc: 'rot', bVel: 'rot', bAcc: 'rot',
+  jogXVel: 'vel', jogYVel: 'vel', jogZVel: 'vel', jogAVel: 'rot', jogBVel: 'rot',
 };
 
 // ekran (m/min, m/s2) -> obliczenia (mm/s, mm/s2); tylko klucze obecne w d
@@ -117,6 +130,13 @@ export const DEFAULTS = {
   // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu, spod mostu bridgeZ mm nad Z = 0,
   // dlugosc slupa Z, wysokosc stolu (do podlogi)
   frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700 },
+  // plyta stolu pod kamieniem [mm] - ciecie w stol rysowane na czerwono do tej glebokosci
+  tableThickness: 80,
+  // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa
+  laser: { side: 1, length: 2500 },
+  // naped tarczy: czestotliwosc z PLC * freqScale = Hz; obroty na ekranie umowne - visualRps obr/s przy 50 Hz;
+  // fwdSign - kierunek obrotu dla FWD wzgledem osi wrzeciona
+  saw: { freqScale: 0.01, visualRps: 1.5, fwdSign: 1 },
   // tryb offline: wartosci poczatkowe formularzy (mm; m/min, m/s2; deg/s, deg/s2)
   offline: {
     machine: { discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40 },
@@ -124,7 +144,12 @@ export const DEFAULTS = {
     // gora materialu offline jak w PLC: Z min punktow stolu - grubosc
     board: { count: 4, points: [[0, 0, 490], [3500, 0, 490], [3500, 3000, 490], [0, 3000, 490]] },
     rock: { count: 4, points: [[300, 200, 450], [2800, 200, 450], [2800, 1800, 450], [300, 1800, 450]] },
-    dynamics: { cutVel: 1.8, cutAcc: 0.06, cutDec: 0.06, fastVel: 9, fastAcc: 0.3, zVel: 1.2, zAcc: 0.04, zUpVel: 1.2, aVel: 30, aAcc: 60, bVel: 10, bAcc: 20 },
+    dynamics: {
+      cutVel: 1.8, cutAcc: 0.06, cutDec: 0.06, fastVel: 9, fastAcc: 0.3, zVel: 1.2, zAcc: 0.04, zUpVel: 1.2, aVel: 30, aAcc: 60, bVel: 10, bAcc: 20,
+      jogXVel: 6, jogYVel: 6, jogZVel: 1.2, jogAVel: 20, jogBVel: 10,
+    },
+    // naped tarczy offline (ekran Reczne): czestotliwosc [Hz], kierunek FWD / REV
+    saw: { freq: 50, dir: 'FWD' },
     cut: { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, depth: 30, passes: 3, above: 20 },
     start: { x: 0, y: 0, z: 0, a: 0, b: 0 },
   },

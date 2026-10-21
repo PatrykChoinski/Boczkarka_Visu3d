@@ -28,6 +28,8 @@ export function loadConfig(file) {
   const cfg = { ...DEFAULTS, ...user };
   cfg.variables = { ...VARIABLES, ...(user.variables || {}) };
   cfg.frame = { ...DEFAULTS.frame, ...(user.frame || {}) };
+  cfg.laser = { ...DEFAULTS.laser, ...(user.laser || {}) };
+  cfg.saw = { ...DEFAULTS.saw, ...(user.saw || {}) };
   cfg.offline = {
     machine: { ...DEFAULTS.offline.machine, ...(user.offline?.machine || {}) },
     dynamics: { ...DEFAULTS.offline.dynamics, ...(user.offline?.dynamics || {}) },
@@ -35,6 +37,7 @@ export function loadConfig(file) {
     start: { ...DEFAULTS.offline.start, ...(user.offline?.start || {}) },
     board: { ...DEFAULTS.offline.board, ...(user.offline?.board || {}) },
     rock: { ...DEFAULTS.offline.rock, ...(user.offline?.rock || {}) },
+    saw: { ...DEFAULTS.offline.saw, ...(user.offline?.saw || {}) },
   };
   return cfg;
 }
@@ -61,6 +64,7 @@ export function createServer(cfg, source) {
         plc: Boolean(source), endpoint: cfg.endpoint, variables: cfg.variables, cutSteps: CUT_STEPS,
         autoClearOnStart: cfg.autoClearOnStart, materialMargin: cfg.materialMargin,
         materialMinSize: cfg.materialMinSize, frame: cfg.frame, offline: cfg.offline,
+        tableThickness: cfg.tableThickness, laser: cfg.laser, saw: cfg.saw,
       }));
     } else if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

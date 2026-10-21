@@ -1,4 +1,5 @@
-// Widok 3D (three.js): material, tarcza z obrotem A i wychylem B, wyciety rzaz.
+// Widok 3D (three.js): material, tarcza z obrotem A i wychylem B (obroty tarczy), wyciety rzaz
+// (w kamieniu i w stole - na czerwono), laser.
 // Uklad swiata: x = X, y = Y, z = -Z (do gory), jak w shared/geometry.js.
 
 import * as THREE from 'three';
@@ -19,6 +20,11 @@ const COLORS = {
   grid: 0xc9d0d8,
   plan: 0xe07b00,
   planActive: 0xd62728,
+  tableWall: 0xc62828,
+  tableKerf: 0x7f0000,
+  laser: 0xffd400,
+  spoke: 0x16365f,
+  tooth: 0xd62728,
 };
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
@@ -48,15 +54,21 @@ export class View3D {
     this.bladeGroup = this.buildBlade();
     this.machineModel = new MachineModel();
     this.planGroup = new THREE.Group();
-    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group, this.planGroup);
+    this.laserGroup = new THREE.Group();
+    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group, this.planGroup, this.laserGroup);
+    this.laserMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 });
+    this.laserKey = '';
     this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
     this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
     this.planKey = '';
 
-    this.wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 });
-    this.kerfMat = new THREE.MeshBasicMaterial({ color: COLORS.kerf, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
+    // warstwy ciec: kamien i stol (ciecie w stol - innym kolorem)
+    const kerf = (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
+    this.cutSlots = {
+      stone: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.kerf) },
+      table: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.tableWall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.tableKerf) },
+    };
     this.extentKey = '';
-    this.cutsVersion = -1;
     this.bladeKey = '';
     this.viewName = 'iso';
     new ResizeObserver(() => this.resize()).observe(container);
@@ -105,22 +117,24 @@ export class View3D {
 
   // --- ciecia -----------------------------------------------------------------
 
-  // Siatki kazdego ciecia trzymane osobno - przebudowa tylko ciec, ktore sie zmienily (Cut.rev)
-  setCuts(recorder) {
-    if (recorder.version === this.cutsVersion) return;
-    this.cutsVersion = recorder.version;
-    this.cutMeshes ??= new Map();
+  // Siatki kazdego ciecia trzymane osobno - przebudowa tylko ciec, ktore sie zmienily (Cut.rev);
+  // slot - warstwa 'stone' (kamien) albo 'table' (ciecie w stol, czerwone)
+  setCuts(recorder, slot = 'stone') {
+    const sl = this.cutSlots[slot];
+    if (recorder.version === sl.version) return;
+    sl.version = recorder.version;
+    sl.meshes ??= new Map();
     const alive = new Set(recorder.cuts);
-    for (const [cut, entry] of this.cutMeshes) {
-      if (!alive.has(cut)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); this.cutMeshes.delete(cut); }
+    for (const [cut, entry] of sl.meshes) {
+      if (!alive.has(cut)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); sl.meshes.delete(cut); }
     }
-    const { wallMat, kerfMat } = this;
+    const { wallMat, kerfMat } = sl;
     for (const cut of recorder.cuts) {
-      let entry = this.cutMeshes.get(cut);
+      let entry = sl.meshes.get(cut);
       if (entry && entry.rev === cut.rev) continue;
       if (!entry) {
         entry = { group: new THREE.Group(), rev: -1 };
-        this.cutMeshes.set(cut, entry);
+        sl.meshes.set(cut, entry);
         this.cutsGroup.add(entry.group);
       }
       disposeGroup(entry.group);
@@ -162,6 +176,38 @@ export class View3D {
     }
   }
 
+  // --- laser -----------------------------------------------------------------
+
+  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm
+  setLaser(points, width = 8) {
+    const key = points ? JSON.stringify(points.map((p) => p.map((c) => Math.round(c * 2) / 2))) : '';
+    if (key === this.laserKey) return;
+    this.laserKey = key;
+    disposeGroup(this.laserGroup);
+    if (!points || points.length < 2) return;
+    const pos = [];
+    const idx = [];
+    points.forEach((p, i) => {
+      const q = points[Math.min(i + 1, points.length - 1)];
+      const r = points[Math.max(i - 1, 0)];
+      const dx = q[0] - r[0];
+      const dy = q[1] - r[1];
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len * width / 2;
+      const ny = dx / len * width / 2;
+      pos.push(p[0] + nx, p[1] + ny, p[2] + 0.6, p[0] - nx, p[1] - ny, p[2] + 0.6);
+      if (i > 0) { const a = 2 * (i - 1); idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    const strip = new THREE.Mesh(geo, this.laserMat);
+    strip.renderOrder = 6;
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(width, 12, 8), this.laserMat);
+    dot.position.copy(v3(points[0]));
+    this.laserGroup.add(strip, dot);
+  }
+
   // --- tarcza -----------------------------------------------------------------
 
   buildBlade() {
@@ -174,11 +220,15 @@ export class View3D {
     this.spindle = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.bladeEdge }));
     this.axisA = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: COLORS.axis, dashSize: 12, gapSize: 8 }));
     this.lowest = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.lowest }));
-    g.add(this.disc, this.discEdge, this.hub, this.spindle, this.axisA, this.lowest);
+    // szprychy i znacznik zeba - widac obroty tarczy
+    this.spokes = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.spoke }));
+    this.tooth = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
+    g.add(this.disc, this.discEdge, this.hub, this.spindle, this.axisA, this.lowest, this.spokes, this.tooth);
     return g;
   }
 
-  setBlade(pose, m, visible) {
+  // spin - kat obrotu tarczy [rad] (szprychy)
+  setBlade(pose, m, visible, spin = 0) {
     this.bladeGroup.visible = Boolean(visible && pose);
     if (!this.bladeGroup.visible) return;
     const f = bladeFrame(pose, m);
@@ -197,6 +247,18 @@ export class View3D {
       ring.push(v3(f.point(r * Math.cos(t), r * Math.sin(t))));
     }
     this.discEdge.geometry.setFromPoints(ring);
+    const spokes = [];
+    for (let k = 0; k < 6; k++) {
+      const t = spin + k * Math.PI / 3;
+      spokes.push(v3(f.point(r * 0.2 * Math.cos(t), r * 0.2 * Math.sin(t))), v3(f.point(r * 0.93 * Math.cos(t), r * 0.93 * Math.sin(t))));
+    }
+    this.spokes.geometry.setFromPoints(spokes);
+    const tooth = [];
+    for (let k = 0; k <= 8; k++) {
+      const t = spin + (k / 8 - 0.5) * 0.25;
+      tooth.push(v3(f.point(r * Math.cos(t), r * Math.sin(t))));
+    }
+    this.tooth.geometry.setFromPoints(tooth);
     this.spindle.geometry.setFromPoints([v3(f.pivot), v3(f.center)]);
     this.axisA.geometry.setFromPoints([v3(f.axis), v3([f.axis[0], f.axis[1], f.axis[2] + r * 0.9])]);
     this.axisA.computeLineDistances();

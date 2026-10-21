@@ -26,6 +26,7 @@
       <label class="check"><input type="checkbox" id="showBlade" checked> Głowica</label>
       <label class="check"><input type="checkbox" id="showFrame" checked> Suport</label>
       <label class="check"><input type="checkbox" id="showPlan" checked> Plan</label>
+      <label class="check" title="Offline: laser włączony; online: laser z PLC (yLaser)"><input type="checkbox" id="showLaser" checked> Laser</label>
     </div>
     <div class="group" id="speedBox">
       <label class="check">Tempo
@@ -44,7 +45,7 @@
   <main>
     <section id="viewWrap">
       <div id="view"></div>
-      <div id="hud"><div id="hudCut"></div><div id="hudMachine"></div></div>
+      <div id="hud"><div id="hudCut"></div><div id="hudTable"></div><div id="hudMachine"></div></div>
     </section>
 
     <aside id="panel">
@@ -52,6 +53,7 @@
         <button data-tab="stone" class="active">Stół i kamień</button>
         <button data-tab="cut" data-offline>Operacja</button>
         <button data-tab="auto">Automat</button>
+        <button data-tab="man" data-offline>Ręczne</button>
         <button data-tab="pos" data-offline>Pozycja</button>
         <button data-tab="par" data-offline>Parametry</button>
       </nav>
@@ -120,6 +122,36 @@
         </div>
       </div>
 
+      <div class="tab" data-tab="man" hidden>
+        <p class="hint">Jak ekran ruchów ręcznych w HMI, tylko w trybie offline (wizualizacja nie steruje maszyną). Przytrzymaj przycisk – oś jedzie z prędkością jog i rampą z Parametrów; puść – hamuje.</p>
+        <h3>Jog osi</h3>
+        <table class="jog">
+          <tr><td>X</td><td><button class="hold" data-jog="x" data-sign="-1">X −</button></td><td><button class="hold" data-jog="x" data-sign="1">X +</button></td></tr>
+          <tr><td>Y</td><td><button class="hold" data-jog="y" data-sign="-1">Y −</button></td><td><button class="hold" data-jog="y" data-sign="1">Y +</button></td></tr>
+          <tr><td>Z</td><td><button class="hold" data-jog="z" data-sign="-1">Z ↑ (w górę)</button></td><td><button class="hold" data-jog="z" data-sign="1">Z ↓ (w dół)</button></td></tr>
+          <tr><td>A</td><td><button class="hold" data-jog="a" data-sign="-1">A −</button></td><td><button class="hold" data-jog="a" data-sign="1">A +</button></td></tr>
+          <tr><td>B</td><td><button class="hold" data-jog="b" data-sign="-1">B −</button></td><td><button class="hold" data-jog="b" data-sign="1">B +</button></td></tr>
+        </table>
+        <h3>Obrót A <span class="muted">bManualASetPosition</span></h3>
+        <div class="row presets" id="aPresets"></div>
+        <h3>Wychył B <span class="muted">bManualBSetPosition</span></h3>
+        <div class="row presets" id="bPresets"></div>
+        <h3>Ruchy interpolowane <span class="muted">względem lasera, prędkość cięcia</span></h3>
+        <div class="grid2">
+          <button class="hold" data-interp="along">Wzdłuż lasera</button>
+          <button class="hold" data-interp="back">Przeciwnie do lasera</button>
+          <button class="hold" data-interp="perp">Prostopadle</button>
+          <button class="hold" data-interp="perpBack">Prostopadle odwrotnie</button>
+        </div>
+        <h3>Piła <span class="muted">napęd główny</span></h3>
+        <div class="grid2">
+          <button id="sawToggle">Piła ON</button>
+          <label>Kierunek <select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
+          <label>Częstotliwość [Hz] <input id="sawFreq" type="number" step="any" min="0" max="120"></label>
+        </div>
+        <div id="manInfo" class="info"></div>
+      </div>
+
       <div class="tab" data-tab="pos" hidden>
         <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
         <div class="grid2">
@@ -151,9 +183,14 @@
           <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Z wyjazd</td><td><input data-d="zUpVel" type="number" step="any" min="0.001"></td><td colspan="2"></td></tr>
+          <tr><td>Jog X</td><td><input data-d="jogXVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak dojazd X/Y</td></tr>
+          <tr><td>Jog Y</td><td><input data-d="jogYVel" type="number" step="any" min="0.001"></td><td colspan="2"></td></tr>
+          <tr><td>Jog Z</td><td><input data-d="jogZVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś Z</td></tr>
           <tr><th></th><th><small>°/s</small></th><th colspan="2"><small>°/s²</small></th></tr>
           <tr><td>Oś A</td><td><input data-d="aVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="aAcc" type="number" step="any" min="0.001"></td></tr>
           <tr><td>Oś B</td><td><input data-d="bVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="bAcc" type="number" step="any" min="0.001"></td></tr>
+          <tr><td>Jog A</td><td><input data-d="jogAVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś A</td></tr>
+          <tr><td>Jog B</td><td><input data-d="jogBVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś B</td></tr>
         </table>
         <div class="row">
           <button id="fromPlc">Pobierz z PLC</button>

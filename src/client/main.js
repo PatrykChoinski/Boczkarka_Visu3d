@@ -1,5 +1,6 @@
 // VizuApp - strona: tryb Online (pozycje z PLC przez serwer, SSE) i Offline (zadane ciecie / pozycja,
-// animacja z predkosciami i przyspieszeniami jak w napedach).
+// animacja z predkosciami i przyspieszeniami jak w napedach, ruchy reczne), laser, obroty tarczy,
+// ciecie w stol.
 
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
@@ -10,6 +11,7 @@ import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, opById } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
+import { JogMotion, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -22,6 +24,7 @@ const state = {
   pose: null,
   machine: makeMachine(),
   recorder: new CutRecorder(),
+  tableRecorder: new CutRecorder(),   // ciecie w stol (pod kamieniem) - na czerwono
   extent: null,
   extentProvisional: true,
   stoneKey: '',
@@ -32,6 +35,8 @@ const state = {
   planSource: 'op',         // podglad planu: 'op' - operacja, 'auto' - automat
   autoKey: '',              // ostatnio narysowana tabela automatu (online)
   forms: null,              // formularze offline: operacje, wspolne parametry, automat
+  jog: null,                // ruch reczny offline (JogMotion) w toku
+  saw: { manual: false, angle: 0, last: 0 },   // naped tarczy: offline wlaczony recznie, kat obrotu szprych
 };
 
 let view;
@@ -41,12 +46,26 @@ let view;
 function applyPose(pose, m) {
   state.pose = pose;
   state.machine = m;
-  state.recorder.update(pose, m);
+  recordPose(pose, m);
   growExtent();
+}
+
+// Plyta stolu pod kamieniem jako "material" do zapisu ciecia w stol
+function tableMachine(m) {
+  return { ...m, materialHeight: m.materialHeight + m.materialThickness, materialThickness: state.cfg.tableThickness || 80 };
+}
+
+// Zapis ciecia: w kamieniu (tylko nad kamieniem, gdy jest wielokat) i w stole (ponizej spodu kamienia)
+function recordPose(pose, m) {
+  const rock = rockPolygon();
+  const low = bladeFrame(pose, m).lowest;
+  if (!rock || pointInPolygon(low[0], low[1], rock)) state.recorder.update(pose, m);
+  state.tableRecorder.update(pose, tableMachine(m));
 }
 
 function clearCuts() {
   state.recorder.clear();
+  state.tableRecorder.clear();
   state.extent = null;
   state.extentProvisional = true;
 }
@@ -132,9 +151,11 @@ function redraw() {
   const m = state.machine;
   const rock = rockPolygon();
   view.setMaterial(state.extent, m, rock);
-  view.setCuts(state.recorder);
+  view.setCuts(state.recorder, 'stone');
+  view.setCuts(state.tableRecorder, 'table');
+  view.setLaser(laserPoints(m, rock));
   view.setPlan(planItems(), topZ(m));
-  view.setBlade(state.pose, m, $('#showBlade').checked);
+  view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
   view.render();
 
@@ -142,6 +163,8 @@ function redraw() {
   $('#hudCut').textContent = s
     ? `Cięcie: długość ${s.length.toFixed(0)} mm, głębokość ${s.depth.toFixed(1)} mm (cięć: ${s.count})`
     : 'Brak cięcia - tarcza nad materiałem';
+  const ts = state.tableRecorder.summary();
+  $('#hudTable').textContent = ts ? `Cięcie w stół: długość ${ts.length.toFixed(0)} mm, głębokość ${ts.depth.toFixed(1)} mm` : '';
   const rb = rock && bounds(rock);
   const size = rb ? `${(rb[2] - rb[0]).toFixed(0)} × ${(rb[3] - rb[1]).toFixed(0)} × ${m.materialThickness.toFixed(1)} mm` : `grubość ${m.materialThickness.toFixed(1)} mm`;
   $('#hudMachine').textContent = `Tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
@@ -163,21 +186,81 @@ function redraw() {
     const auto = onlineAuto();
     if (auto.running) text = `Automat: krok ${auto.index + 1} / ${auto.count} – ${stepName(auto.rows[auto.index]?.step)}   `;
     if (v.cutStep !== undefined) text += `CutStep: ${state.cfg.cutSteps[v.cutStep] ?? v.cutStep}`;
-    if (v.sawRunning) text += '   piła ON';
+    text += sawText();
     if (v.waterCut) text += '   woda';
+    if (v.laser) text += '   laser';
     $('#step').textContent = text;
   } else {
     const sim = state.sim;
     conn.textContent = 'Offline - symulacja (bez PLC)';
     conn.className = 'ok';
-    $('#step').textContent = sim.program
+    $('#step').textContent = (sim.program
       ? `${sim.label ? `${sim.label}   ` : ''}${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.running ? '' : '   (zatrzymane)'}`
-      : '';
+      : (state.jog ? 'Ruch ręczny' : '')) + sawText() + ($('#showLaser').checked ? '   laser' : '');
   }
+}
+
+// --- laser i naped tarczy -------------------------------------------------------------------
+
+// Wysokosc powierzchni pod laserem: kamien (gdzie jest) albo stol
+function surfaceZ(m, rock) {
+  const top = topZ(m);
+  const table = top - m.materialThickness;
+  return (x, y) => (!rock || pointInPolygon(x, y, rock) ? top : table);
+}
+
+function laserOn() {
+  if (!$('#showLaser').checked || !state.pose) return false;
+  return state.mode === 'online' ? Boolean(state.online.values.laser) : true;
+}
+
+function laserPoints(m, rock) {
+  if (!laserOn()) return null;
+  const l = state.cfg.laser || { side: 1, length: 2500 };
+  return laserLine(state.pose, m, l.side, l.length, surfaceZ(m, rock));
+}
+
+// Stan napedu tarczy: {running, freq [Hz], dir: 1 FWD / -1 REV}
+function sawState() {
+  if (state.mode === 'online') {
+    const v = state.online.values;
+    const scale = state.cfg.saw?.freqScale ?? 0.01;
+    return { running: Boolean(v.sawRunning), freq: (Number(v.sawFreq) || 0) * scale, dir: v.sawRev && !v.sawFwd ? -1 : 1 };
+  }
+  const running = state.saw.manual || Boolean(state.sim.running);
+  return { running, freq: Number($('#sawFreq').value) || 0, dir: $('#sawDir').value === 'REV' ? -1 : 1 };
+}
+
+function sawText() {
+  const s = sawState();
+  return s.running ? `   piła ${s.freq.toFixed(1)} Hz ${s.dir > 0 ? 'FWD' : 'REV'}` : '';
+}
+
+// Obroty tarczy na ekranie (umowne: visualRps obr/s przy 50 Hz), petla tylko gdy pila sie kreci
+function spinFrame(now) {
+  const s = sawState();
+  const dt = state.saw.last ? Math.min(0.1, (now - state.saw.last) / 1000) : 0;
+  state.saw.last = now;
+  if (!s.running || s.freq <= 0) { state.saw.last = 0; state.saw.spinning = false; return; }
+  const cfg = state.cfg.saw || {};
+  const rps = (cfg.visualRps ?? 1.5) * s.freq / 50;
+  state.saw.angle = (state.saw.angle + s.dir * (cfg.fwdSign ?? 1) * rps * 2 * Math.PI * dt) % (2 * Math.PI);
+  if (!state.sim.running && !state.jog) redraw();
+  requestAnimationFrame(spinFrame);
+}
+
+function ensureSpin() {
+  if (state.saw.spinning) return;
+  const s = sawState();
+  if (!s.running || s.freq <= 0) return;
+  state.saw.spinning = true;
+  state.saw.last = 0;
+  requestAnimationFrame(spinFrame);
 }
 
 let drawQueued = false;
 function requestDraw() {
+  if (state.cfg) ensureSpin();
   if (drawQueued) return;
   drawQueued = true;
   requestAnimationFrame(() => { drawQueued = false; redraw(); });
@@ -603,6 +686,7 @@ function offlineFormsChanged() {
 // --- tryb offline: animacja ------------------------------------------------------
 
 function startProgram(program) {
+  state.jog = null;
   state.sim.program = program;
   state.sim.t = 0;
   state.sim.running = true;
@@ -611,6 +695,7 @@ function startProgram(program) {
   state.sim.lastFrame = performance.now();
   for (const b of $$('.pauseBtn')) b.textContent = 'Pauza';
   requestAnimationFrame(simFrame);
+  ensureSpin();
 }
 
 function simFrame(now) {
@@ -624,7 +709,7 @@ function simFrame(now) {
   const tEnd = Math.min(sim.program.duration, sim.t + dt);
   // probki co SIM_STEP, zeby przy szybkim tempie nie gubic ciecia
   let res;
-  for (let t = sim.t + SIM_STEP; t < tEnd; t += SIM_STEP) state.recorder.update(sim.program.at(t).pose, m);
+  for (let t = sim.t + SIM_STEP; t < tEnd; t += SIM_STEP) recordPose(sim.program.at(t).pose, m);
   res = sim.program.at(tEnd);
   sim.t = tEnd;
   sim.step = res.step;
@@ -648,8 +733,99 @@ function stopProgram() {
   requestDraw();
 }
 
+// --- ruchy reczne offline (ekran Reczne) ------------------------------------------------------
+
+const JOG_DYN = { x: ['jogXVel', 'fastAcc'], y: ['jogYVel', 'fastAcc'], z: ['jogZVel', 'zAcc'], a: ['jogAVel', 'aAcc'], b: ['jogBVel', 'bAcc'] };
+
+function startJog(dir, vel, acc, dec) {
+  if (state.mode !== 'offline' || !state.pose || !(vel > 0)) return;
+  stopProgram();
+  state.sim.program = null;
+  state.jog = new JogMotion(dir, vel, acc, dec);
+  state.jog.last = performance.now();
+  requestAnimationFrame(jogFrame);
+}
+
+function releaseJog() {
+  if (state.jog) state.jog.release();
+  for (const b of $$('button.hold.pressed')) b.classList.remove('pressed');
+}
+
+function jogFrame(now) {
+  const jog = state.jog;
+  if (!jog || state.mode !== 'offline') return;
+  const dt = Math.min(0.1, (now - jog.last) / 1000);
+  jog.last = now;
+  const m = offlineMachine();
+  let p = state.pose;
+  const n = Math.max(1, Math.ceil(dt / SIM_STEP));
+  for (let i = 0; i < n; i++) {
+    p = jog.step(p, dt / n, { z: [0, 5000] });    // Z nie powyzej bazy (Z = 0)
+    if (i < n - 1) recordPose(p, m);
+  }
+  state.sim.velocity = jog.dir.x || jog.dir.y || jog.dir.z ? jog.v : 0;
+  applyPose(p, m);
+  if (jog.done) { state.jog = null; state.sim.velocity = 0; }
+  redraw();
+  updateManInfo();
+  if (state.jog) requestAnimationFrame(jogFrame);
+}
+
+function updateManInfo() {
+  const p = state.pose;
+  if (!p || $('.tab[data-tab="man"]').hidden) return;
+  const d = offlineDynamics();
+  $('#manInfo').innerHTML = `Pozycja: X ${p.x.toFixed(1)}, Y ${p.y.toFixed(1)}, Z ${p.z.toFixed(1)}, A ${p.a.toFixed(1)}°, B ${p.b.toFixed(1)}°`
+    + `<br>Jog: X / Y ${(d.jogXVel * 0.06).toFixed(2)} / ${(d.jogYVel * 0.06).toFixed(2)} m/min, Z ${(d.jogZVel * 0.06).toFixed(2)} m/min, A ${d.jogAVel.toFixed(1)} °/s, B ${d.jogBVel.toFixed(1)} °/s`
+    + `<br>Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
+}
+
+function bindManual() {
+  const hold = (btn, start) => {
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture?.(e.pointerId); btn.classList.add('pressed'); start(); });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, releaseJog);
+  };
+  for (const b of $$('[data-jog]')) {
+    hold(b, () => {
+      const ax = b.dataset.jog;
+      const d = offlineDynamics();
+      const [velKey, accKey] = JOG_DYN[ax];
+      startJog({ [ax]: Number(b.dataset.sign) }, d[velKey], d[accKey]);
+    });
+  }
+  for (const b of $$('[data-interp]')) {
+    hold(b, () => {
+      const d = offlineDynamics();
+      startJog(interpolationDir(b.dataset.interp, state.pose.a, state.cfg.laser?.side ?? 1), d.cutVel, d.cutAcc, d.cutDec);
+    });
+  }
+  const preset = (ax, values, box) => {
+    box.innerHTML = values.map((v) => `<button data-preset="${ax}" data-v="${v}">${v}°</button>`).join('');
+    for (const b of box.querySelectorAll('button')) {
+      b.onclick = () => {
+        const d = offlineDynamics();
+        if (!validDynamics(d) || state.mode !== 'offline') return;
+        startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: Number(b.dataset.v) }, d));
+      };
+    }
+  };
+  preset('a', A_PRESETS, $('#aPresets'));
+  preset('b', B_PRESETS, $('#bPresets'));
+  const sawCfg = state.cfg.offline.saw || { freq: 50, dir: 'FWD' };
+  $('#sawFreq').value = sawCfg.freq;
+  $('#sawDir').value = sawCfg.dir;
+  $('#sawToggle').onclick = () => {
+    state.saw.manual = !state.saw.manual;
+    $('#sawToggle').textContent = state.saw.manual ? 'Piła OFF' : 'Piła ON';
+    $('#sawToggle').classList.toggle('on', state.saw.manual);
+    requestDraw();
+  };
+  for (const el of [$('#sawFreq'), $('#sawDir'), $('#showLaser')]) el.addEventListener('input', requestDraw);
+}
+
 function setMode(mode) {
   state.mode = mode;
+  state.jog = null;
   stopProgram();
   state.sim.program = null;
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
@@ -686,6 +862,7 @@ function showTab(name) {
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
+  if (name === 'man') updateManInfo();
   requestDraw();
 }
 
@@ -869,6 +1046,7 @@ async function init() {
   $('#showFrame').checked = state.cfg.frame.show;
   try { const f = localStorage.getItem('vizuapp.frame'); if (f !== null) $('#showFrame').checked = f === '1'; } catch { /* jw. */ }
   bindUi();
+  bindManual();
   showOp();
   stoneChanged();
   connectEvents();
@@ -880,4 +1058,4 @@ async function init() {
 init();
 
 // do testow z konsoli / automatu
-window.vizu = { state, AXES };
+window.vizu = { state, AXES, startJog, releaseJog, get view() { return view; } };

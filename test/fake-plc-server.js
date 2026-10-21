@@ -17,9 +17,13 @@ import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut']);
-const INTS = new Set(['cutStep', 'boardCount', 'rockCount']);
-const ARRAYS = new Set(['boardX', 'boardY', 'boardZ', 'rockX', 'rockY', 'rockZ']);
+const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays']);
+const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn']);
+// tablice: dlugosc (aCuttingBoard / Rock [0..7], tablice programu automatu [0..249])
+const ARRAYS = {
+  boardX: MAX_APEX, boardY: MAX_APEX, boardZ: MAX_APEX, rockX: MAX_APEX, rockY: MAX_APEX, rockZ: MAX_APEX,
+  progX: 250, progY: 250, progStep: 250, progRadius: 250, progAngle: 250, progDepth: 250, progDepthEnd: 250, progLength: 250, progOutIn: 250,
+};
 
 // Stol 3500 x 3000 (Z 490 - gora materialu 450 przy grubosci 40, jak fCutMaterialHeight w WorkArea)
 // i kamien - pieciokat (nie musi byc prostokatem); tablice [0..7] jak aCuttingBoard / aCuttingRock
@@ -30,6 +34,21 @@ const AREA = {
   boardX: column(BOARD, 0), boardY: column(BOARD, 1), boardZ: column(BOARD, 2), boardCount: BOARD.length,
   rockX: column(ROCK, 0), rockY: column(ROCK, 1), rockZ: column(ROCK, 2), rockCount: ROCK.length,
 };
+// Automat (ProgramAutoCutST): program jak "Przyklad" na stronie - 5 krokow od punktu startowego (500, 400),
+// kolejne kroki co 6 s jako biezacy (iActualNumberOfProgramCuts)
+const PROG_ROWS = [
+  { x: 0, y: 0, step: 1 }, { x: 1500, y: 0, step: 4, r: 1000 }, { x: 1500, y: 900, step: 1 },
+  { x: 0, y: 900, step: 1 }, { x: 0, y: 0, step: 2 }, { x: 750, y: 450, step: 26, r: 200 },
+];
+const progColumn = (k) => Array.from({ length: 250 }, (_, i) => PROG_ROWS[i]?.[k] ?? 0);
+const PROGRAM = {
+  progX: progColumn('x'), progY: progColumn('y'), progStep: progColumn('step'), progRadius: progColumn('r'),
+  progAngle: progColumn('angle'), progDepth: progColumn('depth'), progDepthEnd: progColumn('depthEnd'),
+  progLength: progColumn('length'), progOutIn: progColumn('outIn'),
+  progOriginX: 500, progOriginY: 400, progCutCount: PROG_ROWS.length - 1, progProfCount: 0, progProfIndex: 0,
+  progCutStart: true, progProfStart: false, progOuterInner: false, profileJump: 5, smoothingJump: 100, smoothingArrays: false,
+};
+
 const STEP_CODES = { MoveToStartPosition: 10, StartCutDepth: 20, StartSingleCut: 50, StartLastCut: 60, StartMoveAboveMaterial: 70, CutFinish: 100 };
 
 // Petla dwoch ciec (proste i z wychylem) - wartosci wszystkich zmiennych w czasie t [s]
@@ -44,8 +63,10 @@ export function plcTimeline() {
     const r = t < p1.duration ? p1.at(t) : p2.at(t - p1.duration);
     const step = STEP_CODES[r.step];
     return {
-      ...r.pose, ...m, ...dyn, ...AREA,
+      ...r.pose, ...m, ...dyn, ...AREA, ...PROGRAM, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: step === 20 || step === 50 || step === 60,
+      // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu
+      laser: step === 50 || step === 60, sawFreq: step !== 100 ? 5000 : 0, sawFwd: step !== 100, sawRev: false,
     };
   };
 }
@@ -78,10 +99,10 @@ export async function startFakePlc(port) {
     const [gvl, name] = varPath.split('.');
     gvls[gvl] ??= obj(globalVars, gvl);
     const type = BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
-    const array = ARRAYS.has(key);
+    const array = ARRAYS[key];
     const value = () => {
       const v = values()[key];
-      if (array) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: Float64Array.from(v) });
+      if (array) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: (type === DataType.Int16 ? Int16Array : Float64Array).from(v) });
       return new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(v) : Number(v) });
     };
     ns.addVariable({
@@ -89,7 +110,7 @@ export async function startFakePlc(port) {
       browseName: name,
       nodeId: `s=|var|${DEVICE}.Application.${varPath}`,
       dataType: type,
-      ...(array ? { valueRank: 1, arrayDimensions: [MAX_APEX] } : {}),
+      ...(array ? { valueRank: 1, arrayDimensions: [array] } : {}),
       minimumSamplingInterval: 50,
       value: { get: value },
     });
