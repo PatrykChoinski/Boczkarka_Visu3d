@@ -46,6 +46,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
 | `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
 | `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
+| `src/shared/planmarks.js` | znaczniki XY początku / końca akcji na podglądzie planu |
 | `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
 | `src/shared/figures/` | figury automatu 1:1 z PLC (`FiguresGeometricSt`, `Get…Positions`): `rectangle.js`, `groupA.js` (trójkąty, trapezy, krzyż, wielokąt), `groupB.js` (daszki, blat, schody, książki, ćwierćwałek), `groupC.js` (figury frezu i wiercenia), rejestr `index.js` |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
@@ -115,8 +116,14 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   przyciskiem, kółko przybliża, dwuklik dopasowuje.
 - **Wyczyść**: usuwa narysowane cięcia. **Głowica** (tarcza, słup Z, silnik,
   osłona) i **Suport** (ściany, most, wózek, stół): pokaż / ukryj.
-- **Plan**: podgląd toru operacji / automatu. **Laser**: offline laser
-  włączony; online pokazywany, gdy w PLC świeci (`IOVars.yLaser`).
+- **Plan**: podgląd toru operacji / automatu. **XY** (#137): na materiale
+  znaczniki punktów początkowych i końcowych kolejnych akcji z wartościami
+  X / Y (początek – zielona kropka i etykieta po lewej, koniec – czerwona po
+  prawej, punkt wspólny dwóch akcji – pomarańczowy). Etykiety mają stałą
+  wielkość na ekranie, a etykiety aktualnego kroku automatu są podświetlone
+  na czerwono. Przy wierceniu znacznik jest w punkcie otworu.
+  **Laser**: offline laser włączony; online pokazywany, gdy w PLC świeci
+  (`IOVars.yLaser`).
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, krok
   automatu, piła (częstotliwość i kierunek), woda, laser. Offline: krok
   programu, czas i prędkość.

@@ -125,6 +125,7 @@ export const TOOL_OPS = [
       { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
     ],
     path(v) { return [[[v.x - 25, v.y], [v.x + 25, v.y], null, [v.x, v.y - 25], [v.x, v.y + 25]]]; },
+    marks: (v) => [[v.x, v.y]],          // znacznik XY w punkcie otworu
     // DrillST: GoToPosition nad punkt na wysokosc materialu (A 0, B 90), wrzeciono 95 % obrotow, MOVE_DRILL, MOVE_ABOVE_MATERIAL
     build(pb, v) {
       const m = pb.m;

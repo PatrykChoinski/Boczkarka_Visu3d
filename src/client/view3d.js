@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
+import { planMarks } from '../shared/planmarks.js';
 import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
@@ -22,6 +23,7 @@ const COLORS = {
   grid: 0xc9d0d8,
   plan: 0xe07b00,
   planActive: 0xd62728,
+  markStart: 0x2e7d32,
   tableWall: 0xc62828,
   tableKerf: 0x7f0000,
   laser: 0xffd400,
@@ -190,12 +192,35 @@ export class View3D {
 
   // --- plan (linie / tor operacji, kroki automatu) --------------------------------
 
-  // items: [{path: [[x, y] | null, ...], active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa
-  setPlan(items, z) {
-    const key = JSON.stringify([items, z]);
+  // Znaczniki XY: kropka (poczatek - zielona, koniec - czerwona, oba - pomaranczowa) i etykieta "X .. Y .." o stalej
+  // wielkosci na ekranie, nad materialem i zawsze widoczne; aktywny krok - etykieta podswietlona
+  addPlanMarks(items, z) {
+    for (const mk of planMarks(items)) {
+      const color = mk.start && mk.end ? COLORS.plan : mk.start ? COLORS.markStart : COLORS.planActive;
+      const dot = new THREE.Sprite(spriteMaterial(dotTexture(color)));
+      dot.scale.set(0.014, 0.014, 1);
+      dot.position.set(mk.x, mk.y, z + 2);
+      dot.renderOrder = 7;
+      const { texture, aspect } = labelTexture(mk.label, mk.active);
+      const label = new THREE.Sprite(spriteMaterial(texture));
+      const h = 0.03;
+      label.scale.set(h * aspect, h, 1);
+      // etykieta obok kropki: sam poczatek - w lewo, koniec - w prawo (bliskie punkty poczatku i konca sie nie zaslaniaja)
+      label.center.set(mk.start && !mk.end ? 1.08 : -0.08, -0.25);
+      label.position.copy(dot.position);
+      label.renderOrder = 8;
+      this.planGroup.add(dot, label);
+    }
+  }
+
+  // items: [{path: [[x, y] | null, ...], marks?, active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa;
+  // marks - znaczniki poczatku / konca akcji z wartosciami XY (#137)
+  setPlan(items, z, marks = true) {
+    const key = JSON.stringify([items, z, marks]);
     if (key === this.planKey) return;
     this.planKey = key;
     disposeGroup(this.planGroup);
+    if (marks) this.addPlanMarks(items, z);
     for (const it of items || []) {
       let run = [];
       const flush = () => {
@@ -476,5 +501,55 @@ function disposeGroup(group) {
   for (const obj of [...group.children]) {
     group.remove(obj);
     obj.geometry?.dispose();
+    // wlasny material sprite'a znacznika (tekstura z canvas)
+    if (obj.isSprite) { obj.material.map?.dispose(); obj.material.dispose(); }
   }
+}
+
+// --- znaczniki planu: tekstury z canvas ----------------------------------------
+
+// Material sprite'a o stalej wielkosci na ekranie (scale = ulamek wysokosci widoku), zawsze na wierzchu
+function spriteMaterial(map) {
+  return new THREE.SpriteMaterial({ map, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true });
+}
+
+function dotTexture(color) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.beginPath();
+  g.arc(16, 16, 12, 0, Math.PI * 2);
+  g.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+  g.fill();
+  g.lineWidth = 3;
+  g.strokeStyle = '#ffffff';
+  g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Etykieta "X .. Y ..": ciemny tekst na jasnym tle (aktywny krok - czerwone tlo, bialy tekst)
+function labelTexture(text, active) {
+  const c = document.createElement('canvas');
+  const g = c.getContext('2d');
+  const font = '600 28px system-ui, Segoe UI, sans-serif';
+  g.font = font;
+  const w = Math.ceil(g.measureText(text).width) + 20;
+  c.width = w;
+  c.height = 40;
+  g.font = font;
+  g.fillStyle = active ? 'rgba(214, 39, 40, 0.92)' : 'rgba(255, 255, 255, 0.88)';
+  g.strokeStyle = active ? '#8b1a1a' : '#8d877a';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.roundRect(1, 1, w - 2, 38, 8);
+  g.fill();
+  g.stroke();
+  g.fillStyle = active ? '#ffffff' : '#1f2933';
+  g.textBaseline = 'middle';
+  g.fillText(text, 10, 21);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return { texture: t, aspect: w / 40 };
 }

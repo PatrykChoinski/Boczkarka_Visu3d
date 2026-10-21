@@ -6,6 +6,18 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Znaczniki pozycji XY na podglądzie planu (#137)
+- Przy rysowaniu kolejnych akcji (operacja, kroki automatu offline i online, figury, frez, wiercenie, polerowanie) na materiale są zaznaczone punkty początkowe i końcowe z wartościami `X … Y …`:
+  - kropka: początek zielony, koniec czerwony, punkt wspólny (koniec akcji i = początek akcji i+1) pomarańczowy i tylko jeden;
+  - etykieta samego początku jest po lewej stronie kropki, a pozostałe po prawej, więc bliskie punkty się nie zasłaniają;
+  - etykiety aktualnego kroku automatu są podświetlone na czerwono;
+  - wiercenie (operacja i krok `Drilling` frezu) ma znacznik w punkcie otworu.
+- Znaczniki mają stałą wielkość na ekranie i są zawsze na wierzchu. Przełącznik **XY** na górnym pasku, zapamiętywany w przeglądarce. Limit 120 znaczników.
+- `src/shared/planmarks.js` (`planMarks`, `markLabel`), rysowanie w `view3d.addPlanMarks` (sprite'y z teksturą z canvas).
+- Sprawdzone:
+  - `npm test` 109/109, nowy `test/planmarks.test.js`;
+  - w przeglądarce: prostokąt z figury w automacie (4 narożniki z XY, podświetlenie aktywnego kroku), cięcie proste, wyłączenie XY.
+
 ### Automat: końce cięć zewnętrznych i wewnętrznych (#135)
 - Cięcia proste i skosy w automacie:
   - koniec zewnętrzny: najniższy punkt tarczy wychodzi za punkt linii o szerokość tarczy. Tak samo jak `fCutOuterAdditionalDistance` w `CutST.GetPositions` (wartość = `fParameterBladeWidth`), dlatego cięcia figur (np. prostokąta) przecinają się w narożnikach na całej głębokości;

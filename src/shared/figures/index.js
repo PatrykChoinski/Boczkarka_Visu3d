@@ -79,6 +79,8 @@ export function previewMill(rows, count, origin, millWidth = 20) {
     } else if (r.step === MILL.Drilling) {
       const d = Math.max(10, millWidth / 2);
       path = [[a[0] - d, a[1]], [a[0] + d, a[1]], null, [a[0], a[1] - d], [a[0], a[1] + d]];
+      out.push({ i, step: r.step, path, marks: [a] });   // znacznik XY w punkcie otworu
+      continue;
     } else if (r.step === MILL.ElipseOuter || r.step === MILL.ElipseInner) {
       path = [a, b];
     }
