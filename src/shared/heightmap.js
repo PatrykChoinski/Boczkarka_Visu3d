@@ -16,6 +16,7 @@ export class HeightMap {
     this.z = new Float32Array(this.nx * this.ny).fill(top);
     this.version = 0;
     this.cut = 0;                       // liczba obnizonych komorek (do podsumowania)
+    this.dirty = null;                  // [i0, j0, i1, j1] - komorki zmienione od ostatniego odczytu (takeDirty)
   }
 
   // Czolo frezu w (x, y) na wysokosci zTip (z swiata) - komorki w promieniu r nie wyzej niz zTip
@@ -41,8 +42,20 @@ export class HeightMap {
         }
       }
     }
-    if (changed) this.version++;
+    if (changed) {
+      this.version++;
+      const d = this.dirty;
+      if (!d) this.dirty = [i0, j0, i1, j1];
+      else { d[0] = Math.min(d[0], i0); d[1] = Math.min(d[1], j0); d[2] = Math.max(d[2], i1); d[3] = Math.max(d[3], j1); }
+    }
     return changed;
+  }
+
+  // Zakres zmienionych komorek od ostatniego wywolania (null - bez zmian), zeruje zakres
+  takeDirty() {
+    const d = this.dirty;
+    this.dirty = null;
+    return d;
   }
 
   // Odcinek toru a -> b (z swiata czubka narzedzia), probki co najwyzej step mm

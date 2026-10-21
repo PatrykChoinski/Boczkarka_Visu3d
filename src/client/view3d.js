@@ -263,23 +263,44 @@ export class View3D {
       this.hmVersion = -1;
     }
     if (hm.version === this.hmVersion) return;
+    // nowa siatka - cala; potem tylko prostokat zmienionych komorek (+1 na normalne sasiadow)
+    const full = this.hmVersion === -1;
     this.hmVersion = hm.version;
+    const d = hm.takeDirty();
+    if (!full && !d) return;
+    const { nx, ny } = hm;
+    const [i0, j0, i1, j1] = full ? [0, 0, nx - 1, ny - 1]
+      : [Math.max(0, d[0] - 1), Math.max(0, d[1] - 1), Math.min(nx - 1, d[2] + 1), Math.min(ny - 1, d[3] + 1)];
     const geo = this.hmMesh.geometry;
     const pos = geo.attributes.position.array;
     const col = geo.attributes.color.array;
+    if (!geo.attributes.normal) geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3));
+    const nor = geo.attributes.normal.array;
     const depth = Math.max(1, hm.top - hm.bottom);
     const top = new THREE.Color(COLORS.material);
     const deep = new THREE.Color(0x4a3a2c);
     const c = new THREE.Color();
-    for (let k = 0; k < hm.z.length; k++) {
-      const z = hm.z[k];
-      pos[k * 3 + 2] = z + 0.2;
-      c.copy(top).lerp(deep, Math.min(1, (hm.top - z) / depth) ** 0.7);
-      col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+    const z = hm.z;
+    const two = 2 * hm.res;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const k = j * nx + i;
+        pos[k * 3 + 2] = z[k] + 0.2;
+        c.copy(top).lerp(deep, Math.min(1, (hm.top - z[k]) / depth) ** 0.7);
+        col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+        // normalna z roznic wysokosci sasiadow
+        const gx = (z[j * nx + Math.min(nx - 1, i + 1)] - z[j * nx + Math.max(0, i - 1)]) / two;
+        const gy = (z[Math.min(ny - 1, j + 1) * nx + i] - z[Math.max(0, j - 1) * nx + i]) / two;
+        const l = Math.hypot(gx, gy, 1);
+        nor[k * 3] = -gx / l; nor[k * 3 + 1] = -gy / l; nor[k * 3 + 2] = 1 / l;
+      }
     }
-    geo.attributes.position.needsUpdate = true;
-    geo.attributes.color.needsUpdate = true;
-    geo.computeVertexNormals();
+    for (const a of [geo.attributes.position, geo.attributes.color, geo.attributes.normal]) {
+      a.needsUpdate = true;
+      // zakresy sie sumuja do wyslania (three.js czysci je po wyslaniu do GPU); cala siatka - bez zakresu
+      if (full) a.clearUpdateRanges?.();
+      else a.addUpdateRange?.(j0 * nx * 3, ((j1 - j0 + 1) * nx) * 3);
+    }
   }
 
   // Tor programu: [{kind: 'rapid' | 'feed', pts: [[x, y, z], ...]}] (swiat, czubek narzedzia); null - brak

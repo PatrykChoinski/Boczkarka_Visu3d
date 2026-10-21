@@ -141,3 +141,5 @@ Gałąź `develop/WizuGCode` (Visu3D i repo główne). Przykładowy plik: `Dodat
 - [x] Animacja w przeglądarce: cały plik Madonny na 1000× – mapa wysokości tnie się w trakcie, podsumowanie odświeżane co 1 s (koniec po 17 886 s programu; wynik = „Wynik od razu” w 99,8 % siatki, różnice > 0,5 mm w 342 komórkach na narożnikach – próbki co 10 s przy 1000× łączone prostą)
 - [x] Poprawka: po przeładowaniu strony zbazowany tryb wracał z B 0° (frez poziomo, program CNC nic nie ciął) – teraz B jak po bazowaniu; ostrzeżenie w zakładce G-kod, gdy B ≠ 90°
 - [x] Tempo animacji 500× i 1000× (program Madonny ≈ 5 h ruchu)
+- [x] Wydajność: widok aktualizuje tylko zmieniony fragment mapy (`HeightMap.takeDirty`), normalne z różnic wysokości – 0,17 ms zamiast ok. 35 ms na zmianę przy siatce Madonny (201 tys. punktów)
+- [x] Przycisk „Przykład” – `examples/madonna_frez_fi25mm_fixed.nc` (kopia z `Dodatkowe Programy`, w paczce na maszynę)

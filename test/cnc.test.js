@@ -144,3 +144,22 @@ test('testowy PLC --mode cnc: frez po bazowaniu, G54 w HMI.G54_X / Y / Z, czolo 
   }
   near(topZ(m) - deepest, 6, 1e-6);
 });
+
+test('mapa wysokosci: zakres zmienionych komorek (aktualizacja tylko fragmentu siatki w widoku)', () => {
+  const hm = new HeightMap([0, 0, 200, 100], 0, -60, 1);
+  assert.equal(hm.takeDirty(), null);
+  hm.carve([50, 50, -5], [60, 50, -5], 5);
+  const d = hm.takeDirty();
+  assert.deepEqual(d, [45, 45, 65, 55]);
+  assert.equal(hm.takeDirty(), null);
+  hm.stamp(10, 10, 5, 3);                                   // nad materialem - bez zmian
+  assert.equal(hm.takeDirty(), null);
+});
+
+test('przyklad w Visu3D/examples jest tym samym plikiem co w Dodatkowe Programy', () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const ex = path.join(dir, '..', 'examples', 'madonna_frez_fi25mm_fixed.nc');
+  assert.ok(fs.existsSync(ex));
+  const orig = path.join(dir, '..', '..', 'Dodatkowe Programy', 'madonna_frez_fi25mm_fixed.nc');
+  if (fs.existsSync(orig)) assert.ok(fs.readFileSync(ex).equals(fs.readFileSync(orig)));
+});

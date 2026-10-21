@@ -1407,6 +1407,17 @@ function bindCnc() {
     };
   }
   $('#cncShowPath').onchange = requestDraw;
+  // przyklad: plaskorzezba Madonny (Dodatkowe Programy w repo glownym), frez fi 25
+  $('#cncExample').onclick = async () => {
+    const name = 'madonna_frez_fi25mm_fixed.nc';
+    try {
+      const res = await fetch(`examples/${name}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await loadCncFile(new File([await res.text()], name));
+    } catch (err) {
+      $('#cncName').textContent = `Nie udało się wczytać przykładu: ${err.message}`;
+    }
+  };
   $('#cncStart').onclick = cncStart;
   $('#cncInstant').onclick = cncInstant;
   $('#cncClear').onclick = () => { cncState.hm = null; cncState.lastTip = null; updateCncInfo(); requestDraw(); };
