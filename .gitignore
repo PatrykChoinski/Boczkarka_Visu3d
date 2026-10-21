@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# VizuApp: strona budowana przez scripts/build-client.js, paczka na maszyne (build.ps1)
+public/
+dist/

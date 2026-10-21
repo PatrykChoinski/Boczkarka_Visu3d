@@ -1,0 +1,26 @@
+{
+  "name": "vizuapp",
+  "version": "0.2.0",
+  "description": "Wizualizacja ciecia pily (#128) - serwer Node.js (OPC UA) + strona w przegladarce (three.js)",
+  "private": true,
+  "type": "module",
+  "main": "src/server/main.js",
+  "scripts": {
+    "build:client": "node scripts/build-client.js",
+    "start": "node scripts/build-client.js && node src/server/main.js",
+    "offline": "node scripts/build-client.js && node src/server/main.js --no-plc",
+    "test": "node --test \"test/*.test.js\"",
+    "fake-plc": "node test/fake-plc-server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "node-opcua-client": "2.187.9"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "node-opcua-server": "2.187.9",
+    "three": "0.186.1"
+  }
+}
