@@ -6,6 +6,39 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Figury w automacie – wypełnianie bufora jak PLC (#128)
+- Zakładka Automat, sekcja „Figura”: wybór figury i jej pola (jak ekrany figur w HMI), „Wypełnij bufor”. Działa tak jak PLC:
+  - `FiguresGeometricSt` przekazuje pola figury do bloku `Get…Positions`;
+  - wynik jest przepisywany do bufora jak w `GetDemoProgram` (`aProgram… := aFigure…`, `aProgramNextStep := aFigureIndex`, liczba kroków `:= iFigureNumber`);
+  - rodzaj programu ustawia się sam (piła / profile / frez).
+- Wszystkie figury `FigureType` oprócz `PROFILES` (100), który liczy profil na istniejącym buforze, a nie tworzy figury. Bloki przeniesione 1:1 z kodu PLC (`src/shared/figures/`):
+  - piła: prostokąt (`GetRectanglePositions_1`), trójkąty prostokątny / równoboczny / równoramienny, daszki (`GetRoofPositions` + `GetAdditionalDistance`), trapez, trapez 45°, blat (`GetWorktopPositions`), schody łukowe, krzyż, wielokąt;
+  - profile: książki, ćwierćwałek;
+  - frez / wiercenie: prostokąt ścięty, serce, narożniki, otwory, ociekacz, elipsa (1 punkt i 120 punktów), stół frezarski, narożniki L, płyta indukcyjna.
+- „Parametry figury” to zmienne PLC, które `FiguresGeometricSt` podaje figurom: `iManualInternal`, `bManualAdditionalDistance` / `fManualAdditionalDistance`, `bServiceRectangleACBD`, `fParameterMillWidth`, korekty daszków, nowe punkty startu frezu, `iMachineNumber`, `bServiceBookMinimalRadius`. Szerokość tarczy, grubość i `bServiceBlocksReverse` są brane z Parametrów i wspólnych parametrów.
+- Figury frezu wypełniają bufor frezu (`ProgramAutoMillST`, kroki `ProgramMillStep`, nowy rodzaj „Frez – podgląd”). Widać tabelę z nazwami kroków frezu i podgląd toru, ale nie ma symulacji ruchu, bo Visu3D nie symuluje frezu.
+- Zachowania PLC przeniesione tak jak są (z komentarzem w kodzie), m.in.:
+  - trapez 45° nie ma kąta 45° (`fLength := fFigureHeight + 8`);
+  - wielokąt nie używa `aPolygonFunction`;
+  - błędne indeksy kroków w trójkątach przy dodatkowej drodze;
+  - daszki zawsze zewnętrzne;
+  - `iNumber := 10` w książkach z wygładzaniem;
+  - tablice przycinane do `[0..100]` przez `CheckBounds` z globalnymi `Radius` / `Depth`;
+  - promień elipsy 120 punktów z drugiej instancji FB.
+- Sprawdzone:
+  - `npm test` 89/89: rejestr (23 figury budują bufor, kroki z właściwego enuma), prostokąt punkt w punkt jak `GetRectanglePositions_1`, testy grup A / B / C z wartościami liczonymi z formuł ST, bufor prostokąta → program automatu.
+  - W przeglądarce: prostokąt, daszki, krzyż (piła), książki (profile) i serce (frez) wypełniają bufor; bufor prostokąta przechodzi przez automat do końca.
+
+### Cięcie proste: dwa punkty / kąt i długość, pola wg opcji, jazda na zadany kąt A / B (#128)
+- Cięcie proste jak `CutST.GetPositions` (`bManualTwoPoint`): dwa punkty albo kąt i długość. Przy kącie i długości koniec = start + L·(cos, sin), a z `bManualToLaser` start − L·(cos, sin); kąt głowicy A zostaje zadany (`cutParams.angle`, `cutAngle`).
+- Pola formularzy z warunkiem `show(v)`: widoczne tylko przy zaznaczonej opcji.
+  - Cięcie: koniec X/Y albo kąt, długość, „w stronę lasera”.
+  - Pasy: koniec przy dwóch punktach, długość bez nich, kąt przy „pod kątem”, szerokość i liczba albo tabele.
+  - Łuk wg rodzaju (promień / trzy punkty / strzałka); profil: skok wygładzania.
+  - Wspólne: przejścia albo skok głębokości wg trybu tablicy, wychył B przy skosie.
+- Zakładka Ręczne: jazda na zadany kąt A i B, absolutnie (`bManualAMoveToPosAbs` / `bManualBMoveToPosAbs`) albo o kąt (`…MoveToPosRel`), z prędkością i rampą osi.
+- Sprawdzone: `npm test` 41/41 (nowy test kąta i długości); w przeglądarce przełączanie pól cięcia i pasów, A 0 → 45 (absolutnie) → 15 (−30 względnie), B → 30.
+
 ### Laser, obroty tarczy, cięcie w stół, ruchy ręczne (#128)
 - **Laser:** żółta linia na powierzchni (kamień albo stół) w płaszczyźnie tarczy, wzdłuż kierunku cięcia przy danym A, domyślnie w prawą stronę (`laser.side` = 1, `laser.length`). Online, gdy świeci w PLC (`IOVars.yLaser`); offline przełącznik „Laser”.
 - **Obroty tarczy:** szprychy i znacznik zęba obracają się, gdy piła pracuje.

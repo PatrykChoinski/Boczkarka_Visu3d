@@ -99,6 +99,7 @@
           <label>Program <select id="autoKind">
             <option value="cut">Piła (ProgramAutoCutST)</option>
             <option value="profile">Profile (ProgramAutoProfileST)</option>
+            <option value="mill">Frez (ProgramAutoMillST) – podgląd</option>
           </select></label>
           <label>Start od kroku <input id="autoFrom" type="number" min="1" step="1" value="1"></label>
           <label>Punkt startowy X <input id="autoOX" type="number" step="any"></label>
@@ -108,6 +109,18 @@
           <label class="cb wide"><input type="checkbox" id="autoOuterInner"> Przesunięcie we/zew o szerokość tarczy (bServiceCutProgramOuterInner)</label>
           <label class="cb wide" data-prof><input type="checkbox" id="autoSArrays"> Wygładzanie łańcuchem wierszy (bServiceSmoothingArrays)</label>
         </div>
+        <details id="figBox" open>
+          <summary>Figura – wypełnij bufor jak PLC (FiguresGeometricSt)</summary>
+          <label>Figura <select id="fig"></select></label>
+          <p class="hint" id="figHint"></p>
+          <div class="grid2" id="figFields"></div>
+          <details id="figCtxBox">
+            <summary>Parametry figury (zmienne PLC)</summary>
+            <div class="grid2" id="figCtx"></div>
+          </details>
+          <div class="row"><button id="figFill" class="primary">Wypełnij bufor</button></div>
+          <div id="figInfo" class="info"></div>
+        </details>
         <div class="tableWrap"><table class="prog" id="autoTable"></table></div>
         <div class="row" id="autoEdit">
           <button id="autoAdd">+ wiersz</button>
@@ -134,8 +147,18 @@
         </table>
         <h3>Obrót A <span class="muted">bManualASetPosition</span></h3>
         <div class="row presets" id="aPresets"></div>
+        <div class="moveTo">
+          <label>A zadany [°] <input id="aSet" type="number" step="any" value="45"></label>
+          <button data-move="a">Jedź na A</button>
+          <button data-move="a" data-rel="1">Jedź o A</button>
+        </div>
         <h3>Wychył B <span class="muted">bManualBSetPosition</span></h3>
         <div class="row presets" id="bPresets"></div>
+        <div class="moveTo">
+          <label>B zadany [°] <input id="bSet" type="number" step="any" min="-3" max="93" value="15"></label>
+          <button data-move="b">Jedź na B</button>
+          <button data-move="b" data-rel="1">Jedź o B</button>
+        </div>
         <h3>Ruchy interpolowane <span class="muted">względem lasera, prędkość cięcia</span></h3>
         <div class="grid2">
           <button class="hold" data-interp="along">Wzdłuż lasera</button>

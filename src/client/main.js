@@ -12,6 +12,7 @@ import { OPS, COMMON_FIELDS, defaults, parseField, opById } from '../shared/ops.
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
+import { FIGURES, figureById, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -328,6 +329,12 @@ function saveForms() {
     state.forms.op = op.id;
     state.forms.common = readGroup('common', COMMON_FIELDS);
     if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
+    if ($('#figFields').children.length) {
+      const fig = currentFig();
+      state.forms.figs = { ...(state.forms.figs || {}), [fig.id]: readGroup('fig', fig.fields) };
+      state.forms.fig = fig.id;
+      state.forms.figCtx = readGroup('figctx', FIGURE_CONTEXT_FIELDS);
+    }
     localStorage.setItem(STORE_KEY, JSON.stringify({
       units: 'm/min', m: readFields('m'), d: readFields('d'), board: readArea('board'), rock: readArea('rock'), forms: state.forms,
     }));
@@ -376,7 +383,21 @@ const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
 function renderGroup(container, group, fields, values) {
   container.innerHTML = fields.map((f) => fieldHtml(group, f)).join('');
   writeGroup(group, fields, values);
-  for (const el of container.querySelectorAll('[data-g]')) el.addEventListener('input', offlineFormsChanged);
+  applyVisibility(group, fields);
+  for (const el of container.querySelectorAll('[data-g]')) {
+    el.addEventListener('input', () => { applyVisibility(group, fields); offlineFormsChanged(); });
+  }
+}
+
+// Pola z warunkiem show(v) widoczne tylko przy zaznaczonej opcji (np. koniec X/Y tylko przy "dwa punkty")
+function applyVisibility(group, fields) {
+  const v = readGroup(group, fields);
+  for (const f of fields) {
+    if (!f.show) continue;
+    const el = fieldEl(group, f.k);
+    const box = el?.closest('label');
+    if (box) box.hidden = !f.show(v);
+  }
 }
 
 function writeGroup(group, fields, values) {
@@ -408,6 +429,38 @@ function showOp() {
   requestDraw();
 }
 
+// --- figury automatu (FiguresGeometricSt) ---------------------------------------------------
+
+const currentFig = () => figureById($('#fig').value) || FIGURES[0];
+
+function showFig() {
+  const fig = currentFig();
+  const kinds = { cut: 'piła – ProgramAutoCutST', profile: 'profile – ProgramAutoProfileST', mill: 'frez – ProgramAutoMillST, tylko podgląd' };
+  $('#figHint').textContent = `Jak w PLC: FigureType.${fig.id} (${fig.v}), ${fig.plc}; program: ${kinds[fig.kind] || fig.kind}`;
+  renderGroup($('#figFields'), 'fig', fig.fields, state.forms.figs?.[fig.id] || defaults(fig.fields));
+  $('#figInfo').textContent = '';
+}
+
+// "Wypelnij bufor": figura jak FiguresGeometricSt, bufor jak GetDemoProgram (aProgram* := aFigure*)
+function fillFigure() {
+  const fig = currentFig();
+  try {
+    const ctx = figureContext(readGroup('figctx', FIGURE_CONTEXT_FIELDS), offlineMachine(), commonValues());
+    const buf = fig.build(readGroup('fig', fig.fields), ctx);
+    const a = readAuto();
+    a.kind = fig.kind;
+    a.from = 1;
+    a.rows = buf.rows;
+    writeAutoHeader(a, true);
+    renderAutoTable(a, true);
+    state.planSource = 'auto';
+    autoChanged();
+    $('#figInfo').textContent = `Bufor wypełniony: ${fig.name}, ${buf.count} kroków (iFigureNumber), ${buf.rows.length} punktów`;
+  } catch (err) {
+    $('#figInfo').innerHTML = `<span style="color:var(--bad)">${fig.name}: ${err.message}</span>`;
+  }
+}
+
 // Wspolne parametry ciecia + szerokosc tarczy z parametrow maszyny
 function commonValues() {
   return { ...readGroup('common', COMMON_FIELDS), bladeWidth: offlineMachine().bladeWidth };
@@ -427,7 +480,7 @@ function demoAuto() {
   };
 }
 
-const stepOptions = (kind) => STEPS.filter((st) => kind === 'profile' || !st.prof);
+const stepOptions = (kind) => (kind === 'mill' ? MILL_STEPS : STEPS.filter((st) => kind === 'profile' || !st.prof));
 
 function renderAutoTable(a, editable) {
   const opts = stepOptions(a.kind);
@@ -464,6 +517,7 @@ function writeAutoHeader(a, editable) {
   for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
   $('#autoEdit').hidden = !editable;
   $('#autoRun').hidden = !editable;
+  $('#figBox').hidden = !editable;
 }
 
 function readAuto() {
@@ -505,6 +559,7 @@ function autoChanged() {
 
 function buildAutoProgram(from) {
   const a = readAuto();
+  if (a.kind === 'mill') throw new Error('frez (ProgramAutoMillST) – Visu3D nie symuluje frezu, bufor tylko do podglądu');
   const pb = new ProgramBuilder(from, offlineMachine(), offlineDynamics());
   addAutomat(pb, a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues());
   pb.dwell(0.5, 'CutFinish');
@@ -516,7 +571,11 @@ function updateAutoInfo() {
   const a = readAuto();
   const d = offlineDynamics();
   let text = `Kroki: ${a.rows.length}`;
-  if (!validDynamics(d)) {
+  if (a.kind === 'mill') {
+    const millWidth = readGroup('figctx', FIGURE_CONTEXT_FIELDS).millWidth;
+    text += '<br>Bufor frezu (ProgramAutoMillST) jak w PLC – tylko podgląd toru, bez symulacji ruchu (frez pominięty)';
+    text += outsideWarning(previewMill(a.rows, a.rows.length, [a.ox, a.oy], millWidth).map((it) => it.path).filter(Boolean));
+  } else if (!validDynamics(d)) {
     text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
   } else {
     try {
@@ -582,7 +641,11 @@ function planItems() {
   if (state.planSource === 'auto') {
     const a = state.forms.auto || demoAuto();
     const key = JSON.stringify(['auto', a, bw]);
-    if (key !== planCache.key) planCache = { key, items: previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
+    if (key !== planCache.key) {
+      planCache = { key, items: a.kind === 'mill'
+        ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], readGroup('figctx', FIGURE_CONTEXT_FIELDS).millWidth)
+        : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
+    }
     return planCache.items.map((it) => ({ path: it.path, active: state.sim.running && it.i === state.sim.index }));
   }
   const op = currentOp();
@@ -811,6 +874,18 @@ function bindManual() {
   };
   preset('a', A_PRESETS, $('#aPresets'));
   preset('b', B_PRESETS, $('#bPresets'));
+  // jazda na zadany kat A / B: absolutnie (bManualAMoveToPosAbs) albo o kat (bManualAMoveToPosRel)
+  for (const b of $$('[data-move]')) {
+    b.onclick = () => {
+      const d = offlineDynamics();
+      if (!validDynamics(d) || state.mode !== 'offline' || !state.pose) return;
+      const ax = b.dataset.move;
+      const val = Number($(`#${ax}Set`).value);
+      if (!Number.isFinite(val)) return;
+      const target = b.dataset.rel ? state.pose[ax] + val : val;
+      startProgram(gotoProgram(state.pose, { ...state.pose, [ax]: target }, d));
+    };
+  }
   const sawCfg = state.cfg.offline.saw || { freq: 50, dir: 'FWD' };
   $('#sawFreq').value = sawCfg.freq;
   $('#sawDir').value = sawCfg.dir;
@@ -976,9 +1051,14 @@ function bindUi() {
   };
   $('#autoDel').onclick = () => { const a = readAuto(); a.rows.pop(); renderAutoTable(a, true); autoChanged(); };
   $('#autoDemo').onclick = () => { const a = demoAuto(); writeAutoHeader(a, true); renderAutoTable(a, true); autoChanged(); };
+  $('#fig').innerHTML = FIGURES.map((f) => `<option value="${f.id}">${f.v} ${f.name}${f.kind === 'mill' ? ' (frez)' : ''}</option>`).join('');
+  $('#fig').value = figureById(state.forms.fig) ? state.forms.fig : FIGURES[0].id;
+  $('#fig').onchange = () => { saveForms(); showFig(); };
+  renderGroup($('#figCtx'), 'figctx', FIGURE_CONTEXT_FIELDS, { ...defaults(FIGURE_CONTEXT_FIELDS), ...(state.forms.figCtx || {}) });
+  $('#figFill').onclick = fillFigure;
   $('#autoStart').onclick = () => {
     const d = offlineDynamics();
-    if (!validDynamics(d) || state.mode !== 'offline') return;
+    if (!validDynamics(d) || state.mode !== 'offline' || readAuto().kind === 'mill') return;
     clearCuts();
     state.planSource = 'auto';
     startProgram(buildAutoProgram(state.pose));
@@ -1048,6 +1128,7 @@ async function init() {
   bindUi();
   bindManual();
   showOp();
+  showFig();
   stoneChanged();
   connectEvents();
   let mode = state.cfg.plc ? 'online' : 'offline';

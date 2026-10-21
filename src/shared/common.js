@@ -1,6 +1,7 @@
 // Wspolne parametry ciecia (Depths, CutST, serwis) dla operacji offline i automatu.
 
-// Pola: k - klucz, t - 'num' | 'int' | 'bool' | 'sel' | 'list' (liczby po przecinku), d - domyslna, o - opcje sel
+// Pola: k - klucz, t - 'num' | 'int' | 'bool' | 'sel' | 'list' (liczby po przecinku), d - domyslna, o - opcje sel,
+// show(v) - pole widoczne tylko przy danych wartosciach innych pol (np. tylko przy "dwa punkty")
 export const INTERNAL = [[0, 'zewnętrzne'], [1, 'wewnętrzne (oba końce)'], [2, 'wewn. początek'], [3, 'wewn. koniec']];
 
 // Wspolne parametry ciecia (Depths, CutST, serwis)
@@ -8,12 +9,12 @@ export const COMMON_FIELDS = [
   { k: 'thickness', label: 'Głębokość cięcia (grubość) [mm]', t: 'num', d: 30 },
   { k: 'reserve', label: 'Zapas głębokości [mm]', t: 'num', d: 0 },
   { k: 'depthMode', label: 'Tablica głębokości', t: 'sel', d: 'same', o: [['same', 'równe przejścia'], ['step', 'stały skok'], ['one', 'jedno przejście']] },
-  { k: 'passes', label: 'Przejścia (tablica główna)', t: 'int', d: 3 },
-  { k: 'maxJump', label: 'Max skok tablicy 2 [%]', t: 'num', d: 0 },
-  { k: 'step', label: 'Skok głębokości [mm]', t: 'num', d: 10 },
-  { k: 'minLast', label: 'Min. ostatni skok [mm]', t: 'num', d: 2 },
+  { k: 'passes', label: 'Przejścia (tablica główna)', t: 'int', d: 3, show: (v) => v.depthMode === 'same' },
+  { k: 'maxJump', label: 'Max skok tablicy 2 [%]', t: 'num', d: 0, show: (v) => v.depthMode === 'same' },
+  { k: 'step', label: 'Skok głębokości [mm]', t: 'num', d: 10, show: (v) => v.depthMode === 'step' },
+  { k: 'minLast', label: 'Min. ostatni skok [mm]', t: 'num', d: 2, show: (v) => v.depthMode === 'step' },
   { k: 'tilt', label: 'Cięcie pod kątem (skos)', t: 'bool', d: false },
-  { k: 'b', label: 'Wychył B [°]', t: 'num', d: 45 },
+  { k: 'b', label: 'Wychył B [°]', t: 'num', d: 45, show: (v) => v.tilt },
   { k: 'above', label: 'Wyjazd nad materiał [mm]', t: 'num', d: 20 },
   { k: 'lastCutWithDirection', label: 'Ostatnie cięcie z kierunkiem', t: 'bool', d: false },
   { k: 'slower', label: 'Wolniejsza końcówka ostatniego przejścia', t: 'bool', d: true },
@@ -26,6 +27,7 @@ export function cutParams(line, common, extra = {}) {
   const { total, ...rest } = extra;
   return {
     x0: line.x0, y0: line.y0, x1: line.x1, y1: line.y1,
+    angle: line.angle,          // kat glowicy zadany (kat + dlugosc); bez - z punktow (GetAngleFun)
     reverse: Boolean(line.reverse),
     internal: line.internal ?? 0,
     b: common.tilt ? common.b : 0,

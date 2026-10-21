@@ -45,6 +45,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
 | `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
 | `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
+| `src/shared/figures/` | figury automatu 1:1 z PLC (`FiguresGeometricSt`, `Get…Positions`): `rectangle.js`, `groupA.js` (trójkąty, trapezy, krzyż, wielokąt), `groupB.js` (daszki, blat, schody, książki, ćwierćwałek), `groupC.js` (figury frezu i wiercenia), rejestr `index.js` |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
 | `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
@@ -164,6 +165,15 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   - Programy: cięcie proste (zewnętrzne / wewnętrzne / odwrócone), pasy,
     bloki, krawędzie, zakoszenie, łuk (promień / trzy punkty / cięciwa),
     okrąg, elipsa, profil krawędzi z wygładzaniem.
+  - Cięcie proste jak `CutST.GetPositions` (`bManualTwoPoint`):
+    - **dwa punkty**: kąt A liczony z punktów;
+    - **kąt i długość**: koniec = start + L·(cos A, sin A), a z „Długość w
+      stronę lasera” (`bManualToLaser`) start − L·(cos A, sin A); kąt głowicy
+      zostaje zadany.
+  - Formularze pokazują tylko pola zaznaczonej opcji. Na przykład koniec X/Y
+    widać tylko przy „dwóch punktach”, kąt pasów tylko przy „pod kątem”,
+    tabelę szerokości tylko bez stałej szerokości, pola łuku wg rodzaju, a
+    tablicę głębokości wg trybu.
   - Wspólne parametry cięcia: tablica głębokości, skos, wyjazd nad materiał,
     wolniejsza końcówka.
   - Przebieg jak w PLC (`CutST` i programy z zadania `Programs`), dojazd jak
@@ -176,6 +186,28 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   - Krok wiersza i działa od punktu i do i+1: cięcie, przejazd, łuki, okręgi,
     skosy, profile, wygładzanie, zmiana głębokości.
   - Offline: tabela do edycji i „Przykład”.
+  - **Figura – wypełnij bufor jak PLC** (`FiguresGeometricSt`): wybierasz
+    figurę i wpisujesz jej pola (jak na ekranach figur w HMI: start
+    `fFigureX/YStartPosition`, długość, szerokość, kąt, promień, …).
+    „Wypełnij bufor” liczy tablice jak blok figury w PLC (`Get…Positions`) i
+    przepisuje je do bufora tak jak PLC (`aProgram… := aFigure…`,
+    `aProgramNextStep := aFigureIndex`, liczba kroków `:= iFigureNumber`).
+    Rodzaj programu ustawia się sam: piła, profile albo frez.
+    - Figury: prostokąt, trójkąty (prostokątny, równoboczny, równoramienny),
+      daszki, trapez, trapez 45°, blat, schody łukowe, krzyż, książki,
+      ćwierćwałek, wielokąt oraz figury frezu i wiercenia (prostokąt ścięty,
+      serce, narożniki, otwory, ociekacz, elipsy, stół frezarski, narożniki
+      L, płyta indukcyjna). Kod przeniesiony 1:1 z bloków PLC
+      (`src/shared/figures/`).
+    - „Parametry figury”: zmienne PLC, które `FiguresGeometricSt` podaje
+      figurom (`iManualInternal`, `bManualAdditionalDistance`,
+      `bServiceRectangleACBD`, `fParameterMillWidth`, korekty daszków, …).
+      Szerokość tarczy, grubość i `bServiceBlocksReverse` biorą się z
+      Parametrów i wspólnych parametrów cięcia.
+    - Figury frezu wypełniają bufor frezu (`ProgramAutoMillST`, kroki
+      `ProgramMillStep`) tylko do podglądu toru. Visu3D nie symuluje frezu.
+    - `PROFILES` (100) nie jest tworzeniem figury, tylko liczeniem profilu na
+      istniejącym buforze, więc go tu nie ma.
   - Online: tablice `aProgram…` z PLC i podświetlenie bieżącego kroku.
 - **Ręczne** (offline, wizualizacja nie steruje maszyną): jak ekran ruchów
   ręcznych w HMI.
@@ -183,6 +215,9 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     prędkością jog (`fJog[XYZAB]Velocity`) i rampą osi; po puszczeniu hamuje.
   - **Obrót A**: 0 / 90 / −90 / 180 / −180°. **Wychył B**: 0 / 30 / 45 / 60 /
     90° (dojazd z prędkością i rampą osi).
+  - **Jazda na zadany kąt A / B**: „Jedź na” – absolutnie
+    (`bManualAMoveToPosAbs` / `bManualBMoveToPosAbs`), „Jedź o” – o podany kąt
+    (`…MoveToPosRel`).
   - **Ruchy interpolowane** względem lasera: wzdłuż lasera, przeciwnie do
     lasera, prostopadle, prostopadle odwrotnie. Ruch w XY z prędkością cięcia i
     `Acc` / `Dec`, także w materiale, więc tnie.

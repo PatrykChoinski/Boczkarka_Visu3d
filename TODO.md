@@ -51,3 +51,6 @@ Frez, wiercenie, polerowanie – na razie pominięte.
 - [x] Ekran ruchów ręcznych: jog XYZAB ±, A 0 / 90 / −90 / 180 / −180, B 0 / 30 / 45 / 60 / 90
 - [x] Ruchy interpolowane: wzdłuż lasera / przeciwnie / prostopadle / prostopadle odwrotnie
 - [ ] Na maszynie: kierunek lasera i obrotu tarczy (FWD) względem rzeczywistości, skala `iMainDriveFreqAct`
+- [x] Cięcie proste: dwa punkty / kąt i długość (jak CutST.GetPositions), pola chowane wg zaznaczonej opcji
+- [x] Figury w automacie – wypełnianie bufora jak FiguresGeometricSt (wszystkie FigureType poza PROFILES; frez – podgląd)
+- [x] Ręczne: jazda na zadany kąt A i B (absolutnie / o kąt)

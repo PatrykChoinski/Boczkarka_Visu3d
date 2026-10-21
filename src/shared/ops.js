@@ -26,12 +26,24 @@ export const OPS = [
   {
     id: 'cut', name: 'Cięcie proste', plc: 'CutST',
     fields: [
+      { k: 'twoPoint', label: 'Dwa punkty (inaczej kąt i długość) – bManualTwoPoint', t: 'bool', d: true },
       { k: 'x0', label: 'Początek X', t: 'num', d: 400 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 400 },
-      { k: 'x1', label: 'Koniec X', t: 'num', d: 1400 }, { k: 'y1', label: 'Koniec Y', t: 'num', d: 400 },
+      { k: 'x1', label: 'Koniec X', t: 'num', d: 1400, show: (v) => v.twoPoint },
+      { k: 'y1', label: 'Koniec Y', t: 'num', d: 400, show: (v) => v.twoPoint },
+      { k: 'angle', label: 'Kąt A [°]', t: 'num', d: 0, show: (v) => !v.twoPoint },
+      { k: 'length', label: 'Długość [mm]', t: 'num', d: 1000, show: (v) => !v.twoPoint },
+      { k: 'toLaser', label: 'Długość w stronę lasera (bManualToLaser)', t: 'bool', d: false, show: (v) => !v.twoPoint },
       { k: 'internal', label: 'Rodzaj', t: 'sel', d: 0, o: INTERNAL },
       { k: 'reverse', label: 'Odwrócone (głowica +180°)', t: 'bool', d: false },
     ],
-    lines: (v) => [{ x0: v.x0, y0: v.y0, x1: v.x1, y1: v.y1, reverse: v.reverse, internal: v.internal }],
+    // CutST.GetPositions: dwa punkty - kat z punktow; kat + dlugosc - koniec = start + L*(cos, sin),
+    // w strone lasera (bManualToLaser) start - L*(cos, sin), kat glowicy zostaje zadany
+    lines(v) {
+      if (v.twoPoint !== false) return [{ x0: v.x0, y0: v.y0, x1: v.x1, y1: v.y1, reverse: v.reverse, internal: v.internal }];
+      const a = v.angle * Math.PI / 180;
+      const L = (v.toLaser ? -1 : 1) * v.length;
+      return [{ x0: v.x0, y0: v.y0, x1: v.x0 + Math.cos(a) * L, y1: v.y0 + Math.sin(a) * L, angle: v.angle, reverse: v.reverse, internal: v.internal }];
+    },
     build(pb, v, common) { addCutST(pb, cutParams(this.lines(v)[0], common)); },
   },
   {
@@ -40,16 +52,19 @@ export const OPS = [
       { k: 'xs', label: 'Start X', t: 'num', d: 400 }, { k: 'ys', label: 'Start Y', t: 'num', d: 400 },
       { k: 'xCut', label: 'Cięcia wzdłuż X', t: 'bool', d: true },
       { k: 'twoPoint', label: 'Dwa punkty (koniec)', t: 'bool', d: false },
-      { k: 'xe', label: 'Koniec X', t: 'num', d: 1600 }, { k: 'ye', label: 'Koniec Y', t: 'num', d: 400 },
-      { k: 'length', label: 'Długość [mm]', t: 'num', d: 1200 },
-      { k: 'angleCut', label: 'Pod kątem', t: 'bool', d: false }, { k: 'angle', label: 'Kąt [°]', t: 'num', d: 0 },
+      { k: 'xe', label: 'Koniec X', t: 'num', d: 1600, show: (v) => v.twoPoint },
+      { k: 'ye', label: 'Koniec Y', t: 'num', d: 400, show: (v) => v.twoPoint },
+      { k: 'length', label: 'Długość [mm]', t: 'num', d: 1200, show: (v) => !v.twoPoint },
+      { k: 'angleCut', label: 'Pod kątem', t: 'bool', d: false },
+      { k: 'angle', label: 'Kąt [°]', t: 'num', d: 0, show: (v) => v.angleCut && !v.twoPoint },
       { k: 'constant', label: 'Stała szerokość', t: 'bool', d: true },
-      { k: 'width', label: 'Szerokość pasa [mm]', t: 'num', d: 200 }, { k: 'number', label: 'Liczba pasów', t: 'int', d: 4 },
-      { k: 'widths', label: 'Tabela: szerokości', t: 'list', d: '150, 300' },
-      { k: 'numbers', label: 'Tabela: ilości', t: 'list', d: '2, 1' },
-      { k: 'repeating', label: 'Tabela z powtórzeniami', t: 'bool', d: true },
+      { k: 'width', label: 'Szerokość pasa [mm]', t: 'num', d: 200, show: (v) => v.constant },
+      { k: 'number', label: 'Liczba pasów', t: 'int', d: 4, show: (v) => v.constant },
+      { k: 'widths', label: 'Tabela: szerokości', t: 'list', d: '150, 300', show: (v) => !v.constant },
+      { k: 'numbers', label: 'Tabela: ilości', t: 'list', d: '2, 1', show: (v) => !v.constant },
+      { k: 'repeating', label: 'Tabela z powtórzeniami', t: 'bool', d: true, show: (v) => !v.constant },
       { k: 'reverse', label: 'Pasy w stronę ujemną', t: 'bool', d: false },
-      { k: 'toLaser', label: 'Długość w stronę lasera', t: 'bool', d: false },
+      { k: 'toLaser', label: 'Długość w stronę lasera', t: 'bool', d: false, show: (v) => !v.twoPoint },
     ],
     lines: (v, common) => stripesLines({ ...v, bladeWidth: common.bladeWidth, blocksReverse: common.blocksReverse, passes: passCount(common) }),
     build(pb, v, common) { cutLines(pb, this.lines(v, common), common); },
@@ -110,10 +125,11 @@ export const OPS = [
       { k: 'x0', label: 'Początek X', t: 'num', d: 600 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 500 },
       { k: 'x1', label: 'Koniec X', t: 'num', d: 1600 }, { k: 'y1', label: 'Koniec Y', t: 'num', d: 500 },
       { k: 'type', label: 'Rodzaj łuku', t: 'sel', d: 0, o: [[0, 'promień'], [1, 'trzy punkty'], [2, 'cięciwa (strzałka)']] },
-      { k: 'r', label: 'Promień R [mm]', t: 'num', d: 800 },
-      { k: 'cw', label: 'Zgodnie z zegarem (CW)', t: 'bool', d: true },
-      { k: 'xm', label: 'Punkt środkowy X', t: 'num', d: 1100 }, { k: 'ym', label: 'Punkt środkowy Y', t: 'num', d: 700 },
-      { k: 'sagitta', label: 'Strzałka [mm]', t: 'num', d: 150 },
+      { k: 'r', label: 'Promień R [mm]', t: 'num', d: 800, show: (v) => v.type === 0 },
+      { k: 'cw', label: 'Zgodnie z zegarem (CW)', t: 'bool', d: true, show: (v) => v.type !== 1 },
+      { k: 'xm', label: 'Punkt środkowy X', t: 'num', d: 1100, show: (v) => v.type === 1 },
+      { k: 'ym', label: 'Punkt środkowy Y', t: 'num', d: 700, show: (v) => v.type === 1 },
+      { k: 'sagitta', label: 'Strzałka [mm]', t: 'num', d: 150, show: (v) => v.type === 2 },
     ],
     arc(v) {
       const S = [v.x0, v.y0]; const E = [v.x1, v.y1];
@@ -155,7 +171,7 @@ export const OPS = [
       { k: 'convex', label: 'Wypukły (inaczej wklęsły)', t: 'bool', d: true },
       { k: 'jump', label: 'Skok między cięciami [mm]', t: 'num', d: 5 },
       { k: 'smooth', label: 'Wygładzanie po profilu', t: 'bool', d: true },
-      { k: 'sJump', label: 'Skok wygładzania [mm]', t: 'num', d: 100 },
+      { k: 'sJump', label: 'Skok wygładzania [mm]', t: 'num', d: 100, show: (v) => v.smooth },
     ],
     row(v) {
       const xProfile = v.y0 === v.y1;

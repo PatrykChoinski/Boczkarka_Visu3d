@@ -166,3 +166,26 @@ test('automat: kroki jak ProgramAutoCutST - ciecie, luk, przejazd, okrag, skos, 
   assert.ok(maxPen > 25);
   void CUT_STEPS; void plcAxisZ;
 });
+
+test('ciecie proste kat + dlugosc (CutST.GetPositions): koniec z kata, w strone lasera odwrotnie, kat glowicy zadany', () => {
+  const op = OPS.find((o) => o.id === 'cut');
+  const base = { twoPoint: false, x0: 500, y0: 400, angle: 30, length: 1000, internal: 0, reverse: false };
+  const [l] = op.lines({ ...base, toLaser: false });
+  near(l.x1, 500 + 1000 * Math.cos(30 * Math.PI / 180), 1e-9);
+  near(l.y1, 400 + 1000 * Math.sin(30 * Math.PI / 180), 1e-9);
+  const [t] = op.lines({ ...base, toLaser: true });
+  near(t.x1, 500 - 1000 * Math.cos(30 * Math.PI / 180), 1e-9);
+  const pb = new ProgramBuilder(START, M, DYN);
+  op.build(pb, { ...base, toLaser: true }, COMMON);
+  const prog = pb.build();
+  let n = 0;
+  for (let s = 0; s <= prog.duration; s += 0.1) {
+    const { pose, step } = prog.at(s);
+    if (step === 'StartSingleCut' || step === 'StartLastCut') { near(pose.a, 30, 1e-9); n++; }
+  }
+  assert.ok(n > 5);
+  // pola widoczne tylko w swoim trybie
+  const vis = (k, v) => { const f = op.fields.find((x) => x.k === k); return !f.show || f.show(v); };
+  assert.ok(vis('x1', { twoPoint: true }) && !vis('x1', { twoPoint: false }));
+  assert.ok(vis('angle', { twoPoint: false }) && !vis('angle', { twoPoint: true }));
+});

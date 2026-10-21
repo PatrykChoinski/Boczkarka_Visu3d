@@ -120,3 +120,9 @@ button.hold.pressed { background: var(--accent); border-color: var(--accent); co
 .presets button { flex: 1; min-width: 0; padding: 4px; }
 #sawToggle.on { background: #c62828; border-color: #c62828; color: #fff; }
 #hudTable { color: #c62828; font-size: 15px; font-weight: 600; }
+
+/* pola chowane przy niezaznaczonej opcji (show) */
+[hidden] { display: none !important; }
+/* jazda na zadany kat A / B */
+.moveTo { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 6px; align-items: end; margin-top: 6px; }
+.moveTo button { min-height: 38px; }

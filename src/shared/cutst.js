@@ -54,9 +54,9 @@ export function innerMaxDepth(len, disc, corr, total, thickness) {
   return z;
 }
 
-// Kat glowicy A dla linii (GetAngleFun, odwrocone +-180)
+// Kat glowicy A dla linii (GetAngleFun z dwoch punktow albo kat zadany przy kat + dlugosc, odwrocone +-180)
 export function cutAngle(c) {
-  let a = getAngleFun(c.x0, c.y0, c.x1, c.y1);
+  let a = Number.isFinite(c.angle) ? c.angle : getAngleFun(c.x0, c.y0, c.x1, c.y1);
   if (c.reverse) a = a <= 0 ? a + 180 : a - 180;
   return a;
 }
