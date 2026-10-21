@@ -16,7 +16,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
   - przy łuku etykieta jest na łuku;
   - bez etykiety: akcja zamknięta (okrąg), wiercenie, odległość poniżej 1 mm;
   - niebieska ramka i tekst, aktualny krok automatu na czerwono;
-  - ten sam przełącznik XY (`planDistances`, `pathMiddle` w `planmarks.js`).
+  - osobny przełącznik **Odległości** na górnym pasku (ukrywanie niezależne od XY, zapamiętywane w przeglądarce); `planDistances`, `pathMiddle` w `planmarks.js`.
 - Znaczniki mają stałą wielkość na ekranie i są zawsze na wierzchu. Przełącznik **XY** na górnym pasku, zapamiętywany w przeglądarce. Limit 120 znaczników.
 - `src/shared/planmarks.js` (`planMarks`, `markLabel`), rysowanie w `view3d.addPlanMarks` (sprite'y z teksturą z canvas).
 - Sprawdzone:

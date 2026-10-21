@@ -194,8 +194,9 @@ export class View3D {
 
   // Znaczniki XY: kropka (poczatek - zielona, koniec - czerwona, oba - pomaranczowa) i etykieta "X .. Y .." o stalej
   // wielkosci na ekranie, nad materialem i zawsze widoczne; aktywny krok - etykieta podswietlona
-  addPlanMarks(items, z) {
-    for (const mk of planMarks(items)) {
+  // show {xy, dist} - znaczniki XY / odleglosci (osobne przelaczniki na gornym pasku)
+  addPlanMarks(items, z, show) {
+    for (const mk of show.xy ? planMarks(items) : []) {
       const color = mk.start && mk.end ? COLORS.plan : mk.start ? COLORS.markStart : COLORS.planActive;
       const dot = new THREE.Sprite(spriteMaterial(dotTexture(color)));
       dot.scale.set(0.014, 0.014, 1);
@@ -212,7 +213,7 @@ export class View3D {
       this.planGroup.add(dot, label);
     }
     // odleglosci miedzy punktami: etykieta "… mm" w polowie toru akcji (niebieska, aktywny krok - czerwona)
-    for (const ds of planDistances(items)) {
+    for (const ds of show.dist ? planDistances(items) : []) {
       const { texture, aspect } = labelTexture(ds.label, ds.active, 'distance');
       const label = new THREE.Sprite(spriteMaterial(texture));
       const h = 0.026;
@@ -226,12 +227,13 @@ export class View3D {
 
   // items: [{path: [[x, y] | null, ...], marks?, active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa;
   // marks - znaczniki poczatku / konca akcji z wartosciami XY (#137)
-  setPlan(items, z, marks = true) {
-    const key = JSON.stringify([items, z, marks]);
+  // show {xy, dist} - znaczniki XY i odleglosci miedzy punktami
+  setPlan(items, z, show = { xy: true, dist: true }) {
+    const key = JSON.stringify([items, z, show]);
     if (key === this.planKey) return;
     this.planKey = key;
     disposeGroup(this.planGroup);
-    if (marks) this.addPlanMarks(items, z);
+    if (show.xy || show.dist) this.addPlanMarks(items, z, show);
     for (const it of items || []) {
       let run = [];
       const flush = () => {

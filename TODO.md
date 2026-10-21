@@ -89,3 +89,4 @@ Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowsz
 - [x] Punkty początkowe / końcowe kolejnych akcji z wartościami X / Y na materiale (operacja, automat, frez, wiercenie, polerowanie)
 - [x] Przełącznik XY, podświetlenie aktualnego kroku
 - [x] Odległości między punktami (początek - koniec akcji) w połowie toru
+- [x] Przełącznik Odległości na górnym pasku (osobno od XY)

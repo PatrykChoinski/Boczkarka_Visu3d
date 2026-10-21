@@ -171,7 +171,7 @@ function redraw() {
   view.setToolCuts(state.toolRecorder, 'stone');
   view.setToolCuts(state.toolTableRecorder, 'table');
   view.setLaser(laserPoints(m, rock));
-  view.setPlan(planItems(), topZ(m), $('#showMarks').checked);
+  view.setPlan(planItems(), topZ(m), { xy: $('#showMarks').checked, dist: $('#showDist').checked });
   view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setTool(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
@@ -1235,8 +1235,11 @@ function bindUi() {
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
   $('#showPlan').onchange = requestDraw;
-  $('#showMarks').onchange = () => { try { localStorage.setItem('vizuapp.marks', $('#showMarks').checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
-  try { const mk = localStorage.getItem('vizuapp.marks'); if (mk !== null) $('#showMarks').checked = mk === '1'; } catch { /* jw. */ }
+  // przelaczniki XY i Odleglosci (zapamietywane w przegladarce)
+  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist']]) {
+    $(id).onchange = () => { try { localStorage.setItem(store, $(id).checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
+    try { const v = localStorage.getItem(store); if (v !== null) $(id).checked = v === '1'; } catch { /* jw. */ }
+  }
   fillOpSelect();
   $('#op').onchange = () => { saveForms(); showOp(); };
   renderGroup($('#commonFields'), 'common', COMMON_FIELDS, state.forms.common);

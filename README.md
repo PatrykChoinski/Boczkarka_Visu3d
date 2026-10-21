@@ -124,6 +124,7 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   na czerwono. Przy wierceniu znacznik jest w punkcie otworu. W połowie toru
   każdej akcji jest też odległość między jej punktem początkowym i końcowym
   (`… mm`, w linii prostej; niebieska etykieta), poza okręgami i wierceniem.
+  **Odległości**: pokaż / ukryj odległości niezależnie od XY.
   **Laser**: offline laser włączony; online pokazywany, gdy w PLC świeci
   (`IOVars.yLaser`).
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, krok
