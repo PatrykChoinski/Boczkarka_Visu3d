@@ -43,7 +43,7 @@ test('wyszukiwanie wezlow w drzewie OPC UA, odczyt wszystkich zmiennych', async 
     assert.ok(Array.isArray(values.rockY) && values.rockY.length === 8, 'aCuttingRockY');
     assert.equal(values.boardCount, 4);
     assert.equal(values.rockCount, 5);
-    assert.match(source.resolved.x, new RegExp(`\\|var\\|${DEVICE}\\.Application\\.HMI2\\.fXActualPosition`));
+    assert.match(source.resolved.x, new RegExp(`\\|var\\|${DEVICE}\\.Application\\.HMI2\\.fXRealPosition`));
     assert.ok(source.connected);
   } finally {
     await source.stop();
