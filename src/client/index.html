@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VizuApp</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="seg" id="mode">
+      <button data-mode="online">Online (PLC)</button>
+      <button data-mode="offline">Offline</button>
+    </div>
+    <div class="group">
+      <button data-view="iso">Izometria</button>
+      <button data-view="top">Góra</button>
+      <button data-view="front">Przód</button>
+      <button data-view="side">Bok</button>
+      <button id="fit">Dopasuj</button>
+      <button id="zoomIn" title="Przybliż">+</button>
+      <button id="zoomOut" title="Oddal">−</button>
+    </div>
+    <div class="group">
+      <button id="clear">Wyczyść</button>
+      <label class="check"><input type="checkbox" id="showBlade" checked> Tarcza</label>
+    </div>
+  </header>
+
+  <main>
+    <section id="viewWrap">
+      <div id="view"></div>
+      <div id="hud"><div id="hudCut"></div><div id="hudMachine"></div></div>
+    </section>
+
+    <aside id="panel" hidden>
+      <nav class="tabs">
+        <button data-tab="cut" class="active">Cięcie</button>
+        <button data-tab="pos">Pozycja</button>
+        <button data-tab="par">Parametry</button>
+      </nav>
+
+      <div class="tab" data-tab="cut">
+        <p class="hint">Linia cięcia na górnej powierzchni materiału (jak punkty z HMI). Kąt A wynika z punktów.</p>
+        <div class="grid2">
+          <label>Początek X <input data-cut="x0" type="number" step="any"></label>
+          <label>Początek Y <input data-cut="y0" type="number" step="any"></label>
+          <label>Koniec X <input data-cut="x1" type="number" step="any"></label>
+          <label>Koniec Y <input data-cut="y1" type="number" step="any"></label>
+          <label>Wychył B [°] <input data-cut="b" type="number" step="any" min="0" max="89"></label>
+          <label>Głębokość [mm] <input data-cut="depth" type="number" step="any" min="0"></label>
+          <label>Przejścia <input data-cut="passes" type="number" step="1" min="1"></label>
+          <label>Nad materiałem [mm] <input data-cut="above" type="number" step="any" min="0"></label>
+        </div>
+        <div id="cutInfo" class="info"></div>
+        <div class="row">
+          <button id="cutStart" class="primary">Start</button>
+          <button id="pause">Pauza</button>
+          <button id="stop">Stop</button>
+        </div>
+        <label class="inline">Tempo animacji
+          <select id="speed">
+            <option value="1">1× (rzeczywiste)</option>
+            <option value="2">2×</option>
+            <option value="5">5×</option>
+            <option value="10">10×</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="tab" data-tab="pos" hidden>
+        <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
+        <div class="grid2">
+          <label>X [mm] <input data-pos="x" type="number" step="any"></label>
+          <label>Y [mm] <input data-pos="y" type="number" step="any"></label>
+          <label>Z [mm] <input data-pos="z" type="number" step="any"></label>
+          <label>A [°] <input data-pos="a" type="number" step="any"></label>
+          <label>B [°] <input data-pos="b" type="number" step="any"></label>
+        </div>
+        <div class="row">
+          <button id="posGo" class="primary">Jedź</button>
+          <button id="posSet">Ustaw od razu</button>
+          <button id="posActual">Wstaw aktualną</button>
+        </div>
+      </div>
+
+      <div class="tab" data-tab="par" hidden>
+        <h3>Tarcza i materiał</h3>
+        <div class="grid2">
+          <label>Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
+          <label>Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
+          <label>CutTiltDiameter [mm] <input data-m="cutTiltDiameter" type="number" step="any"></label>
+          <label>HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
+          <label>Z góry materiału [mm] <input data-m="materialHeight" type="number" step="any"></label>
+          <label>Grubość materiału [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
+        </div>
+        <h3>Dynamika</h3>
+        <table class="dyn">
+          <tr><th></th><th>prędkość</th><th>przyspieszenie</th><th>hamowanie</th></tr>
+          <tr><td>Cięcie XY</td><td><input data-d="cutVel" type="number" step="any" min="0.01"> mm/s</td><td><input data-d="cutAcc" type="number" step="any" min="0.01"> mm/s²</td><td><input data-d="cutDec" type="number" step="any" min="0.01"> mm/s²</td></tr>
+          <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.01"> mm/s</td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.01"> mm/s²</td></tr>
+          <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.01"> mm/s</td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.01"> mm/s²</td></tr>
+          <tr><td>Oś A</td><td><input data-d="aVel" type="number" step="any" min="0.01"> °/s</td><td colspan="2"><input data-d="aAcc" type="number" step="any" min="0.01"> °/s²</td></tr>
+          <tr><td>Oś B</td><td><input data-d="bVel" type="number" step="any" min="0.01"> °/s</td><td colspan="2"><input data-d="bAcc" type="number" step="any" min="0.01"> °/s²</td></tr>
+        </table>
+        <div class="row">
+          <button id="fromPlc">Pobierz z PLC</button>
+          <button id="defaults">Domyślne</button>
+        </div>
+        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, VelA, DecA, VelB, DecB oraz parametry tarczy i materiału.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <div id="pos" class="mono"></div>
+    <div class="statusline"><span id="conn"></span><span id="step"></span></div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

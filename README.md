@@ -1,40 +1,53 @@
 # VizuApp – wizualizacja cięcia (#128)
 
-Aplikacja na panel maszyny, która w 3D pokazuje, co tnie piła: materiał,
-tarczę ustawioną zgodnie z **obrotem A** i **wychyłem B** oraz wycięty rzaz
-(ścianę cięcia z obwiednią głębokości i szczelinę na górnej powierzchni).
-Dane czyta przez **OPC UA z localhost** (serwer CODESYS na sterowniku), czyli
-te same zmienne co HMI.
+Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D materiał, tarczę
+ustawioną zgodnie z **obrotem A** i **wychyłem B** oraz wycięty rzaz (ściany
+cięcia z obwiednią głębokości i szczelinę na górnej powierzchni).
+
+- **Online (PLC):** pozycje osi i parametry są czytane przez **OPC UA z
+  localhost** (serwer CODESYS na sterowniku), czyli te same zmienne co HMI.
+- **Offline:** bez PLC. Na ekranie zadajesz cięcie albo pozycję osi i oglądasz
+  animację ruchu z **prędkościami, przyspieszeniami i hamowaniem jak w
+  napędach** (profil trapezowy). Parametry wpisujesz ręcznie albo pobierasz z
+  PLC.
 
 Na razie tylko **pojedyncze cięcie piłą**. Inne operacje (frez, łuki, profile)
 dojdą później.
+
+Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
+**three.js** (WebGL), budowana przez esbuild do `public/`.
 
 ## Pliki
 
 | Plik | Co to |
 |---|---|
-| `vizuapp/geometry.py` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth` |
-| `vizuapp/cuts.py` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
-| `vizuapp/render.py` | rzut 3D i rysowanie na `tkinter.Canvas` (bez OpenGL) |
-| `vizuapp/source_opcua.py` | odczyt zmiennych PLC przez OPC UA (`asyncua`) |
-| `vizuapp/simulator.py` | symulacja cięcia (`--demo`, testy) |
-| `vizuapp/app.py` | okno aplikacji |
-| `config.json` | ustawienia (adres OPC UA, zmienne) |
+| `src/shared/geometry.js` | geometria głowicy wg `CutST.GetPositions` / `GetNextDepth` |
+| `src/shared/cuts.js` | zapis wyciętego materiału (rzaz) z kolejnych pozycji |
+| `src/shared/motion.js` | ruch offline: profil trapezowy, program cięcia jak `CutST`, dojazd do pozycji |
+| `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne |
+| `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
+| `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
+| `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js) |
+| `scripts/build-client.js` | budowa strony do `public/` |
+| `test/` | testy (`node --test`) i `fake-plc-server.js` (OPC UA udające CODESYS) |
+| `config.json` | ustawienia (adres OPC UA, port strony, wartości początkowe offline) |
 | `vizu.ps1` | uruchamianie z PLC (jak `D:\Calc\calc.ps1`) |
-| `build.ps1` | testy + budowa `dist\VizuApp\VizuApp.exe` |
-| `tests/` | testy geometrii, zapisu cięcia i OPC UA (`fake_plc_server.py` udaje CODESYS) |
+| `build.ps1` | testy i paczka `dist\VizuApp\` na maszynę |
 
 ## Uruchamianie na maszynie
 
-Tak jak kalkulator: PLC (`HMIScreen`) przy przycisku z HMI wykonuje polecenie
+Tak jak kalkulator: PLC (`HMIScreen`) wykonuje polecenie przez
 `SysProcessExecuteCommand2`:
 
 ```
 cmd /c start "" powershell -nop -ep bypass -w hidden -File D:\VizuApp\vizu.ps1
 ```
 
-`vizu.ps1` uruchamia `VizuApp.exe`, a jeśli aplikacja już działa, tylko wyciąga
-jej okno na wierzch.
+`vizu.ps1` robi trzy rzeczy:
+1. Jeśli serwer jeszcze nie działa, uruchamia go w tle (`node.exe app\src\server\main.js`).
+2. Otwiera `http://127.0.0.1:8128/` w Edge albo Chrome w trybie aplikacji
+   (okno bez pasków przeglądarki).
+3. Jeśli okno VizuApp jest już otwarte, tylko wyciąga je na wierzch.
 
 **Do zrobienia w PLC / HMI** (osobno, poza tym folderem), wzorem `bCalculator`:
 
@@ -60,36 +73,80 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
 
 ### Instalacja
 
-1. `powershell -File build.ps1` na komputerze z Pythonem 3.11. Skrypt zakłada
-   `.venv`, uruchamia testy i buduje exe.
-2. Zawartość `dist\VizuApp\` (`VizuApp.exe`, `vizu.ps1`, `config.json`) skopiuj
-   na maszynę do `D:\VizuApp\`. Python na maszynie nie jest potrzebny.
+1. `powershell -File build.ps1` na komputerze z Node.js 20+. Skrypt robi
+   `npm ci`, testy, buduje stronę i składa `dist\VizuApp\`: `node.exe`, `app\`
+   (serwer, strona, `node_modules` bez narzędzi), `config.json` i `vizu.ps1`.
+2. Zawartość `dist\VizuApp\` (ok. 110 MB, z czego 92 MB to `node.exe`)
+   skopiuj na maszynę do `D:\VizuApp\`. Instalacja Node.js na maszynie nie jest
+   potrzebna.
 3. Na sterowniku musi działać serwer OPC UA CODESYS (port 4840). W symbol
    configu jest już `SupportOPCUA` i potrzebne zmienne (`HMI`, `HMI2`,
    `Communication`, `IOVars`).
+4. Na panelu potrzebna jest przeglądarka z WebGL (Edge albo Chrome).
 
-## Konfiguracja (`config.json` obok exe)
+## Ekran
+
+- **Online (PLC) / Offline**: przełącznik trybu.
+- **Izometria / Góra / Przód / Bok / Dopasuj / + / −**: widok. Obracanie
+  palcem lub lewym przyciskiem, przesuwanie dwoma palcami lub prawym
+  przyciskiem, kółko przybliża, dwuklik dopasowuje.
+- **Wyczyść**: usuwa narysowane cięcia. **Tarcza**: pokaż / ukryj.
+- Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, piła,
+  woda; offline krok programu, czas i prędkość.
+
+### Tryb offline (panel po prawej)
+
+- **Cięcie**: początek i koniec linii cięcia na górnej powierzchni materiału
+  (jak punkty z HMI; kąt A wynika z punktów), wychył B, głębokość, liczba
+  przejść, odjazd nad materiał.
+  - Przebieg jak w `CutST`: najpierw Z w górę na wysokość bezpieczną dla
+    całego obrotu B, potem dojazd X/Y/A/B. Dla każdej głębokości zjazd w Z i
+    cięcie wzdłuż linii (na zmianę w obie strony, ostatnie jako
+    `StartLastCut`). Na koniec wyjazd w Z.
+  - Przyciski: Start / Pauza / Stop. **Tempo animacji** 1× to czas
+    rzeczywisty, do wyboru też 2×, 5× i 10×.
+- **Pozycja**: zadane X/Y/Z/A/B.
+  - **Jedź**: animowany dojazd; najpierw Z w górę, jeśli trzeba, potem
+    wszystkie osie naraz, każda z własną rampą.
+  - **Ustaw od razu**: przestawia osie bez animacji.
+  - **Wstaw aktualną**: wpisuje do pól bieżące położenie osi.
+- **Parametry**: tarcza i materiał oraz dynamika.
+
+| Ruch | Prędkość | Przyspieszenie / hamowanie | Zmienna PLC (Pobierz z PLC) |
+|---|---|---|---|
+| cięcie XY (interpolacja) | mm/s | mm/s², osobno przysp. i ham. | `fVelocitySawMode`, `Acc`, `Dec` |
+| dojazd X/Y | mm/s | mm/s² | `fVelocityFast`, `DecX` |
+| oś Z | mm/s | mm/s² | `fVelocityAxisZWork`, `DecZ` |
+| oś A / B | °/s | °/s² | `VelA`, `DecA` / `VelB`, `DecB` |
+
+W PLC (`Settings/VelocityAcceleration`) `Acc := Vel/TAccXY` i
+`Dec := Vel/TDecXY`, a rampa trwa 0,5 s. „Pobierz z PLC” działa, gdy jest
+połączenie z PLC. Formularze są zapamiętywane w przeglądarce.
+
+## Konfiguracja (`config.json` obok `vizu.ps1`)
 
 | Klucz | Domyślnie | Opis |
 |---|---|---|
+| `httpPort` | 8128 | port strony |
 | `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika |
 | `username`, `password` | puste | logowanie do OPC UA; puste oznacza anonimowe |
-| `node_prefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
-| `poll_ms` | 50 | okres odczytu |
-| `variables` | `{}` | podmiana zmiennych, np. `{"material_height": "HMI.fParameterZMaterialHeight"}` |
-| `auto_clear_on_start` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
-| `material_margin`, `material_min_size` | 300, [1200, 800] | rozmiar rysowanego materiału wokół cięć (mm) |
-| `fullscreen` | `false` | pełny ekran (Esc wyłącza) |
+| `nodePrefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
+| `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |
+| `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
+| `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
+| `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar rysowanego materiału (mm) |
+| `offline` | patrz plik | wartości początkowe formularzy offline |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
 
-| Klucz | Zmienna PLC |
+| Co | Zmienne PLC |
 |---|---|
 | X, Y, Z, A, B | `HMI2.fXActualPosition` … `HMI2.fBActualPosition` |
 | tarcza | `HMI.fParameterDiscDiameter`, `HMI.fParameterBladeWidth` |
 | głowica | `HMI.fParameterCutTiltDiameter`, `HMI.fParameterHeadRotationDiameter` |
 | materiał | `HMI.fCutMaterialHeight` (Z górnej powierzchni), `HMI.fParameterMaterialThickness` |
 | stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut` |
+| dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `VelA`, `DecA`, `VelB`, `DecB` |
 
 ## Geometria
 
@@ -103,18 +160,12 @@ leży na linii na górnej powierzchni materiału. Korekty wychyłu
 (`fParameterTiltCorrection`, `fStatusAxisTiltCorrection`, `fBladeWidthTilt`)
 nie są jeszcze uwzględnione.
 
-## Obsługa
-
-Przeciąganie lewym przyciskiem (lub palcem) obraca widok. Prawy przycisk albo
-Shift + lewy przesuwa widok, kółko przybliża, a dwuklik dopasowuje.
-Przyciski: widoki Izometria / Góra / Przód / Bok, Dopasuj, + / −, Wyczyść
-(usuwa narysowane cięcia), Tarcza (pokaż / ukryj).
-
 ## Rozwój i testy
 
 ```powershell
-.\.venv\Scripts\python -m vizuapp --demo                      # bez PLC, symulacja cięcia
-.\.venv\Scripts\python -m tests.fake_plc_server --port 4840    # udawany CODESYS przez OPC UA
-.\.venv\Scripts\python -m vizuapp                              # w drugim oknie
-.\.venv\Scripts\python -m unittest discover -s tests -t .
+npm ci
+npm test                 # geometria, ruch, OPC UA (testowy serwer), SSE
+npm run offline          # strona bez PLC: http://localhost:8128
+npm run fake-plc         # udawany CODESYS na opc.tcp://localhost:4840 ...
+npm start                # ... i strona z danymi z niego (tryb Online)
 ```
