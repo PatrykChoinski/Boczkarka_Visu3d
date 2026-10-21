@@ -171,7 +171,7 @@ function redraw() {
   view.setToolCuts(state.toolRecorder, 'stone');
   view.setToolCuts(state.toolTableRecorder, 'table');
   view.setLaser(laserPoints(m, rock));
-  view.setPlan(planItems(), topZ(m));
+  view.setPlan(planItems(), topZ(m), { xy: $('#showMarks').checked, dist: $('#showDist').checked });
   view.setBlade(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setTool(state.pose, m, $('#showBlade').checked, state.saw.angle);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
@@ -713,7 +713,7 @@ function planItems() {
       planCache = { key, items: au.kind === 'mill' ? previewMill(au.rows, au.count, au.origin, state.machine.millWidth)
         : previewSteps(au.rows, au.count, au.origin, au.opt, { bladeWidth: bw }) };
     }
-    return planCache.items.map((it) => ({ path: it.path, active: au.running && it.i === au.index }));
+    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, active: au.running && it.i === au.index }));
   }
   if (state.planSource === 'auto') {
     const a = state.forms.auto || demoAuto();
@@ -723,7 +723,7 @@ function planItems() {
         ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], offlineMachine().millWidth)
         : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
     }
-    return planCache.items.map((it) => ({ path: it.path, active: state.sim.running && it.i === state.sim.index }));
+    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, active: state.sim.running && it.i === state.sim.index }));
   }
   const op = currentOp();
   const v = state.forms.ops[op.id] || defaults(op.fields);
@@ -734,7 +734,9 @@ function planItems() {
     try {
       const lines = op.lines ? op.lines(v, common) : [];
       const paths = op.path ? op.path(v, common) : [];
-      items = [...lines.map((l) => ({ path: [[l.x0, l.y0], [l.x1, l.y1]] })), ...paths.map((path) => ({ path }))];
+      // marks - wlasne punkty akcji (wiercenie: punkt otworu zamiast konca krzyzyka)
+      const marks = op.marks ? op.marks(v) : null;
+      items = [...lines.map((l) => ({ path: [[l.x0, l.y0], [l.x1, l.y1]] })), ...paths.map((path) => (marks ? { path, marks } : { path }))];
     } catch { /* niepelne dane formularza */ }
     planCache = { key, items };
   }
@@ -1233,6 +1235,11 @@ function bindUi() {
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
   $('#showPlan').onchange = requestDraw;
+  // przelaczniki XY i Odleglosci (zapamietywane w przegladarce)
+  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist']]) {
+    $(id).onchange = () => { try { localStorage.setItem(store, $(id).checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
+    try { const v = localStorage.getItem(store); if (v !== null) $(id).checked = v === '1'; } catch { /* jw. */ }
+  }
   fillOpSelect();
   $('#op').onchange = () => { saveForms(); showOp(); };
   renderGroup($('#commonFields'), 'common', COMMON_FIELDS, state.forms.common);

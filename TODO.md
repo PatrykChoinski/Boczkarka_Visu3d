@@ -84,3 +84,9 @@ Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowsz
 - [x] Linie znaczników i tarczy bez obcinania po starej sferze otaczającej (`frustumCulled = false`) – wcześniej znikały po odjechaniu narzędzia
 - [ ] Na maszynie: kierunek obrotu FWD narzędzi względem rzeczywistości (`fwdSign`)
 - [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit na gałęzi develop, push, merge do `master`
+
+## #137 Znaczniki XY
+- [x] Punkty początkowe / końcowe kolejnych akcji z wartościami X / Y na materiale (operacja, automat, frez, wiercenie, polerowanie)
+- [x] Przełącznik XY, podświetlenie aktualnego kroku
+- [x] Odległości między punktami (początek - koniec akcji) w połowie toru
+- [x] Przełącznik Odległości na górnym pasku (osobno od XY)
