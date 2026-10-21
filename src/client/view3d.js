@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
 import { planMarks, planDistances } from '../shared/planmarks.js';
+import { waterDrops, waterSpray } from '../shared/water.js';
 import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
@@ -39,6 +40,7 @@ const COLORS = {
 };
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+const dist2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
 
 export class View3D {
   constructor(container) {
@@ -69,6 +71,28 @@ export class View3D {
     this.laserGroup = new THREE.Group();
     this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.toolGroup, this.machineModel.group, this.planGroup, this.laserGroup);
     this.laserMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 });
+    // wiazka lasera (wachlarz od modulu na oslonie do linii na materiale)
+    this.laserFanMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false });
+    // woda z dysz na tarcze (krople)
+    this.water = new THREE.Group();
+    const dropTex = roundTexture();
+    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x3f93e8, size: 16, map: dropTex, alphaTest: 0.05,
+      transparent: true, opacity: 0.9, depthWrite: false }));
+    this.waterDrops.frustumCulled = false;
+    // mgla wodna przy rozbryzgu (duze, prawie przezroczyste punkty)
+    this.waterMist = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x9fd0ff, size: 110, map: dropTex, transparent: true, opacity: 0.22, depthWrite: false }));
+    this.waterMist.frustumCulled = false;
+    // mokra plama na materiale wzdluz ciecia (polysk)
+    this.waterWet = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x9fb3c4, roughness: 0.08, metalness: 0.35,
+      transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    this.waterWet.frustumCulled = false;
+    // strumien: polprzezroczysta struga od dyszy do tarczy (przebudowa przy zmianie polozenia)
+    const streamMat = new THREE.MeshBasicMaterial({ color: 0x6fb4f5, transparent: true, opacity: 0.45, depthWrite: false });
+    this.waterStreams = [0, 1, 2].map(() => new THREE.Mesh(new THREE.BufferGeometry(), streamMat));
+    this.waterKey = '';
+    this.water.add(this.waterDrops, this.waterMist, this.waterWet, ...this.waterStreams);
+    this.water.visible = false;
+    this.scene.add(this.water);
     this.laserKey = '';
     this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
     this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
@@ -253,9 +277,10 @@ export class View3D {
 
   // --- laser -----------------------------------------------------------------
 
-  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm
-  setLaser(points, width = 8) {
-    const key = points ? JSON.stringify(points.map((p) => p.map((c) => Math.round(c * 2) / 2))) : '';
+  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm;
+  // mount - polozenie modulu lasera na glowicy [x, y, z] (wiazka - wachlarz do linii) albo null
+  setLaser(points, width = 8, mount = null) {
+    const key = points ? JSON.stringify([points, mount].map((a) => a && JSON.stringify(a, (k, v) => (typeof v === 'number' ? Math.round(v * 2) / 2 : v)))) : '';
     if (key === this.laserKey) return;
     this.laserKey = key;
     disposeGroup(this.laserGroup);
@@ -281,6 +306,15 @@ export class View3D {
     const dot = new THREE.Mesh(new THREE.SphereGeometry(width, 12, 8), this.laserMat);
     dot.position.copy(v3(points[0]));
     this.laserGroup.add(strip, dot);
+    if (mount) {
+      const fan = [];
+      for (let i = 0; i + 1 < points.length; i++) fan.push(...mount, ...points[i], ...points[i + 1]);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(fan, 3));
+      const beam = new THREE.Mesh(g, this.laserFanMat);
+      beam.renderOrder = 6;
+      this.laserGroup.add(beam);
+    }
   }
 
   // --- tarcza -----------------------------------------------------------------
@@ -398,9 +432,50 @@ export class View3D {
     this.toolLowest.scale.setScalar(Math.max(4, r * 0.08));
   }
 
-  // glowica i suport (pila mostowa)
-  setMachine(pose, m, frameCfg, board, showHead, showFrame) {
-    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame);
+  // Woda (#141): layout z waterLayout (dysze -> poczatek tarczy / narzedzie) albo null, on - woda leci (zawor + obroty),
+  // phase - czas [s] (ruch kropli); kierunek obrotu (rozbryzg) w layout.spray (waterLayout z kierunkiem obrotu)
+  setWater(layout, on, phase = 0) {
+    this.water.visible = Boolean(layout && on);
+    if (!this.water.visible) return;
+    const { drops, mist } = waterSpray(layout, phase % 1000);
+    this.waterDrops.geometry.setAttribute('position', new THREE.Float32BufferAttribute(drops, 3));
+    this.waterMist.geometry.setAttribute('position', new THREE.Float32BufferAttribute(mist, 3));
+    // mokra plama: prostokat od tarczy wzdluz ciecia w strone rozbryzgu, na gorze materialu
+    const wet = layout.spray?.wet;
+    this.waterWet.visible = Boolean(wet);
+    if (wet) {
+      const [o, dir, len, wid] = wet;
+      const z = layout.spray.top + 0.8;
+      const ax = [dir[0], dir[1]];
+      const l = Math.hypot(...ax) || 1;
+      const ux = ax[0] / l;
+      const uy = ax[1] / l;
+      const px = -uy * wid / 2;
+      const py = ux * wid / 2;
+      const a = [o[0] - ux * 0.3 * len, o[1] - uy * 0.3 * len];
+      const b = [o[0] + ux * len, o[1] + uy * len];
+      const pos = [a[0] + px, a[1] + py, z, a[0] - px, a[1] - py, z, b[0] - px * 1.6, b[1] - py * 1.6, z, b[0] + px * 1.6, b[1] + py * 1.6, z];
+      this.waterWet.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      this.waterWet.geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      this.waterWet.geometry.computeVertexNormals();
+    }
+    const key = JSON.stringify([layout.nozzles, layout.targets].map((a) => a.map((p) => p.map((c) => Math.round(c)))));
+    if (key !== this.waterKey) {
+      this.waterKey = key;
+      this.waterStreams.forEach((st, i) => { st.visible = i < layout.nozzles.length; });
+      layout.nozzles.forEach((n, i) => {
+        // os strugi bez rozrzutu kropli (spread 0), rurka zwezajaca sie nie jest potrzebna - stala 6 mm
+        const axis = waterDrops(n, layout.targets[i], 16, 0, 0).sort((p, q) => dist2(p, n) - dist2(q, n));
+        axis.push(layout.targets[i]);
+        this.waterStreams[i].geometry.dispose();
+        this.waterStreams[i].geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(axis.map(v3)), 24, 9, 8, false);
+      });
+    }
+  }
+
+  // glowica i suport (pila mostowa); extra - {laser: {side, mountAngle}, laserOn}
+  setMachine(pose, m, frameCfg, board, showHead, showFrame, extra = {}) {
+    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame, extra);
     // przy suporcie stol zastepuje siatke podlogi
     if (this.grid) this.grid.visible = !this.machineModel.frame.visible;
   }
@@ -517,6 +592,20 @@ function disposeGroup(group) {
     // wlasny material sprite'a znacznika (tekstura z canvas)
     if (obj.isSprite) { obj.material.map?.dispose(); obj.material.dispose(); }
   }
+}
+
+// Okragla, miekka kropla (tekstura punktow wody i mgly - bez kwadratow)
+function roundTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.75)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
 }
 
 // --- znaczniki planu: tekstury z canvas ----------------------------------------

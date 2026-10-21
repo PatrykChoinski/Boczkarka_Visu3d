@@ -53,6 +53,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
 | `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
 | `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
+| `src/shared/water.js` | woda i laser na głowicy: dysze, cele na tarczy, węże, krople, miejsce modułu lasera |
 | `src/shared/planmarks.js` | znaczniki XY początku / końca akcji i odległości między punktami na podglądzie planu |
 | `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
 | `src/shared/figpics.js`, `src/client/img/figures/` | rysunki poglądowe figur z literami (#138) – obrazki z HMI, schematy SVG |
@@ -153,7 +154,45 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
 - **Laser:** żółta linia na powierzchni (kamień albo stół) w płaszczyźnie
   tarczy, wzdłuż kierunku cięcia przy danym A. Domyślnie świeci w prawą
   stronę (`laser.side` = 1, czyli +kierunek cięcia); długość to
-  `laser.length`.
+  `laser.length`. Moduł lasera (#141) jest narysowany na osłonie tarczy od
+  strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Gdy laser
+  świeci, z modułu do linii na materiale idzie półprzezroczysty wachlarz
+  wiązki. W trybach frezu, wiercenia i polerowania moduł jest obok narzędzia.
+- **Suport (#141):** przed przednim końcem prawego murka (od strony operatora)
+  stoi panel operatorski: słupek i pochylona konsola z ekranem HMI, grzybkiem
+  STOP oraz przyciskami. Można go wyłączyć: `frame.panel`.
+- **Osłona tarczy i woda (#141, wg zdjęcia i filmu w zgłoszeniu):**
+  - **Osłona tarczy** (osłonka na wodę) to kanciasta, jasna aluminiowa płyta
+    o kształcie ze zdjęcia: pionowa krawędź, skos, płaska góra, druga
+    krawędź, dół na dwóch wysokościach. Jest większa od tarczy, więc tarcza
+    wychodzi tylko pod dolną krawędzią osłony. Wymiary w promieniach tarczy:
+    pionowa krawędź 1,08, góra 1,10, druga krawędź 1,05, dół −0,62 / −0,45.
+    Ma okrągłe wybranie wokół piasty, w którym widać nakrętkę.
+  - **Odbojnik wody** jest jak płyta na zdjęciu, tylko zielony: gumowa płyta
+    w poprzek rzazu pod przednim dolnym narożnikiem osłony (od strony skosu).
+    Wisi od osłony do powierzchni materiału, najwyżej 0,8 promienia.
+  - **Woda jak na zdjęciu:**
+    - wszystko jest po zewnętrznej stronie osłony;
+    - stalowy oplatany przewód schodzi do srebrnego rozdzielacza przy dolnym
+      rogu osłony;
+    - z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line) idą do dwóch
+      pomarańczowych dysz tuż obok piasty, a trzeci wąż do dyszy przy dolnej
+      części tarczy.
+  - **Narzędzia:** przy frezie, wierceniu i polerowaniu dysze są po obu
+    stronach narzędzia.
+  - **Przy włączonych obrotach** (jak na filmie) leci dużo wody (ok. 380
+    kropli na dyszę i mgła):
+    1. Woda trafia w początek tarczy, czyli w stronę, która przy danym
+       kierunku obrotu schodzi w materiał, tuż nad powierzchnią.
+    2. Część rozlewa się po tarczy i ją zasłania.
+    3. Reszta obrót wciąga przez rzaz. Przy wyjściu z rzazu woda odrywa się w
+       kierunku obrotu i nisko wzdłuż cięcia spada na materiał za tarczą.
+       Kamień za tarczą jest mokry (połyskująca plama).
+  - **Kierunek obrotu** dla FWD to `saw.fwdSign` (domyślnie −1: w materiał
+    schodzi strona tarczy, w którą celują dysze).
+  - **Online** woda zależy od zaworów z PLC (`IOVars.yWaterCut` dla
+  piły, `IOVars.yWaterMill` dla frezu i wiercenia); bez tych zmiennych woda
+  leci przy obrotach, tak jak offline.
 - **Cięcie w stół:** gdy tarcza schodzi poniżej spodu kamienia, rzaz w płycie
   stołu (grubość `tableThickness`) rysuje się na czerwono, a na górze ekranu
   pojawia się czerwona informacja o długości i głębokości. Rzaz w kamieniu
@@ -360,10 +399,10 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
-| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
-| `laser` | `{side: 1, length: 2500}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm) |
-| `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: 1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD |
+| `laser` | `{side: 1, length: 2500, mountAngle: 50}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
+| `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD (−1: strona −u tarczy schodzi w materiał - tam leci woda z dysz) |
 | `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}`; `saw` - piła offline `{freq, dir}`; `mode` - tryb po bazowaniu na starcie (`saw`, `mill`, `drill`, `polishing`) |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
@@ -376,7 +415,7 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 | frez, wiertło, polerka | `HMI.fParameterMillWidth`, `HMI.fParameterMillTiltDiameter`, `HMI.fParameterMillLength`, `HMI.fParameterDrillLength`, `HMI.fParameterMillCorrection`, `ToolChangeGVL.ActiveTool.Height` |
 | bazowanie, tryb | `HMI2.bSystemBased`, `HMI2.bModeSaw`, `HMI2.bModeMill`, `HMI2.bModeDrill`, `HMI2.bModePolishing` |
 | materiał | `HMI.fCutMaterialHeight` (Z górnej powierzchni), `HMI.fParameterMaterialThickness` |
-| stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut` |
+| stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut`, `IOVars.yWaterMill` |
 | laser, napęd tarczy | `IOVars.yLaser`, `Communication.iMainDriveFreqAct`, `Communication.bMainDriveRunFWD`, `Communication.bMainDriveRunREV` |
 | automat | `HMI2.aProgramXPosition/YPosition/NextStep/Radius/Angle/Depth/DepthEnd/Length/OutIn`, `HMI.fProgramStartPositionX/Y`, `HMI2.iProgramCutNumber`, `HMI2.iActualNumberOfProgramCuts` (i odpowiedniki profili oraz frezu: `iProgramMillNumber`, `iActualNumberOfProgramMills`, `bProgramMillStart`) |
 | stół, kamień | `HMI.aCuttingBoardX/Y/Z`, `HMI.iCuttingBoardApexNumber`, `HMI.aCuttingRockX/Y/Z`, `HMI.iCuttingRockApexNumber` |

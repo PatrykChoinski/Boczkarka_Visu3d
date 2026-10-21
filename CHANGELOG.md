@@ -6,6 +6,38 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Węże z wodą, osłona tarczy, odbojnik, moduł lasera i panel operatorski (#141)
+- Osłona tarczy (osłonka na wodę) wg zdjęcia w zgłoszeniu, zamiast półokrągłej żółtej: kanciasta, jasna aluminiowa płyta (`GUARD_OUTLINE`, `GUARD_HUB_HOLE` w `water.js`).
+  - Wymiary zmierzone na zdjęciu w promieniach tarczy: środek piasty i promień tarczy w pikselach, skrót perspektywy z okrągłego wybrania.
+  - Kształt ze zdjęcia (pionowa krawędź, skos, płaska góra, druga krawędź, dół na dwóch wysokościach, okrągłe wybranie wokół piasty) powiększony tak, żeby osłona była większa od tarczy: tarcza wychodzi tylko pod dolną krawędzią, a każda krawędź powyżej jest co najmniej 1,02 promienia od środka.
+  - Wymiary w promieniach tarczy: pionowa krawędź 1,08, skos do (0,5; 1,1), góra 1,1, druga krawędź 1,05, dół −0,62 / −0,45.
+- Odbojnik wody jak płyta na zdjęciu, tylko zielony (`guardFlap`, `FLAP`): gumowa płyta w poprzek rzazu (szersza niż osłona) pod przednim dolnym narożnikiem osłony od strony skosu. Wisi od dolnej krawędzi osłony do powierzchni materiału, najwyżej 0,8 promienia.
+- Krople i mgła wody rysowane jako okrągłe, miękkie punkty.
+  - Na zdjęciu widać zewnętrzną ścianę (nakrętkę), więc skos osłony jest od strony −u.
+- Woda wg zdjęcia, wszystko po zewnętrznej stronie osłony:
+  - stalowy oplatany przewód z głowicy do srebrnego rozdzielacza przy dolnym rogu osłony;
+  - z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line, segmenty jako kulki) z pętlą do dwóch pomarańczowych dysz tuż obok piasty, na jej wysokości;
+  - trzeci wąż do dyszy przy dolnej części tarczy (na zdjęciu są trzy końcówki);
+  - przy frezie, wierceniu i polerowaniu dysze są po obu stronach narzędzia.
+  - Porównanie obok siebie ze zdjęciem (zrzut z Visu3D pod tym samym kątem): układ osłony, węży i dysz się zgadza.
+- Przy włączonych obrotach dużo wody, jak na filmie z cięcia (`waterSpray`: 380 kropli na dyszę, mgła, mokra plama na kamieniu):
+  1. woda trafia w początek tarczy, czyli w stronę, która przy danym kierunku obrotu schodzi w materiał, tuż nad powierzchnią;
+  2. 35% rozlewa się po tarczy i ją zasłania;
+  3. reszta przechodzi z obrotem przez rzaz, przy wyjściu odrywa się w kierunku obrotu i nisko wzdłuż cięcia spada na materiał za tarczą.
+  - Frez, wiercenie, polerowanie: woda na czoło, rozlewa się promieniście.
+  - `saw.fwdSign` domyślnie −1 (także w `config.json`), żeby przy FWD w materiał schodziła strona tarczy, w którą celują dysze (jak na zdjęciu). Dotyczy też kierunku obrotu szprych tarczy i narzędzi; na maszynie do sprawdzenia.
+  - Offline: woda leci, gdy pracuje piła / wrzeciono.
+  - Online: woda zależy od zaworów `IOVars.yWaterCut` (piła) i `IOVars.yWaterMill` (frez, wiercenie). Gdy PLC nie podaje tych zmiennych, woda leci przy obrotach.
+  - Pasek stanu: „woda” / „woda (frez)”.
+- Moduł lasera (obudowa i okienko, które świeci na czerwono przy włączonym laserze) jest zamontowany na krawędzi osłony tarczy od strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Przy włączonym laserze półprzezroczysty wachlarz wiązki prowadzi od modułu do linii lasera na materiale.
+- Suport: panel operatorski przed przednim końcem prawego murka (słupek, konsola pochylona o 30° do operatora, ekran HMI, grzybek STOP na żółtej podstawie, przyciski zielony / biały / niebieski); wyłączany w configu (`frame.panel`). Zielona mata na stole, dodana wcześniej w tym zgłoszeniu, została usunięta.
+- Geometria w `src/shared/water.js` (`waterLayout`, `waterDrops`, `laserMount`, `headDims`), rysowanie w `machine3d.js` (węże, dysze, moduł) i `view3d.js` (`setWater`, wachlarz w `setLaser`). Testowy PLC podaje `waterMill` w trybach narzędzi.
+- Sprawdzone:
+  - `npm test` 123/123 (nowy `test/water.test.js`: trzy dysze wg zdjęcia, rozdzielacz, osłona większa od tarczy, odbojnik do powierzchni materiału, trafienie w początek tarczy tuż nad materiałem, rozbryzg za tarczą w kierunku obrotu i tylko w rzazie pod powierzchnią, woda na czoło narzędzia, moduł lasera na krawędzi osłony);
+  - porównanie obok siebie ze zdjęciem z #141 i klatką z filmu (118 s);
+  - `scripts/smoke-test.mjs` OK;
+  - w przeglądarce piła i frez z włączonymi obrotami i laserem.
+
 ### CI: testy na Windows przy każdym pushu / PR, publikacja Pages po testach
 - `.github/workflows/ci.yml` (zastępuje `pages.yml`):
   - przy każdym pushu (każda gałąź) i pull requeście job `test-windows` na `windows-latest`: `npm ci`, `npm test`, `scripts/smoke-test.mjs`, zrzuty ekranu jako artefakt;

@@ -113,3 +113,11 @@ Gałąź `develop/RysunkiFigurAutomat` (Visu3D i repo główne), od najnowszego 
 - [x] Sprawdzenie w przeglądarce: trapez, blat (typ), daszki (ściany), schematy SVG (headless Edge)
 - [ ] Na maszynie / HMI: porównać daszki – w HMI ściana 1 (dół) ma `nAngle` 180 jak ściana 3 (góra), odwzorowane 1:1
 - [x] README + CHANGELOG (Visu3D), CHANGELOG repo główne, commit na gałęzi develop, push, merge do `master`
+
+## #141 Woda i laser
+- [x] Dwa niebieskie węże z wodą, woda z dysz na tarczę / narzędzie przy obrotach (online yWaterCut / yWaterMill)
+- [x] Moduł lasera na osłonie tarczy, wiązka do linii lasera
+- [x] Panel operatorski przed prawym murkiem (zielona mata na stole usunięta)
+- [x] Osłona większa od tarczy, zielony odbojnik wody pod przednim narożnikiem osłony
+- [x] Osłona tarczy i dysze wg zdjęcia w #141, dużo wody z rozbryzgiem wg filmu
+- [ ] Na maszynie: kierunek obrotu FWD (saw.fwdSign -1), położenie modułu lasera (laser.mountAngle), trzecia (dolna) dysza
