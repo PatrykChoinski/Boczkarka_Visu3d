@@ -33,22 +33,50 @@ export const VARIABLES = {
   fastAcc: 'HMI.DecX',
   zVel: 'HMI.fVelocityAxisZWork',
   zAcc: 'HMI.DecZ',
+  zUpVel: 'HMI.fVelocityAxisZApproach',
   aVel: 'HMI.VelA',
   aAcc: 'HMI.DecA',
   bVel: 'HMI.VelB',
   bAcc: 'HMI.DecB',
+  // automat (ProgramAutoCutST / ProgramAutoProfileST): tablice programu [0..249], punkt startowy, licznik krokow
+  progX: 'HMI2.aProgramXPosition',
+  progY: 'HMI2.aProgramYPosition',
+  progStep: 'HMI2.aProgramNextStep',
+  progRadius: 'HMI2.aProgramRadius',
+  progAngle: 'HMI2.aProgramAngle',
+  progDepth: 'HMI2.aProgramDepth',
+  progDepthEnd: 'HMI2.aProgramDepthEnd',
+  progLength: 'HMI2.aProgramLength',
+  progOutIn: 'HMI2.aProgramOutIn',
+  progOriginX: 'HMI.fProgramStartPositionX',
+  progOriginY: 'HMI.fProgramStartPositionY',
+  progCutCount: 'HMI2.iProgramCutNumber',
+  progProfCount: 'HMI2.iProgramProfilesNumber',
+  progCutIndex: 'HMI2.iActualNumberOfProgramCuts',
+  progProfIndex: 'HMI2.iActualNumberOfProgramProfiles',
+  progCutStart: 'HMI2.bProgramCutStart',
+  progProfStart: 'HMI2.bProgramProfilesStart',
+  progOuterInner: 'HMI.bServiceCutProgramOuterInner',
+  profileJump: 'HMI.fProfileJump',
+  smoothingJump: 'HMI.fSmoothingJump',
+  smoothingArrays: 'HMI.bServiceSmoothingArrays',
 };
+
+// Zmienne czytane rzadziej (co slowEvery odczytow) - duze tablice i ustawienia programu
+export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
+  'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
+  'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount'];
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
 export const MACHINE_KEYS = ['discDiameter', 'bladeWidth', 'cutTiltDiameter', 'headRotationDiameter', 'materialHeight', 'materialThickness'];
-export const DYNAMICS_KEYS = ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'fastAcc', 'zVel', 'zAcc', 'aVel', 'aAcc', 'bVel', 'bAcc'];
+export const DYNAMICS_KEYS = ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'fastAcc', 'zVel', 'zAcc', 'zUpVel', 'aVel', 'aAcc', 'bVel', 'bAcc'];
 
 // Jednostki dynamiki: w PLC i w obliczeniach mm/s, mm/s2 (deg/s, deg/s2), na ekranie i w config.json
 // predkosci liniowe w m/min, przyspieszenia w m/s2 (osie obrotowe bez zmian)
 const DISPLAY_FACTOR = { vel: 1000 / 60, acc: 1000, rot: 1 };
 const DYNAMICS_UNITS = {
-  cutVel: 'vel', cutAcc: 'acc', cutDec: 'acc', fastVel: 'vel', fastAcc: 'acc', zVel: 'vel', zAcc: 'acc',
+  cutVel: 'vel', cutAcc: 'acc', cutDec: 'acc', fastVel: 'vel', fastAcc: 'acc', zVel: 'vel', zAcc: 'acc', zUpVel: 'vel',
   aVel: 'rot', aAcc: 'rot', bVel: 'rot', bAcc: 'rot',
 };
 
@@ -80,6 +108,7 @@ export const DEFAULTS = {
   password: '',
   nodePrefix: '',                       // np. "ns=4;s=|var|AX-8.Application." - puste = szukanie w drzewie
   pollMs: 50,
+  slowEvery: 20,                        // zmienne SLOW_KEYS co tyle odczytow (domyslnie co 1 s)
   variables: {},                        // nadpisanie VARIABLES
   autoClearOnStart: true,               // nowe ciecie (bCutStart) czysci poprzednie
   materialMargin: 300,
@@ -95,7 +124,7 @@ export const DEFAULTS = {
     // gora materialu offline jak w PLC: Z min punktow stolu - grubosc
     board: { count: 4, points: [[0, 0, 490], [3500, 0, 490], [3500, 3000, 490], [0, 3000, 490]] },
     rock: { count: 4, points: [[300, 200, 450], [2800, 200, 450], [2800, 1800, 450], [300, 1800, 450]] },
-    dynamics: { cutVel: 1.8, cutAcc: 0.06, cutDec: 0.06, fastVel: 9, fastAcc: 0.3, zVel: 1.2, zAcc: 0.04, aVel: 30, aAcc: 60, bVel: 10, bAcc: 20 },
+    dynamics: { cutVel: 1.8, cutAcc: 0.06, cutDec: 0.06, fastVel: 9, fastAcc: 0.3, zVel: 1.2, zAcc: 0.04, zUpVel: 1.2, aVel: 30, aAcc: 60, bVel: 10, bAcc: 20 },
     cut: { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, depth: 30, passes: 3, above: 20 },
     start: { x: 0, y: 0, z: 0, a: 0, b: 0 },
   },

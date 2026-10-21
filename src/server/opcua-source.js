@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 import {
   OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType,
 } from 'node-opcua-client';
-import { REQUIRED } from '../shared/config.js';
+import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -71,21 +71,33 @@ export class OpcUaSource extends EventEmitter {
   }
 
   async poll(session, nodes) {
-    const keys = Object.keys(nodes);
-    const request = keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.Value }));
+    const all = Object.keys(nodes);
+    const slow = new Set(SLOW_KEYS);
+    const fastKeys = all.filter((k) => !slow.has(k));
+    const slowKeys = all.filter((k) => slow.has(k));
+    const req = (keys) => keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.Value }));
+    const fastReq = req(fastKeys);
+    const allReq = req([...fastKeys, ...slowKeys]);
     const period = Math.max(10, Number(this.cfg.pollMs) || 50);
+    const slowEvery = Math.max(1, Math.round(Number(this.cfg.slowEvery) || 20));
+    let n = 0;
+    let slowValues = {};
     while (!this.stopped) {
       const t0 = Date.now();
       if (this.active) {
-        const dvs = await session.read(request);
+        const withSlow = n % slowEvery === 0;
+        n++;
+        const keys = withSlow ? [...fastKeys, ...slowKeys] : fastKeys;
+        const dvs = await session.read(withSlow ? allReq : fastReq);
         const values = {};
         keys.forEach((k, i) => {
           if (!dvs[i].statusCode.isGood()) return;
           const v = dvs[i].value.value;
           values[k] = ArrayBuffer.isView(v) ? Array.from(v) : v;   // tablice LREAL (Float64Array) -> JSON
         });
-        this.values = values;
-        this.emit('values', values);
+        if (withSlow) slowValues = Object.fromEntries(slowKeys.filter((k) => k in values).map((k) => [k, values[k]]));
+        this.values = { ...values, ...slowValues };
+        this.emit('values', this.values);
       }
       await sleep(Math.max(0, period - (Date.now() - t0)));
     }

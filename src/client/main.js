@@ -6,7 +6,9 @@ import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
 import { machine as makeMachine, bladeFrame, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { CutRecorder } from '../shared/cuts.js';
-import { cutProgram, gotoProgram, depthTable, AXES } from '../shared/motion.js';
+import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
+import { OPS, COMMON_FIELDS, defaults, parseField, opById } from '../shared/ops.js';
+import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -26,7 +28,10 @@ const state = {
   areasKey: '',             // ostatnie punkty stolu / kamienia z PLC (odswiezanie tabel)
   fitted: false,
   online: { values: {}, status: 'Łączenie...', connected: false, lastCutStart: false },
-  sim: { program: null, t: 0, running: false, step: '', velocity: 0 },
+  sim: { program: null, t: 0, running: false, step: '', velocity: 0, label: null, index: null },
+  planSource: 'op',         // podglad planu: 'op' - operacja, 'auto' - automat
+  autoKey: '',              // ostatnio narysowana tabela automatu (online)
+  forms: null,              // formularze offline: operacje, wspolne parametry, automat
 };
 
 let view;
@@ -128,6 +133,7 @@ function redraw() {
   const rock = rockPolygon();
   view.setMaterial(state.extent, m, rock);
   view.setCuts(state.recorder);
+  view.setPlan(planItems(), topZ(m));
   view.setBlade(state.pose, m, $('#showBlade').checked);
   view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
   view.render();
@@ -154,7 +160,9 @@ function redraw() {
     conn.className = state.online.connected ? 'ok' : 'bad';
     const v = state.online.values;
     let text = '';
-    if (v.cutStep !== undefined) text = `CutStep: ${state.cfg.cutSteps[v.cutStep] ?? v.cutStep}`;
+    const auto = onlineAuto();
+    if (auto.running) text = `Automat: krok ${auto.index + 1} / ${auto.count} – ${stepName(auto.rows[auto.index]?.step)}   `;
+    if (v.cutStep !== undefined) text += `CutStep: ${state.cfg.cutSteps[v.cutStep] ?? v.cutStep}`;
     if (v.sawRunning) text += '   piła ON';
     if (v.waterCut) text += '   woda';
     $('#step').textContent = text;
@@ -163,7 +171,7 @@ function redraw() {
     conn.textContent = 'Offline - symulacja (bez PLC)';
     conn.className = 'ok';
     $('#step').textContent = sim.program
-      ? `${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.running ? '' : '   (zatrzymane)'}`
+      ? `${sim.label ? `${sim.label}   ` : ''}${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.running ? '' : '   (zatrzymane)'}`
       : '';
   }
 }
@@ -193,6 +201,7 @@ function onlineValues(v) {
     stoneChanged();
   }
   applyPose({ x: v.x, y: v.y, z: v.z, a: v.a, b: v.b }, m);
+  refreshOnlineAuto();
   $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra materiału Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
   requestDraw();
 }
@@ -229,30 +238,297 @@ function writeFields(attr, obj) {
 }
 
 function saveForms() {
+  if (!state.forms) return;
   try {
+    const op = currentOp();
+    state.forms.ops[op.id] = readGroup('op', op.fields);
+    state.forms.op = op.id;
+    state.forms.common = readGroup('common', COMMON_FIELDS);
+    if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      units: 'm/min', cut: readFields('cut'), m: readFields('m'), d: readFields('d'), board: readArea('board'), rock: readArea('rock'),
+      units: 'm/min', m: readFields('m'), d: readFields('d'), board: readArea('board'), rock: readArea('rock'), forms: state.forms,
     }));
   } catch { /* brak dostepu do localStorage - formularze tylko w tej sesji */ }
 }
 
 function loadForms() {
   const off = state.cfg.offline;
-  writeFields('cut', off.cut);
   writeFields('m', off.machine);
   writeFields('d', off.dynamics);
   writeArea('board', off.board);
   writeArea('rock', off.rock);
+  state.forms = { op: 'cut', ops: {}, common: defaults(COMMON_FIELDS), auto: demoAuto() };
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (saved) {
-      writeFields('cut', saved.cut || {});
       writeFields('m', saved.m || {});
-      if (saved.units === 'm/min') writeFields('d', saved.d || {});   // starsze zapisy byly w mm/s
+      // starsze zapisy byly w mm/s; puste / zerowe pola (nowe parametry) zostaja z domyslnych
+      if (saved.units === 'm/min') writeFields('d', Object.fromEntries(Object.entries(saved.d || {}).filter(([, v]) => v > 0)));
       if (saved.board) writeArea('board', saved.board);
       if (saved.rock) writeArea('rock', saved.rock);
+      if (saved.forms) {
+        state.forms = {
+          ...state.forms, ...saved.forms,
+          ops: saved.forms.ops || {},
+          common: { ...state.forms.common, ...(saved.forms.common || {}) },
+          auto: saved.forms.auto?.rows ? saved.forms.auto : state.forms.auto,
+        };
+      }
     }
   } catch { /* jw. */ }
+}
+
+// --- formularze operacji (pola z definicji w shared/ops.js) -------------------------------
+
+function fieldHtml(group, f) {
+  const attrs = `data-g="${group}" data-k="${f.k}"`;
+  if (f.t === 'bool') return `<label class="cb wide"><input type="checkbox" ${attrs}> ${f.label}</label>`;
+  if (f.t === 'sel') return `<label>${f.label}<select ${attrs}>${f.o.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select></label>`;
+  if (f.t === 'list') return `<label class="wide">${f.label}<input type="text" ${attrs}></label>`;
+  return `<label>${f.label}<input type="number" step="${f.t === 'int' ? 1 : 'any'}" ${attrs}></label>`;
+}
+
+const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
+
+function renderGroup(container, group, fields, values) {
+  container.innerHTML = fields.map((f) => fieldHtml(group, f)).join('');
+  writeGroup(group, fields, values);
+  for (const el of container.querySelectorAll('[data-g]')) el.addEventListener('input', offlineFormsChanged);
+}
+
+function writeGroup(group, fields, values) {
+  for (const f of fields) {
+    const el = fieldEl(group, f.k);
+    if (!el) continue;
+    const v = values?.[f.k] ?? f.d;
+    if (f.t === 'bool') el.checked = Boolean(v);
+    else el.value = Array.isArray(v) ? v.join(', ') : v;
+  }
+}
+
+function readGroup(group, fields) {
+  const out = {};
+  for (const f of fields) {
+    const el = fieldEl(group, f.k);
+    out[f.k] = el ? parseField(f, f.t === 'bool' ? el.checked : el.value) : parseField(f, f.d);
+  }
+  return out;
+}
+
+const currentOp = () => opById($('#op').value) || OPS[0];
+
+function showOp() {
+  const op = currentOp();
+  $('#opHint').textContent = `Jak w PLC: ${op.plc}`;
+  renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields));
+  updateCutInfo();
+  requestDraw();
+}
+
+// Wspolne parametry ciecia + szerokosc tarczy z parametrow maszyny
+function commonValues() {
+  return { ...readGroup('common', COMMON_FIELDS), bladeWidth: offlineMachine().bladeWidth };
+}
+
+// --- automat (tabela krokow jak lista programu w HMI) -----------------------------------------
+
+const AUTO_COLS = [['x', 'X'], ['y', 'Y'], ['step', 'Krok'], ['r', 'R'], ['angle', 'B°'], ['depth', 'Głęb.'], ['depthEnd', 'Głęb. k.'], ['length', 'Dł.'], ['outIn', 'W/Z']];
+
+function demoAuto() {
+  return {
+    kind: 'cut', from: 1, ox: 500, oy: 400, pJump: 5, sJump: 100, outerInner: false, sArrays: false,
+    rows: [
+      { x: 0, y: 0, step: 1 }, { x: 1500, y: 0, step: 4, r: 1000 }, { x: 1500, y: 900, step: 1 },
+      { x: 0, y: 900, step: 1 }, { x: 0, y: 0, step: 2 }, { x: 750, y: 450, step: 26, r: 200 },
+    ].map((r) => ({ r: 0, angle: 0, depth: 0, depthEnd: 0, length: 0, outIn: 0, ...r })),
+  };
+}
+
+const stepOptions = (kind) => STEPS.filter((st) => kind === 'profile' || !st.prof);
+
+function renderAutoTable(a, editable) {
+  const opts = stepOptions(a.kind);
+  const dis = editable ? '' : ' disabled';
+  let html = `<tr><th>#</th>${AUTO_COLS.map(([, n]) => `<th>${n}</th>`).join('')}</tr>`;
+  a.rows.forEach((r, i) => {
+    html += `<tr data-row="${i}"><td class="n">${i + 1}</td>`;
+    for (const [k] of AUTO_COLS) {
+      if (k === 'step') {
+        const known = opts.some((o) => o.v === Number(r.step));
+        html += `<td><select data-a="${k}" data-i="${i}"${dis}>${opts.map((o) => `<option value="${o.v}"${o.v === Number(r.step) ? ' selected' : ''}>${o.v} ${o.name}</option>`).join('')}${known ? '' : `<option value="${r.step}" selected>${r.step} ?</option>`}</select></td>`;
+      } else if (k === 'outIn') {
+        html += `<td><select data-a="${k}" data-i="${i}"${dis}>${[[0, '-'], [1, 'zew'], [2, 'wew']].map(([v, n]) => `<option value="${v}"${v === Number(r.outIn) ? ' selected' : ''}>${n}</option>`).join('')}</select></td>`;
+      } else {
+        html += `<td><input type="number" step="any" data-a="${k}" data-i="${i}" value="${Number(Number(r[k] || 0).toFixed(3))}"${dis}></td>`;
+      }
+    }
+    html += '</tr>';
+  });
+  $('#autoTable').innerHTML = html;
+  for (const el of $$('#autoTable [data-a]')) el.addEventListener('input', autoChanged);
+}
+
+const AUTO_HEAD = '#autoKind, #autoFrom, #autoOX, #autoOY, #autoPJump, #autoSJump, #autoOuterInner, #autoSArrays';
+
+function writeAutoHeader(a, editable) {
+  $('#autoKind').value = a.kind;
+  $('#autoFrom').value = a.from ?? 1;
+  $('#autoOX').value = a.ox; $('#autoOY').value = a.oy;
+  $('#autoPJump').value = a.pJump; $('#autoSJump').value = a.sJump;
+  $('#autoOuterInner').checked = Boolean(a.outerInner);
+  $('#autoSArrays').checked = Boolean(a.sArrays);
+  for (const el of $$(AUTO_HEAD)) el.disabled = !editable;
+  for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
+  $('#autoEdit').hidden = !editable;
+  $('#autoRun').hidden = !editable;
+}
+
+function readAuto() {
+  const rows = [];
+  for (const el of $$('#autoTable [data-a]')) {
+    const i = Number(el.dataset.i);
+    rows[i] ??= {};
+    rows[i][el.dataset.a] = Number(el.value) || 0;
+  }
+  return {
+    kind: $('#autoKind').value, from: Math.max(1, Math.round(Number($('#autoFrom').value) || 1)),
+    ox: Number($('#autoOX').value) || 0, oy: Number($('#autoOY').value) || 0,
+    pJump: Number($('#autoPJump').value) || 1, sJump: Number($('#autoSJump').value) || 50,
+    outerInner: $('#autoOuterInner').checked, sArrays: $('#autoSArrays').checked,
+    rows: rows.filter(Boolean),
+  };
+}
+
+const autoOpts = (a) => ({ outerInner: a.outerInner, profileJump: a.pJump, smoothingJump: a.sJump, smoothingArrays: a.sArrays, startIndex: (a.from || 1) - 1 });
+
+function showAuto() {
+  if (!state.forms) return;
+  if (state.mode === 'online') { state.autoKey = ''; refreshOnlineAuto(); return; }
+  const a = state.forms.auto || demoAuto();
+  writeAutoHeader(a, true);
+  renderAutoTable(a, true);
+  updateAutoInfo();
+}
+
+function autoChanged() {
+  if (state.mode !== 'offline') return;
+  const a = readAuto();
+  state.forms.auto = a;
+  for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
+  saveForms();
+  updateAutoInfo();
+  requestDraw();
+}
+
+function buildAutoProgram(from) {
+  const a = readAuto();
+  const pb = new ProgramBuilder(from, offlineMachine(), offlineDynamics());
+  addAutomat(pb, a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues());
+  pb.dwell(0.5, 'CutFinish');
+  return pb.build();
+}
+
+function updateAutoInfo() {
+  if (state.mode !== 'offline' || !$('#autoTable').rows.length) return;
+  const a = readAuto();
+  const d = offlineDynamics();
+  let text = `Kroki: ${a.rows.length}`;
+  if (!validDynamics(d)) {
+    text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
+  } else {
+    try {
+      const prog = buildAutoProgram(state.pose || state.cfg.offline.start);
+      text += `, czas programu ${formatTime(prog.duration)}`;
+      text += outsideWarning(previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues()).map((it) => it.path));
+    } catch (err) {
+      text += `<br><span style="color:var(--bad)">Błąd programu: ${err.message}</span>`;
+    }
+  }
+  $('#autoInfo').innerHTML = text;
+}
+
+// Automat w PLC (online): tablice programu, licznik krokow, aktualny krok
+function onlineAuto() {
+  const v = state.online.values;
+  const profile = Boolean(v.progProfStart) || (!v.progCutStart && Number(v.progProfCount) > 0 && !(Number(v.progCutCount) > 0));
+  const count = Math.max(0, Math.round(Number(profile ? v.progProfCount : v.progCutCount) || 0));
+  const running = Boolean(profile ? v.progProfStart : v.progCutStart);
+  const index = Math.round(Number(profile ? v.progProfIndex : v.progCutIndex) || 0);
+  return {
+    kind: profile ? 'profile' : 'cut', count, running, index,
+    rows: v.progX ? rowsFromArrays(v, count) : [],
+    origin: [Number(v.progOriginX) || 0, Number(v.progOriginY) || 0],
+    opt: { outerInner: Boolean(v.progOuterInner), profileJump: Number(v.profileJump) || 1, smoothingJump: Number(v.smoothingJump) || 50, smoothingArrays: Boolean(v.smoothingArrays) },
+  };
+}
+
+function refreshOnlineAuto() {
+  if (state.mode !== 'online' || $('.tab[data-tab="auto"]').hidden) return;
+  const au = onlineAuto();
+  const key = JSON.stringify([au.kind, au.count, au.rows, au.origin, au.opt]);
+  if (key !== state.autoKey) {
+    state.autoKey = key;
+    const a = { kind: au.kind, from: 1, ox: au.origin[0], oy: au.origin[1], pJump: au.opt.profileJump, sJump: au.opt.smoothingJump, outerInner: au.opt.outerInner, sArrays: au.opt.smoothingArrays, rows: au.rows.slice(0, au.count) };
+    writeAutoHeader(a, false);
+    renderAutoTable(a, false);
+    $('#autoInfo').innerHTML = au.rows.length
+      ? `Program z PLC: ${au.kind === 'profile' ? 'ProgramAutoProfileST' : 'ProgramAutoCutST'}, kroków ${au.count}`
+      : 'Brak tablic programu w PLC (aProgramXPosition ...)';
+  }
+  markAutoRow(au.running ? au.index : -1);
+}
+
+function markAutoRow(index) {
+  for (const tr of $$('#autoTable tr[data-row]')) tr.classList.toggle('active', Number(tr.dataset.row) === index);
+}
+
+// --- podglad planu (linie operacji / kroki automatu) ---------------------------------------
+
+let planCache = { key: '', items: [] };
+
+function planItems() {
+  if (!$('#showPlan').checked || !state.forms) return [];
+  const bw = state.machine.bladeWidth;
+  if (state.mode === 'online') {
+    const au = onlineAuto();
+    if (!au.count || !au.rows.length) return [];
+    const key = JSON.stringify(['on', au.rows, au.count, au.origin, au.opt, bw]);
+    if (key !== planCache.key) planCache = { key, items: previewSteps(au.rows, au.count, au.origin, au.opt, { bladeWidth: bw }) };
+    return planCache.items.map((it) => ({ path: it.path, active: au.running && it.i === au.index }));
+  }
+  if (state.planSource === 'auto') {
+    const a = state.forms.auto || demoAuto();
+    const key = JSON.stringify(['auto', a, bw]);
+    if (key !== planCache.key) planCache = { key, items: previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
+    return planCache.items.map((it) => ({ path: it.path, active: state.sim.running && it.i === state.sim.index }));
+  }
+  const op = currentOp();
+  const v = state.forms.ops[op.id] || defaults(op.fields);
+  const common = { ...(state.forms.common || {}), bladeWidth: bw };
+  const key = JSON.stringify(['op', op.id, v, common]);
+  if (key !== planCache.key) {
+    let items = [];
+    try {
+      const lines = op.lines ? op.lines(v, common) : [];
+      const paths = op.path ? op.path(v, common) : [];
+      items = [...lines.map((l) => ({ path: [[l.x0, l.y0], [l.x1, l.y1]] })), ...paths.map((path) => ({ path }))];
+    } catch { /* niepelne dane formularza */ }
+    planCache = { key, items };
+  }
+  return planCache.items;
+}
+
+// Ostrzezenie: tor poza kamieniem
+function outsideWarning(paths) {
+  const rock = rockPolygon();
+  if (!rock) return '';
+  const out = paths.some((p) => (p || []).some((pt) => pt && !pointInPolygon(pt[0], pt[1], rock)));
+  return out ? '<br><span style="color:var(--bad)">Tor wychodzi poza kamień</span>' : '';
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  return m ? `${m} min ${(sec - m * 60).toFixed(0)} s` : `${sec.toFixed(1)} s`;
 }
 
 // Offline gora materialu jak w PLC (WorkArea): fCutMaterialHeight := fCuttingBoardZMin - grubosc
@@ -264,30 +540,38 @@ function offlineMachine() {
 }
 const offlineDynamics = () => dynamicsToInternal(readFields('d'));
 
-function cutInput() {
-  const c = readFields('cut');
-  return { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1, b: c.b, above: c.above, depths: depthTable(c.depth, c.passes) };
-}
-
 function validDynamics(d) {
   return DYNAMICS_KEYS.every((k) => d[k] > 0);
 }
 
+function buildOpProgram(from) {
+  const op = currentOp();
+  const pb = new ProgramBuilder(from, offlineMachine(), offlineDynamics());
+  op.build(pb, readGroup('op', op.fields), commonValues());
+  pb.dwell(0.5, 'CutFinish');
+  return pb.build();
+}
+
 function updateCutInfo() {
-  const c = cutInput();
-  const len = Math.hypot(c.x1 - c.x0, c.y1 - c.y0);
-  const a = lineAngle(c.x0, c.y0, c.x1, c.y1);
+  if (!state.forms || !$('#opFields').children.length) return;
+  const op = currentOp();
+  const v = readGroup('op', op.fields);
+  const common = commonValues();
   const d = offlineDynamics();
-  let text = `Kąt A ${a.toFixed(1)}°, długość ${len.toFixed(1)} mm, przejścia: ${c.depths.map((x) => x.toFixed(1)).join(' / ')} mm`;
-  if (validDynamics(d) && len > 0) {
-    const prog = cutProgram(state.pose || state.cfg.offline.start, c, offlineMachine(), d);
-    text += `<br>Czas programu: ${prog.duration.toFixed(1)} s`;
-    const rock = rockPolygon();
-    if (rock && !(pointInPolygon(c.x0, c.y0, rock) && pointInPolygon(c.x1, c.y1, rock))) {
-      text += '<br><span style="color:var(--bad)">Linia cięcia wychodzi poza kamień</span>';
+  let text = '';
+  try {
+    const lines = op.lines ? op.lines(v, common) : [];
+    const paths = op.path ? op.path(v, common) : [];
+    if (lines.length) text += `Linie cięcia: ${lines.length}`;
+    if (validDynamics(d)) {
+      const prog = buildOpProgram(state.pose || state.cfg.offline.start);
+      text += `${text ? ', ' : ''}czas programu ${formatTime(prog.duration)}`;
+    } else {
+      text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
     }
-  } else {
-    text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
+    text += outsideWarning([...lines.map((l) => [[l.x0, l.y0], [l.x1, l.y1]]), ...paths]);
+  } catch (err) {
+    text += `<br><span style="color:var(--bad)">Błąd programu: ${err.message}</span>`;
   }
   $('#cutInfo').innerHTML = text;
 }
@@ -309,6 +593,7 @@ function fromPlc() {
 function offlineFormsChanged() {
   saveForms();
   updateCutInfo();
+  updateAutoInfo();
   if (state.mode === 'offline' && !state.sim.running && state.pose) {
     applyPose(state.pose, offlineMachine());
     requestDraw();
@@ -321,8 +606,10 @@ function startProgram(program) {
   state.sim.program = program;
   state.sim.t = 0;
   state.sim.running = true;
+  state.sim.label = null;
+  state.sim.index = null;
   state.sim.lastFrame = performance.now();
-  $('#pause').textContent = 'Pauza';
+  for (const b of $$('.pauseBtn')) b.textContent = 'Pauza';
   requestAnimationFrame(simFrame);
 }
 
@@ -341,11 +628,15 @@ function simFrame(now) {
   res = sim.program.at(tEnd);
   sim.t = tEnd;
   sim.step = res.step;
+  if (sim.index !== res.index) markAutoRow(res.index ?? -1);
+  sim.label = res.label;
+  sim.index = res.index;
   sim.velocity = res.velocity;
   applyPose(res.pose, m);
   if (res.done) {
     sim.running = false;
     sim.velocity = 0;
+    markAutoRow(-1);
   }
   redraw();
   if (sim.running) requestAnimationFrame(simFrame);
@@ -363,7 +654,9 @@ function setMode(mode) {
   state.sim.program = null;
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
   for (const t of $$('.tabs [data-offline]')) t.hidden = mode !== 'offline';
-  if (mode !== 'offline') showTab('stone');
+  const active = $('.tabs button.active')?.dataset.tab;
+  if (mode !== 'offline' && active !== 'auto') showTab('stone');
+  $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
   $('#stonePlc').hidden = mode === 'offline';
   for (const el of $$('[data-pt], [data-count], [data-save]')) el.disabled = mode !== 'offline';
@@ -377,9 +670,12 @@ function setMode(mode) {
     restoreOfflineAreas();
     stoneChanged();
     updateCutInfo();
+    showAuto();
   } else {
     state.pose = null;
+    state.autoKey = '';
     onlineValues(state.online.values);
+    if (!$('.tab[data-tab="auto"]').hidden) showAuto();
   }
   try { localStorage.setItem('vizuapp.mode', mode); } catch { /* jw. */ }
   requestDraw();
@@ -388,6 +684,9 @@ function setMode(mode) {
 function showTab(name) {
   for (const x of $$('.tabs button')) x.classList.toggle('active', x.dataset.tab === name);
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
+  if (name === 'cut') state.planSource = 'op';
+  if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
+  requestDraw();
 }
 
 // Tabele punktow (8 wierszy X / Y / Z + "Poz." - aktualna pozycja osi, jak zapis w PLC)
@@ -482,7 +781,32 @@ function bindUi() {
   $('#view').ondblclick = fit;
 
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
-  for (const el of $$('[data-cut], [data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
+  for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
+  $('#showPlan').onchange = requestDraw;
+  $('#op').innerHTML = OPS.map((o) => `<option value="${o.id}">${o.name}</option>`).join('');
+  $('#op').value = opById(state.forms.op) ? state.forms.op : 'cut';
+  $('#op').onchange = () => { saveForms(); showOp(); };
+  renderGroup($('#commonFields'), 'common', COMMON_FIELDS, state.forms.common);
+  for (const el of $$(AUTO_HEAD)) {
+    el.addEventListener('input', () => { if (el.id === 'autoKind') renderAutoTable(readAuto(), true); autoChanged(); });
+  }
+  $('#autoAdd').onclick = () => {
+    const a = readAuto();
+    const last = a.rows[a.rows.length - 1] || { x: 0, y: 0 };
+    a.rows.push({ x: last.x, y: last.y, step: 1, r: 0, angle: 0, depth: 0, depthEnd: 0, length: 0, outIn: 0 });
+    renderAutoTable(a, true);
+    autoChanged();
+  };
+  $('#autoDel').onclick = () => { const a = readAuto(); a.rows.pop(); renderAutoTable(a, true); autoChanged(); };
+  $('#autoDemo').onclick = () => { const a = demoAuto(); writeAutoHeader(a, true); renderAutoTable(a, true); autoChanged(); };
+  $('#autoStart').onclick = () => {
+    const d = offlineDynamics();
+    if (!validDynamics(d) || state.mode !== 'offline') return;
+    clearCuts();
+    state.planSource = 'auto';
+    startProgram(buildAutoProgram(state.pose));
+  };
+
   for (const el of $$('[data-pt], [data-count]')) el.addEventListener('input', stoneChanged);
   for (const b of $$('[data-save]')) {
     b.onclick = () => {
@@ -502,17 +826,19 @@ function bindUi() {
     const d = offlineDynamics();
     if (!validDynamics(d)) return;
     clearCuts();
-    startProgram(cutProgram(state.pose, cutInput(), offlineMachine(), d));
+    state.planSource = 'op';
+    startProgram(buildOpProgram(state.pose));
   };
-  $('#pause').onclick = () => {
+  const togglePause = () => {
     const sim = state.sim;
     if (!sim.program || sim.t >= sim.program.duration) return;
     sim.running = !sim.running;
-    $('#pause').textContent = sim.running ? 'Pauza' : 'Wznów';
+    for (const b of $$('.pauseBtn')) b.textContent = sim.running ? 'Pauza' : 'Wznów';
     if (sim.running) { sim.lastFrame = performance.now(); requestAnimationFrame(simFrame); }
     requestDraw();
   };
-  $('#stop').onclick = () => { stopProgram(); state.sim.program = null; requestDraw(); };
+  for (const b of $$('.pauseBtn')) b.onclick = togglePause;
+  for (const b of $$('.stopBtn')) b.onclick = () => { stopProgram(); state.sim.program = null; markAutoRow(-1); requestDraw(); };
 
   $('#posGo').onclick = () => {
     const d = offlineDynamics();
@@ -543,6 +869,7 @@ async function init() {
   $('#showFrame').checked = state.cfg.frame.show;
   try { const f = localStorage.getItem('vizuapp.frame'); if (f !== null) $('#showFrame').checked = f === '1'; } catch { /* jw. */ }
   bindUi();
+  showOp();
   stoneChanged();
   connectEvents();
   let mode = state.cfg.plc ? 'online' : 'offline';

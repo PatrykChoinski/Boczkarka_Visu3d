@@ -17,6 +17,8 @@ const COLORS = {
   lowest: 0xd62728,
   axis: 0x555555,
   grid: 0xc9d0d8,
+  plan: 0xe07b00,
+  planActive: 0xd62728,
 };
 
 const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
@@ -45,7 +47,11 @@ export class View3D {
     this.cutsGroup = new THREE.Group();
     this.bladeGroup = this.buildBlade();
     this.machineModel = new MachineModel();
-    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group);
+    this.planGroup = new THREE.Group();
+    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group, this.planGroup);
+    this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
+    this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
+    this.planKey = '';
 
     this.wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 });
     this.kerfMat = new THREE.MeshBasicMaterial({ color: COLORS.kerf, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -99,21 +105,60 @@ export class View3D {
 
   // --- ciecia -----------------------------------------------------------------
 
+  // Siatki kazdego ciecia trzymane osobno - przebudowa tylko ciec, ktore sie zmienily (Cut.rev)
   setCuts(recorder) {
     if (recorder.version === this.cutsVersion) return;
     this.cutsVersion = recorder.version;
-    disposeGroup(this.cutsGroup);
+    this.cutMeshes ??= new Map();
+    const alive = new Set(recorder.cuts);
+    for (const [cut, entry] of this.cutMeshes) {
+      if (!alive.has(cut)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); this.cutMeshes.delete(cut); }
+    }
     const { wallMat, kerfMat } = this;
     for (const cut of recorder.cuts) {
+      let entry = this.cutMeshes.get(cut);
+      if (entry && entry.rev === cut.rev) continue;
+      if (!entry) {
+        entry = { group: new THREE.Group(), rev: -1 };
+        this.cutMeshes.set(cut, entry);
+        this.cutsGroup.add(entry.group);
+      }
+      disposeGroup(entry.group);
+      entry.rev = cut.rev;
       const half = cut.bladeWidth / 2;
       for (const offset of [-half, half]) {
-        for (const strip of cut.wallStrips(offset)) this.cutsGroup.add(stripMesh(strip, wallMat));
+        for (const strip of cut.wallStrips(offset)) entry.group.add(stripMesh(strip, wallMat));
       }
       for (const band of cut.topBands()) {
         const geo = new THREE.BufferGeometry().setFromPoints(band.map((p) => v3([p[0], p[1], p[2] + 0.3])));
         geo.setIndex([0, 1, 2, 0, 2, 3]);
-        this.cutsGroup.add(new THREE.Mesh(geo, kerfMat));
+        entry.group.add(new THREE.Mesh(geo, kerfMat));
       }
+    }
+  }
+
+  // --- plan (linie / tor operacji, kroki automatu) --------------------------------
+
+  // items: [{path: [[x, y] | null, ...], active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa
+  setPlan(items, z) {
+    const key = JSON.stringify([items, z]);
+    if (key === this.planKey) return;
+    this.planKey = key;
+    disposeGroup(this.planGroup);
+    for (const it of items || []) {
+      let run = [];
+      const flush = () => {
+        if (run.length >= 2) {
+          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(run.map(([x, y]) => new THREE.Vector3(x, y, z + 1))),
+            it.active ? this.planActiveMat : this.planMat);
+          line.computeLineDistances();
+          line.renderOrder = 5;
+          this.planGroup.add(line);
+        }
+        run = [];
+      };
+      for (const p of it.path || []) { if (p) run.push(p); else flush(); }
+      flush();
     }
   }
 

@@ -49,11 +49,11 @@ main { flex: 1; display: flex; min-height: 0; }
 #hudMachine { color: var(--muted); font-size: 13px; }
 
 #panel {
-  width: 380px; flex: none; overflow-y: auto;
+  width: 430px; flex: none; overflow-y: auto;
   background: var(--panel); border-left: 1px solid var(--border); padding: 8px 12px 16px;
 }
-.tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-.tabs button { flex: 1; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.tabs button { flex: 1 1 auto; }
 .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
 label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
@@ -67,6 +67,21 @@ input[type=number], select {
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 .info { margin-top: 8px; font-size: 14px; line-height: 1.5; }
 h3 { font-size: 14px; margin: 12px 0 6px; }
+details { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
+summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; }
+input[type=text] { min-height: 38px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; width: 100%; user-select: text; }
+label.cb { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+label.cb input { width: 20px; height: 20px; }
+label.wide { grid-column: 1 / -1; }
+.tableWrap { overflow-x: auto; margin-top: 8px; }
+table.prog { border-collapse: collapse; font-size: 12px; }
+table.prog th { color: var(--muted); font-weight: 500; text-align: left; padding: 0 2px; white-space: nowrap; }
+table.prog td { padding: 1px 2px; }
+table.prog input { width: 62px; min-height: 30px; padding: 2px 4px; }
+table.prog select { width: 128px; min-height: 30px; padding: 2px 4px; font-size: 12px; }
+table.prog tr.active td { background: #fde2e1; }
+table.prog tr.off { opacity: 0.45; }
+table.prog td.n { color: var(--muted); text-align: right; width: 22px; }
 h3 .muted { color: var(--muted); font-weight: 400; font-size: 12px; }
 table.pts { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; table-layout: fixed; }
 table.pts th { color: var(--muted); font-weight: 500; text-align: left; padding: 0 3px; }

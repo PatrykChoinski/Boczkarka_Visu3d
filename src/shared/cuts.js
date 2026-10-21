@@ -9,8 +9,11 @@
 
 import { add, mul, sub, dot, bladeFrame, penetration, topZ } from './geometry.js';
 
+const radius = (c) => c.radiusMm;
+
 const ANGLE_TOL = Math.cos(0.3 * Math.PI / 180);   // zmiana A / B wieksza = nowe ciecie
 const MIN_PENETRATION = 0.05;                        // mm - ponizej tarcza nie tnie
+const SEARCH_BACK = 400;                             // ile ostatnich ciec sprawdzac przy dopasowaniu plaszczyzny
 
 export class Cut {
   constructor(frame, m, resolution) {
@@ -20,12 +23,14 @@ export class Cut {
     this.normal = frame.normal;
     this.cosB = Math.max(frame.cosB, 0.05);
     this.res = resolution;
+    this.radiusMm = frame.radius;
     // gorna powierzchnia materialu w plaszczyznie tarczy: t = bTop (wzdluz d od origin)
     this.bTop = (this.origin[2] - topZ(m)) / this.cosB;
     this.tBottom = m.materialThickness / this.cosB;
     this.bladeWidth = m.bladeWidth;
     this.bins = new Map();      // indeks s -> glebokosc e
     this.maxDepth = 0;          // mm w pionie (najnizszy punkt tarczy pod gora materialu)
+    this.rev = 0;               // rosnie przy zmianie obwiedni (widok przebudowuje tylko zmienione ciecia)
   }
 
   sameDirection(u, normal) {
@@ -45,6 +50,7 @@ export class Cut {
     const lowest = mi + r - this.bTop;
     if (lowest <= 0) return false;
     let changed = false;
+    this.lastChanged = null;
     const k0 = Math.floor((si - r) / this.res);
     const k1 = Math.ceil((si + r) / this.res);
     for (let k = k0; k <= k1; k++) {
@@ -57,9 +63,14 @@ export class Cut {
       if (e > (this.bins.get(k) ?? 0) + 1e-6) {
         this.bins.set(k, e);
         changed = true;
+        if (!this.lastChanged) this.lastChanged = [k, k];
+        else { this.lastChanged[0] = Math.min(this.lastChanged[0], k); this.lastChanged[1] = Math.max(this.lastChanged[1], k); }
       }
     }
-    if (changed) this.maxDepth = Math.max(this.maxDepth, Math.min(depth, this.tBottom * this.cosB));
+    if (changed) {
+      this.maxDepth = Math.max(this.maxDepth, Math.min(depth, this.tBottom * this.cosB));
+      this.rev++;
+    }
     return changed;
   }
 
@@ -105,15 +116,17 @@ export class Cut {
 }
 
 export class CutRecorder {
-  constructor(resolution = 1, maxCuts = 60) {
+  constructor(resolution = 1, maxCuts = 4000) {
     this.resolution = resolution;
     this.maxCuts = maxCuts;
     this.cuts = [];
+    this.box = null;            // zakres XY ciec [minX, minY, maxX, maxY] (liczony przyrostowo)
     this.version = 0;           // rosnie przy kazdej zmianie (odswiezanie widoku)
   }
 
   clear() {
     this.cuts = [];
+    this.box = null;
     this.version++;
   }
 
@@ -123,7 +136,8 @@ export class CutRecorder {
     const depth = penetration(frame, m);
     if (depth <= MIN_PENETRATION) return false;
     let cut = null;
-    for (let i = this.cuts.length - 1; i >= 0; i--) {
+    // tylko ostatnie ciecia - tarcza wraca w ta sama plaszczyzne w kolejnych przejsciach tego samego kroku
+    for (let i = this.cuts.length - 1; i >= Math.max(0, this.cuts.length - SEARCH_BACK); i--) {
       if (this.cuts[i].matches(frame)) { cut = this.cuts[i]; break; }
     }
     if (!cut) {
@@ -133,16 +147,40 @@ export class CutRecorder {
     }
     if (cut.addSample(frame, depth)) {
       this.version++;
+      this.grow(cut);
       return true;
     }
     return false;
   }
 
-  // Ostatnie ciecie (wszystkie plaszczyzny o tym samym A i B): {length, depth, count} albo null
+  // zakres XY: tylko zmienione probki (konce zmienionego odcinka +- polowa szerokosci rzazu)
+  grow(cut) {
+    if (!cut.lastChanged) return;
+    const half = (cut.bladeWidth / 2) / cut.cosB;
+    const across = [cut.u[1], -cut.u[0], 0];
+    const pts = [];
+    for (const k of cut.lastChanged) {
+      const p = cut.pointAt(k * cut.res, 0);
+      pts.push(add(p, mul(across, half)), add(p, mul(across, -half)));
+    }
+    for (const p of pts) {
+      if (!this.box) this.box = [p[0], p[1], p[0], p[1]];
+      const b = this.box;
+      b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]);
+      b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]);
+    }
+  }
+
+  // Ostatnie ciecie (sasiednie plaszczyzny o tym samym A i B - kolejne glebokosci tego samego ciecia):
+  // {length, depth, count} albo null; count - liczba ciec (zmian kierunku albo polozenia)
   summary() {
     if (!this.cuts.length) return null;
+    if (this.summaryCache?.version === this.version) return this.summaryCache.value;
     const last = this.cuts[this.cuts.length - 1];
-    const group = this.cuts.filter((c) => c.sameDirection(last.u, last.normal));
+    const near = (c) => c.sameDirection(last.u, last.normal)
+      && Math.abs(dot(sub(c.origin, last.origin), last.normal)) <= Math.max(5, radius(c) * 0.3);
+    const group = [];
+    for (let i = this.cuts.length - 1; i >= 0 && near(this.cuts[i]); i--) group.push(this.cuts[i]);
     const along = [];
     for (const c of group) {
       for (const run of c.runs()) {
@@ -152,18 +190,17 @@ export class CutRecorder {
     let count = 0;
     let prev = null;
     for (const c of this.cuts) {
-      if (!prev || !c.sameDirection(prev.u, prev.normal)) count++;
+      if (!prev || !c.sameDirection(prev.u, prev.normal)
+        || Math.abs(dot(sub(c.origin, prev.origin), prev.normal)) > Math.max(5, radius(c) * 0.3)) count++;
       prev = c;
     }
-    return { length: Math.max(...along) - Math.min(...along), depth: Math.max(...group.map((c) => c.maxDepth)), count };
+    const value = { length: Math.max(...along) - Math.min(...along), depth: Math.max(...group.map((c) => c.maxDepth)), count };
+    this.summaryCache = { version: this.version, value };
+    return value;
   }
 
   // Zakres XY wszystkich ciec [minX, minY, maxX, maxY] albo null
   bounds() {
-    const pts = this.cuts.flatMap((c) => c.topBands().flat());
-    if (!pts.length) return null;
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    return this.box ? [...this.box] : null;
   }
 }
