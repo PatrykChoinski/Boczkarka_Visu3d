@@ -5,7 +5,7 @@ import { View3D } from './view3d.js';
 import { machine as makeMachine, bladeFrame, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { cutProgram, gotoProgram, depthTable, AXES } from '../shared/motion.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -20,6 +20,7 @@ const state = {
   recorder: new CutRecorder(),
   extent: null,
   extentProvisional: true,
+  stoneKey: '',
   fitted: false,
   online: { values: {}, status: 'Łączenie...', connected: false, lastCutStart: false },
   sim: { program: null, t: 0, running: false, step: '', velocity: 0 },
@@ -42,8 +43,28 @@ function clearCuts() {
   state.extentProvisional = true;
 }
 
-// Material rysowany wokol tarczy; dopoki tarcza nie weszla w material - tymczasowo (jedzie za tarcza)
+// Kamien z zakladki Kamien (punkt poczatkowy + wymiary) albo null (bez wymiarow - material wokol ciec)
+function stoneExtent() {
+  const s = readFields('s');
+  if ($('#stoneAuto').checked || !(s.length > 0) || !(s.width > 0)) return null;
+  return [s.x0, s.y0, s.x0 + s.length, s.y0 + s.width];
+}
+
 function growExtent() {
+  const stone = stoneExtent();
+  if (stone) {
+    state.extent = stone;
+    state.extentProvisional = false;
+    const key = stone.join(',');
+    if (key !== state.stoneKey || !state.fitted) { state.stoneKey = key; state.fitted = true; fit(); }
+    return;
+  }
+  state.stoneKey = '';
+  growAutoExtent();
+}
+
+// Material rysowany wokol tarczy; dopoki tarcza nie weszla w material - tymczasowo (jedzie za tarcza)
+function growAutoExtent() {
   const margin = state.cfg.materialMargin;
   const [minW, minH] = state.cfg.materialMinSize;
   const f = bladeFrame(state.pose, state.machine);
@@ -89,19 +110,22 @@ function redraw() {
   view.setMaterial(state.extent, m);
   view.setCuts(state.recorder);
   view.setBlade(state.pose, m, $('#showBlade').checked);
+  view.setMachine(state.pose, m, state.extent, state.cfg.frame, $('#showBlade').checked, $('#showFrame').checked);
   view.render();
 
   const s = state.recorder.summary();
   $('#hudCut').textContent = s
     ? `Cięcie: długość ${s.length.toFixed(0)} mm, głębokość ${s.depth.toFixed(1)} mm (cięć: ${s.count})`
     : 'Brak cięcia - tarcza nad materiałem';
-  $('#hudMachine').textContent = `Tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm, materiał: góra Z ${m.materialHeight.toFixed(1)}, grubość ${m.materialThickness.toFixed(1)} mm`;
+  const stone = stoneExtent();
+  const size = stone ? `${(stone[2] - stone[0]).toFixed(0)} × ${(stone[3] - stone[1]).toFixed(0)} × ${m.materialThickness.toFixed(1)} mm` : `grubość ${m.materialThickness.toFixed(1)} mm`;
+  $('#hudMachine').textContent = `Tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
 
   const p = state.pose;
   if (p) {
     const depth = Math.max(0, penetration(bladeFrame(p, m), m));
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
-    if (state.mode === 'offline') line += `  v ${fmt(state.sim.velocity, 6)} mm/s`;
+    if (state.mode === 'offline') line += `  v ${fmt(state.sim.velocity * 0.06, 6, 2)} m/min`;
     $('#pos').textContent = line;
   }
 
@@ -144,6 +168,7 @@ function onlineValues(v) {
   if (cutStart && !state.online.lastCutStart && state.cfg.autoClearOnStart) clearCuts();
   state.online.lastCutStart = cutStart;
   applyPose({ x: v.x, y: v.y, z: v.z, a: v.a, b: v.b }, m);
+  $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
   requestDraw();
 }
 
@@ -180,7 +205,9 @@ function writeFields(attr, obj) {
 
 function saveForms() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ cut: readFields('cut'), m: readFields('m'), d: readFields('d') }));
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      units: 'm/min', cut: readFields('cut'), m: readFields('m'), d: readFields('d'), s: readFields('s'), stoneAuto: $('#stoneAuto').checked,
+    }));
   } catch { /* brak dostepu do localStorage - formularze tylko w tej sesji */ }
 }
 
@@ -189,14 +216,22 @@ function loadForms() {
   writeFields('cut', off.cut);
   writeFields('m', off.machine);
   writeFields('d', off.dynamics);
+  const stone = state.cfg.stone || {};
+  writeFields('s', stone);
+  $('#stoneAuto').checked = Boolean(stone.auto);
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (saved) { writeFields('cut', saved.cut || {}); writeFields('m', saved.m || {}); writeFields('d', saved.d || {}); }
+    if (saved) {
+      writeFields('cut', saved.cut || {});
+      writeFields('m', saved.m || {});
+      if (saved.units === 'm/min') writeFields('d', saved.d || {});   // starsze zapisy byly w mm/s
+      if (saved.s) { writeFields('s', saved.s); $('#stoneAuto').checked = Boolean(saved.stoneAuto); }
+    }
   } catch { /* jw. */ }
 }
 
 const offlineMachine = () => makeMachine(readFields('m'));
-const offlineDynamics = () => readFields('d');
+const offlineDynamics = () => dynamicsToInternal(readFields('d'));
 
 function cutInput() {
   const c = readFields('cut');
@@ -216,6 +251,9 @@ function updateCutInfo() {
   if (validDynamics(d) && len > 0) {
     const prog = cutProgram(state.pose || state.cfg.offline.start, c, offlineMachine(), d);
     text += `<br>Czas programu: ${prog.duration.toFixed(1)} s`;
+    const stone = stoneExtent();
+    const inside = (x, y) => x >= stone[0] && x <= stone[2] && y >= stone[1] && y <= stone[3];
+    if (stone && !(inside(c.x0, c.y0) && inside(c.x1, c.y1))) text += '<br><span style="color:var(--bad)">Linia cięcia wychodzi poza kamień</span>';
   } else {
     text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
   }
@@ -231,7 +269,7 @@ function fromPlc() {
   const v = state.online.values;
   const pick = (keys) => Object.fromEntries(keys.filter((k) => typeof v[k] === 'number').map((k) => [k, v[k]]));
   writeFields('m', pick(MACHINE_KEYS));
-  writeFields('d', pick(DYNAMICS_KEYS));
+  writeFields('d', dynamicsToDisplay(pick(DYNAMICS_KEYS)));
   saveForms();
   offlineFormsChanged();
 }
@@ -292,7 +330,10 @@ function setMode(mode) {
   stopProgram();
   state.sim.program = null;
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
-  $('#panel').hidden = mode !== 'offline';
+  for (const t of $$('.tabs [data-offline]')) t.hidden = mode !== 'offline';
+  if (mode !== 'offline') showTab('stone');
+  $('#stoneOffline').hidden = mode !== 'offline';
+  $('#stonePlc').hidden = mode === 'offline';
   clearCuts();
   state.fitted = false;
   if (mode === 'offline') {
@@ -308,6 +349,23 @@ function setMode(mode) {
   requestDraw();
 }
 
+function showTab(name) {
+  for (const x of $$('.tabs button')) x.classList.toggle('active', x.dataset.tab === name);
+  for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
+}
+
+function stoneChanged() {
+  saveForms();
+  const stone = stoneExtent();
+  $('#stoneInfo').textContent = stone
+    ? `Kamień: X ${stone[0].toFixed(0)} … ${stone[2].toFixed(0)}, Y ${stone[1].toFixed(0)} … ${stone[3].toFixed(0)} mm`
+    : 'Bez wymiarów - materiał rysowany wokół cięć';
+  if (!stone) { state.extent = null; state.extentProvisional = true; }
+  if (state.pose) growExtent();
+  if (state.mode === 'offline') updateCutInfo();
+  requestDraw();
+}
+
 // --- obsluga przyciskow ------------------------------------------------------------
 
 function bindUi() {
@@ -318,15 +376,19 @@ function bindUi() {
   $('#zoomOut').onclick = () => view.zoom(1.25);
   $('#clear').onclick = () => { clearCuts(); if (state.pose) growExtent(); requestDraw(); };
   $('#showBlade').onchange = requestDraw;
+  $('#showFrame').onchange = () => { try { localStorage.setItem('vizuapp.frame', $('#showFrame').checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
   $('#view').ondblclick = fit;
 
-  for (const t of $$('.tabs button')) {
-    t.onclick = () => {
-      for (const x of $$('.tabs button')) x.classList.toggle('active', x === t);
-      for (const p of $$('.tab')) p.hidden = p.dataset.tab !== t.dataset.tab;
-    };
-  }
+  for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-cut], [data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
+  for (const el of [...$$('[data-s]'), $('#stoneAuto')]) el.addEventListener('input', stoneChanged);
+  $('#stoneShow').onclick = () => { if (state.pose) growExtent(); view.viewName = 'top'; fit(); };
+  $('#stoneFromBlade').onclick = () => {
+    if (!state.pose) return;
+    const low = bladeFrame(state.pose, state.machine).lowest;
+    writeFields('s', { x0: low[0], y0: low[1] });
+    stoneChanged();
+  };
 
   $('#cutStart').onclick = () => {
     const d = offlineDynamics();
@@ -369,7 +431,10 @@ async function init() {
   view = new View3D($('#view'));
   state.cfg = await (await fetch('api/config')).json();
   loadForms();
+  $('#showFrame').checked = state.cfg.frame.show;
+  try { const f = localStorage.getItem('vizuapp.frame'); if (f !== null) $('#showFrame').checked = f === '1'; } catch { /* jw. */ }
   bindUi();
+  stoneChanged();
   connectEvents();
   let mode = state.cfg.plc ? 'online' : 'offline';
   try { mode = localStorage.getItem('vizuapp.mode') || mode; } catch { /* jw. */ }

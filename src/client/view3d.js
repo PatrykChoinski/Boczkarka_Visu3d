@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, topZ } from '../shared/geometry.js';
+import { MachineModel } from './machine3d.js';
 
 const COLORS = {
   background: 0xeef1f4,
@@ -43,7 +44,8 @@ export class View3D {
     this.materialGroup = new THREE.Group();
     this.cutsGroup = new THREE.Group();
     this.bladeGroup = this.buildBlade();
-    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup);
+    this.machineModel = new MachineModel();
+    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.machineModel.group);
 
     this.wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 });
     this.kerfMat = new THREE.MeshBasicMaterial({ color: COLORS.kerf, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -91,6 +93,7 @@ export class View3D {
     const grid = new THREE.GridHelper(size, Math.max(4, Math.round(size / 100)), COLORS.grid, COLORS.grid);
     grid.rotation.x = Math.PI / 2;
     grid.position.set((x0 + x1) / 2, (y0 + y1) / 2, top - thick - 1);
+    this.grid = grid;
     this.materialGroup.add(grid, box, edges);
   }
 
@@ -154,6 +157,13 @@ export class View3D {
     this.axisA.computeLineDistances();
     this.lowest.position.copy(v3(f.lowest));
     this.lowest.scale.setScalar(Math.max(4, r * 0.02));
+  }
+
+  // glowica i suport (pila mostowa)
+  setMachine(pose, m, extent, frameCfg, showHead, showFrame) {
+    this.machineModel.update(pose, m, extent, frameCfg, showHead, showFrame);
+    // przy suporcie stol zastepuje siatke podlogi
+    if (this.grid) this.grid.visible = !this.machineModel.frame.visible;
   }
 
   // --- kamera -----------------------------------------------------------------

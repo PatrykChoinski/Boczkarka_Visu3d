@@ -1,8 +1,10 @@
 # VizuApp – wizualizacja cięcia (#128)
 
-Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D materiał, tarczę
-ustawioną zgodnie z **obrotem A** i **wychyłem B** oraz wycięty rzaz (ściany
-cięcia z obwiednią głębokości i szczelinę na górnej powierzchni).
+Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
+mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
+silnik z wychyłem B, osłona tarczy), kamień o zadanym położeniu i wymiarach,
+tarczę oraz wycięty rzaz (ściany cięcia z obwiednią głębokości i szczelinę na
+górnej powierzchni).
 
 - **Online (PLC):** pozycje osi i parametry są czytane przez **OPC UA z
   localhost** (serwer CODESYS na sterowniku), czyli te same zmienne co HMI.
@@ -27,7 +29,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/config.js` | zmienne PLC, kroki `CutStepType`, ustawienia domyślne |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
 | `src/server/opcua-source.js` | odczyt zmiennych PLC przez OPC UA |
-| `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js) |
+| `src/client/` | strona: `index.html`, `style.css`, `main.js` (tryby, panel), `view3d.js` (three.js), `machine3d.js` (głowica i suport) |
 | `scripts/build-client.js` | budowa strony do `public/` |
 | `test/` | testy (`node --test`) i `fake-plc-server.js` (OPC UA udające CODESYS) |
 | `config.json` | ustawienia (adres OPC UA, port strony, wartości początkowe offline) |
@@ -90,9 +92,24 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
 - **Izometria / Góra / Przód / Bok / Dopasuj / + / −**: widok. Obracanie
   palcem lub lewym przyciskiem, przesuwanie dwoma palcami lub prawym
   przyciskiem, kółko przybliża, dwuklik dopasowuje.
-- **Wyczyść**: usuwa narysowane cięcia. **Tarcza**: pokaż / ukryj.
+- **Wyczyść**: usuwa narysowane cięcia. **Głowica** (tarcza, słup Z, silnik,
+  osłona) i **Suport** (ściany, most, wózek, stół): pokaż / ukryj.
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, piła,
   woda; offline krok programu, czas i prędkość.
+
+### Kamień (oba tryby)
+
+- **Punkt początkowy** X / Y: narożnik kamienia (najmniejsze X i Y) w układzie
+  maszyny.
+- **Długość (X)**, **szerokość (Y)**: wymiary kamienia.
+- **Grubość** i **Z góry kamienia**: offline wpisywane tutaj, online brane z
+  PLC (`fParameterMaterialThickness`, `fCutMaterialHeight`).
+- **Narożnik = pozycja tarczy**: wpisuje jako punkt początkowy miejsce, w
+  którym jest najniższy punkt tarczy. Pozwala ustawić tarczę na narożnik
+  kamienia i kliknąć.
+- **Bez wymiarów**: materiał rysowany wokół cięć, jak wcześniej.
+- W zakładce Cięcie pojawia się ostrzeżenie, gdy linia cięcia wychodzi poza
+  kamień.
 
 ### Tryb offline (panel po prawej)
 
@@ -110,18 +127,20 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
     wszystkie osie naraz, każda z własną rampą.
   - **Ustaw od razu**: przestawia osie bez animacji.
   - **Wstaw aktualną**: wpisuje do pól bieżące położenie osi.
-- **Parametry**: tarcza i materiał oraz dynamika.
+- **Parametry**: tarcza i głowica oraz dynamika.
 
 | Ruch | Prędkość | Przyspieszenie / hamowanie | Zmienna PLC (Pobierz z PLC) |
 |---|---|---|---|
-| cięcie XY (interpolacja) | mm/s | mm/s², osobno przysp. i ham. | `fVelocitySawMode`, `Acc`, `Dec` |
-| dojazd X/Y | mm/s | mm/s² | `fVelocityFast`, `DecX` |
-| oś Z | mm/s | mm/s² | `fVelocityAxisZWork`, `DecZ` |
+| cięcie XY (interpolacja) | m/min | m/s², osobno przysp. i ham. | `fVelocitySawMode`, `Acc`, `Dec` |
+| dojazd X/Y | m/min | m/s² | `fVelocityFast`, `DecX` |
+| oś Z | m/min | m/s² | `fVelocityAxisZWork`, `DecZ` |
 | oś A / B | °/s | °/s² | `VelA`, `DecA` / `VelB`, `DecB` |
 
-W PLC (`Settings/VelocityAcceleration`) `Acc := Vel/TAccXY` i
-`Dec := Vel/TDecXY`, a rampa trwa 0,5 s. „Pobierz z PLC” działa, gdy jest
-połączenie z PLC. Formularze są zapamiętywane w przeglądarce.
+W PLC wartości są w mm/s i mm/s². „Pobierz z PLC” przelicza je na m/min i
+m/s², np. 150 mm/s = 9 m/min, a 300 mm/s² = 0,3 m/s². W PLC
+(`Settings/VelocityAcceleration`) `Acc := Vel/TAccXY` i `Dec := Vel/TDecXY`, a
+rampa trwa 0,5 s. „Pobierz z PLC” działa, gdy jest połączenie z PLC.
+Formularze są zapamiętywane w przeglądarce.
 
 ## Konfiguracja (`config.json` obok `vizu.ps1`)
 
@@ -134,8 +153,10 @@ połączenie z PLC. Formularze są zapamiętywane w przeglądarce.
 | `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
-| `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar rysowanego materiału (mm) |
-| `offline` | patrz plik | wartości początkowe formularzy offline |
+| `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
+| `stone` | `{auto: false, x0: 0, y0: 0, length: 3000, width: 2000}` | kamień: punkt początkowy i wymiary (mm), wartości początkowe zakładki Kamień |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od kamienia), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
+| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s² |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
 

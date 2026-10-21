@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
 import { Variant, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
-import { VARIABLES, DEFAULTS } from '../src/shared/config.js';
+import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
 import { machine } from '../src/shared/geometry.js';
 import { cutProgram, depthTable } from '../src/shared/motion.js';
 
@@ -22,7 +22,7 @@ const STEP_CODES = { MoveToStartPosition: 10, StartCutDepth: 20, StartSingleCut:
 // Petla dwoch ciec (proste i z wychylem) - wartosci wszystkich zmiennych w czasie t [s]
 export function plcTimeline() {
   const m = machine(DEFAULTS.offline.machine);
-  const dyn = { ...DEFAULTS.offline.dynamics, cutVel: 150, cutAcc: 300, cutDec: 300 };   // szybciej - krotki test
+  const dyn = { ...dynamicsToInternal(DEFAULTS.offline.dynamics), cutVel: 150, cutAcc: 300, cutDec: 300 };   // szybciej - krotki test
   const p1 = cutProgram({ x: 0, y: 0, z: 0, a: 0, b: 0 }, { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, above: 20, depths: depthTable(30, 2) }, m, dyn);
   const p2 = cutProgram(p1.at(p1.duration).pose, { x0: 300, y0: 450, x1: 900, y1: 800, b: 45, above: 20, depths: depthTable(24, 2) }, m, dyn);
   const period = p1.duration + p2.duration;

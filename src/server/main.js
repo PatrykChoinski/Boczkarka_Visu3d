@@ -27,6 +27,8 @@ export function loadConfig(file) {
   }
   const cfg = { ...DEFAULTS, ...user };
   cfg.variables = { ...VARIABLES, ...(user.variables || {}) };
+  cfg.stone = { ...DEFAULTS.stone, ...(user.stone || {}) };
+  cfg.frame = { ...DEFAULTS.frame, ...(user.frame || {}) };
   cfg.offline = {
     machine: { ...DEFAULTS.offline.machine, ...(user.offline?.machine || {}) },
     dynamics: { ...DEFAULTS.offline.dynamics, ...(user.offline?.dynamics || {}) },
@@ -57,7 +59,7 @@ export function createServer(cfg, source) {
       res.end(JSON.stringify({
         plc: Boolean(source), endpoint: cfg.endpoint, variables: cfg.variables, cutSteps: CUT_STEPS,
         autoClearOnStart: cfg.autoClearOnStart, materialMargin: cfg.materialMargin,
-        materialMinSize: cfg.materialMinSize, offline: cfg.offline,
+        materialMinSize: cfg.materialMinSize, stone: cfg.stone, frame: cfg.frame, offline: cfg.offline,
       }));
     } else if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

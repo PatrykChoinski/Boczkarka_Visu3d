@@ -36,7 +36,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .seg button:first-child { border-radius: 6px 0 0 6px; }
 .seg button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
 .seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.check { display: flex; gap: 6px; align-items: center; margin-left: 6px; }
+.check { display: flex; flex-direction: row; gap: 6px; align-items: center; margin-left: 6px; }
+.tab .check { margin: 10px 0 0; color: var(--text); font-size: 14px; }
 .check input { width: 20px; height: 20px; }
 
 main { flex: 1; display: flex; min-height: 0; }
@@ -66,11 +67,11 @@ input[type=number], select {
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 .info { margin-top: 8px; font-size: 14px; line-height: 1.5; }
 h3 { font-size: 14px; margin: 12px 0 6px; }
-table.dyn { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.dyn th { color: var(--muted); font-weight: 500; text-align: left; }
-table.dyn td { padding: 2px 3px; white-space: nowrap; color: var(--muted); }
-table.dyn td:first-child { color: var(--text); }
-table.dyn input { width: 70px; min-height: 34px; }
+table.dyn { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table.dyn th { color: var(--muted); font-weight: 500; text-align: left; padding: 4px 3px 0; }
+table.dyn th:first-child { width: 78px; }
+table.dyn td { padding: 2px 3px; white-space: nowrap; color: var(--text); }
+table.dyn input { width: 100%; min-height: 34px; }
 
 footer { background: var(--bar); }
 .mono { font: 16px Consolas, "Cascadia Mono", monospace; padding: 4px 10px; white-space: pre; overflow: hidden; }

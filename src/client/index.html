@@ -23,7 +23,8 @@
     </div>
     <div class="group">
       <button id="clear">Wyczyść</button>
-      <label class="check"><input type="checkbox" id="showBlade" checked> Tarcza</label>
+      <label class="check"><input type="checkbox" id="showBlade" checked> Głowica</label>
+      <label class="check"><input type="checkbox" id="showFrame" checked> Suport</label>
     </div>
   </header>
 
@@ -33,14 +34,36 @@
       <div id="hud"><div id="hudCut"></div><div id="hudMachine"></div></div>
     </section>
 
-    <aside id="panel" hidden>
+    <aside id="panel">
       <nav class="tabs">
-        <button data-tab="cut" class="active">Cięcie</button>
-        <button data-tab="pos">Pozycja</button>
-        <button data-tab="par">Parametry</button>
+        <button data-tab="stone" class="active">Kamień</button>
+        <button data-tab="cut" data-offline>Cięcie</button>
+        <button data-tab="pos" data-offline>Pozycja</button>
+        <button data-tab="par" data-offline>Parametry</button>
       </nav>
 
-      <div class="tab" data-tab="cut">
+      <div class="tab" data-tab="stone">
+        <p class="hint">Kamień na stole w układzie maszyny. Punkt początkowy = narożnik kamienia (najmniejsze X i Y), wymiary wzdłuż osi X i Y.</p>
+        <div class="grid2">
+          <label>Punkt początkowy X [mm] <input data-s="x0" type="number" step="any"></label>
+          <label>Punkt początkowy Y [mm] <input data-s="y0" type="number" step="any"></label>
+          <label>Długość (X) [mm] <input data-s="length" type="number" step="any" min="1"></label>
+          <label>Szerokość (Y) [mm] <input data-s="width" type="number" step="any" min="1"></label>
+        </div>
+        <div class="grid2" id="stoneOffline">
+          <label>Grubość [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
+          <label>Z góry kamienia [mm] <input data-m="materialHeight" type="number" step="any"></label>
+        </div>
+        <p class="hint" id="stonePlc" hidden></p>
+        <label class="check"><input type="checkbox" id="stoneAuto"> Bez wymiarów (materiał rysowany wokół cięć)</label>
+        <div class="row">
+          <button id="stoneShow">Pokaż kamień</button>
+          <button id="stoneFromBlade">Narożnik = pozycja tarczy</button>
+        </div>
+        <div id="stoneInfo" class="info"></div>
+      </div>
+
+      <div class="tab" data-tab="cut" hidden>
         <p class="hint">Linia cięcia na górnej powierzchni materiału (jak punkty z HMI). Kąt A wynika z punktów.</p>
         <div class="grid2">
           <label>Początek X <input data-cut="x0" type="number" step="any"></label>
@@ -85,29 +108,28 @@
       </div>
 
       <div class="tab" data-tab="par" hidden>
-        <h3>Tarcza i materiał</h3>
+        <h3>Tarcza i głowica</h3>
         <div class="grid2">
           <label>Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
           <label>Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
           <label>CutTiltDiameter [mm] <input data-m="cutTiltDiameter" type="number" step="any"></label>
           <label>HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
-          <label>Z góry materiału [mm] <input data-m="materialHeight" type="number" step="any"></label>
-          <label>Grubość materiału [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
         </div>
         <h3>Dynamika</h3>
         <table class="dyn">
-          <tr><th></th><th>prędkość</th><th>przyspieszenie</th><th>hamowanie</th></tr>
-          <tr><td>Cięcie XY</td><td><input data-d="cutVel" type="number" step="any" min="0.01"> mm/s</td><td><input data-d="cutAcc" type="number" step="any" min="0.01"> mm/s²</td><td><input data-d="cutDec" type="number" step="any" min="0.01"> mm/s²</td></tr>
-          <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.01"> mm/s</td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.01"> mm/s²</td></tr>
-          <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.01"> mm/s</td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.01"> mm/s²</td></tr>
-          <tr><td>Oś A</td><td><input data-d="aVel" type="number" step="any" min="0.01"> °/s</td><td colspan="2"><input data-d="aAcc" type="number" step="any" min="0.01"> °/s²</td></tr>
-          <tr><td>Oś B</td><td><input data-d="bVel" type="number" step="any" min="0.01"> °/s</td><td colspan="2"><input data-d="bAcc" type="number" step="any" min="0.01"> °/s²</td></tr>
+          <tr><th></th><th>prędkość<br><small>m/min</small></th><th>przyspieszenie<br><small>m/s²</small></th><th>hamowanie<br><small>m/s²</small></th></tr>
+          <tr><td>Cięcie XY</td><td><input data-d="cutVel" type="number" step="any" min="0.001"></td><td><input data-d="cutAcc" type="number" step="any" min="0.001"></td><td><input data-d="cutDec" type="number" step="any" min="0.001"></td></tr>
+          <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.001"></td></tr>
+          <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.001"></td></tr>
+          <tr><th></th><th><small>°/s</small></th><th colspan="2"><small>°/s²</small></th></tr>
+          <tr><td>Oś A</td><td><input data-d="aVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="aAcc" type="number" step="any" min="0.001"></td></tr>
+          <tr><td>Oś B</td><td><input data-d="bVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="bAcc" type="number" step="any" min="0.001"></td></tr>
         </table>
         <div class="row">
           <button id="fromPlc">Pobierz z PLC</button>
           <button id="defaults">Domyślne</button>
         </div>
-        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, VelA, DecA, VelB, DecB oraz parametry tarczy i materiału.</p>
+        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, VelA, DecA, VelB, DecB (w PLC mm/s i mm/s² - przeliczane na m/min i m/s²) oraz parametry tarczy i kamienia.</p>
       </div>
     </aside>
   </main>

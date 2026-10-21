@@ -83,3 +83,11 @@ test('dojazd do pozycji: wszystkie osie na koncu w zadanej pozycji, Z najpierw w
   near(prog.segments[0].end.z, 50);
   checkLimits(prog);
 });
+
+test('jednostki ekranu: m/min i m/s2 <-> mm/s i mm/s2 (osie obrotowe bez zmian)', async () => {
+  const { dynamicsToInternal, dynamicsToDisplay, DEFAULTS } = await import('../src/shared/config.js');
+  const d = dynamicsToInternal({ cutVel: 1.8, cutAcc: 0.06, zVel: 1.2, aVel: 30, bAcc: 20 });
+  near(d.cutVel, 30); near(d.cutAcc, 60); near(d.zVel, 20); near(d.aVel, 30); near(d.bAcc, 20);
+  const back = dynamicsToDisplay(dynamicsToInternal(DEFAULTS.offline.dynamics));
+  for (const [k, v] of Object.entries(DEFAULTS.offline.dynamics)) near(back[k], v, 1e-9);
+});
