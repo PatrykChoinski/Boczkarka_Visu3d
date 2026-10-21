@@ -6,6 +6,19 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Wersja na GitHub Pages
+- Visu3D jest dostępne w przeglądarce bez instalacji: <https://patrykchoinski.github.io/Promasz-Visu3D/>. Wersja statyczna, tylko tryb Offline (symulacja), bez PLC.
+- `scripts/build-pages.js` (`npm run build:pages`) buduje `site/`:
+  - strona z `public/`;
+  - plik `api/config` z tą samą konfiguracją, co serwer (`clientConfig` w `src/server/main.js`, bez haseł), z `static: true`;
+  - `.nojekyll`.
+- Strona z `static: true`:
+  - nie łączy się z `api/events`;
+  - chowa przycisk Online i zawsze startuje w trybie Offline;
+  - pasek stanu pokazuje „Offline - symulacja (GitHub Pages, bez PLC)”.
+- Workflow `.github/workflows/pages.yml`: po pushu do `master` (albo ręcznie) testy, budowa i publikacja (`actions/upload-pages-artifact`, `actions/deploy-pages`).
+- Sprawdzone: `npm test` 116/116; lokalnie statyczny serwer plików pod podkatalogiem `/Promasz-Visu3D/` (wszystkie pliki 200, tryb offline, symulacja cięcia).
+
 ### Ręczne: prędkości ruchów dla każdej osi (#140)
 - Ekran Ręczne, sekcja „Prędkości ruchów” na dole ekranu: prędkość X, Y, Z [m/min] i A, B [°/s] (`fJogXVelocity` … `fJogBVelocity`).
   - To te same pola co „Jog” w Parametrach, synchronizowane w obie strony i zapamiętywane z formularzami.

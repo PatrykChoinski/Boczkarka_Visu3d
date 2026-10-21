@@ -224,7 +224,7 @@ function redraw() {
     $('#step').textContent = text;
   } else {
     const sim = state.sim;
-    conn.textContent = 'Offline - symulacja (bez PLC)';
+    conn.textContent = state.cfg.static ? 'Offline - symulacja (GitHub Pages, bez PLC)' : 'Offline - symulacja (bez PLC)';
     conn.className = 'ok';
     $('#step').textContent = (sim.program
       ? `${sim.label ? `${sim.label}   ` : ''}${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.running ? '' : '   (zatrzymane)'}`
@@ -1434,9 +1434,15 @@ async function init() {
   showOp();
   showFig();
   stoneChanged();
-  connectEvents();
+  if (!state.cfg.static) connectEvents();
   let mode = state.cfg.plc ? 'online' : 'offline';
   try { mode = localStorage.getItem('vizuapp.mode') || mode; } catch { /* jw. */ }
+  // wersja statyczna (GitHub Pages, scripts/build-pages.js): bez serwera VizuApp - tylko tryb offline
+  if (state.cfg.static) {
+    mode = 'offline';
+    $('#mode [data-mode="online"]').hidden = true;
+    $('#mode [data-mode="offline"]').title = 'Wersja statyczna (GitHub Pages) - symulacja bez PLC; online tylko z serwerem VizuApp na maszynie';
+  }
   setMode(mode);
 }
 

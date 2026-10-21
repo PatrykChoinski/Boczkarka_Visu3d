@@ -43,6 +43,17 @@ export function loadConfig(file) {
   return cfg;
 }
 
+// Konfiguracja dla strony (/api/config); plc - czy jest zrodlo OPC UA. Bez hasel i adresu logowania.
+// scripts/build-pages.js zapisuje ja jako plik api/config wersji statycznej (static: true)
+export function clientConfig(cfg, plc) {
+  return {
+    plc: Boolean(plc), endpoint: cfg.endpoint, variables: cfg.variables, cutSteps: CUT_STEPS,
+    autoClearOnStart: cfg.autoClearOnStart, materialMargin: cfg.materialMargin,
+    materialMinSize: cfg.materialMinSize, frame: cfg.frame, offline: cfg.offline,
+    tableThickness: cfg.tableThickness, laser: cfg.laser, saw: cfg.saw,
+  };
+}
+
 export function createServer(cfg, source) {
   const clients = new Set();
   const send = (obj) => {
@@ -61,12 +72,7 @@ export function createServer(cfg, source) {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
     } else if (url.pathname === '/api/config') {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({
-        plc: Boolean(source), endpoint: cfg.endpoint, variables: cfg.variables, cutSteps: CUT_STEPS,
-        autoClearOnStart: cfg.autoClearOnStart, materialMargin: cfg.materialMargin,
-        materialMinSize: cfg.materialMinSize, frame: cfg.frame, offline: cfg.offline,
-        tableThickness: cfg.tableThickness, laser: cfg.laser, saw: cfg.saw,
-      }));
+      res.end(JSON.stringify(clientConfig(cfg, source)));
     } else if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify(source
