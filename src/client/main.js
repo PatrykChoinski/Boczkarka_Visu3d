@@ -952,12 +952,7 @@ function updateManInfo() {
   if (!p || $('.tab[data-tab="man"]').hidden) return;
   const d = offlineDynamics();
   syncManualSpeeds();
-  const rewrite = manualRewrite();
-  const v = (ax) => jogVelocity(ax, d, rewrite).vel;
-  $('#manInfo').innerHTML = `Pozycja: X ${p.x.toFixed(1)}, Y ${p.y.toFixed(1)}, Z ${p.z.toFixed(1)}, A ${p.a.toFixed(1)}°, B ${p.b.toFixed(1)}°`
-    + `<br>Jog: X / Y ${(v('x') * 0.06).toFixed(2)} / ${(v('y') * 0.06).toFixed(2)} m/min, Z ${(v('z') * 0.06).toFixed(2)} m/min, A ${v('a').toFixed(1)} °/s, B ${v('b').toFixed(1)} °/s`
-    + (rewrite ? ' (piła ON - X / Y z prędkością cięcia, Z robocza)' : '')
-    + `<br>Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
+  $('#manInfo').innerHTML = `Interpolacja: ${(d.cutVel * 0.06).toFixed(2)} m/min (prędkość cięcia), laser w ${(state.cfg.laser?.side ?? 1) > 0 ? 'prawą' : 'lewą'} stronę (kierunek cięcia przy A)`;
 }
 
 // Prędkości osi na ekranie Ręczne (#140) - te same pola co jog w Parametrach (data-d), wpisane tu przepisywane tam
