@@ -12,11 +12,16 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
   - etykieta samego początku jest po lewej stronie kropki, a pozostałe po prawej, więc bliskie punkty się nie zasłaniają;
   - etykiety aktualnego kroku automatu są podświetlone na czerwono;
   - wiercenie (operacja i krok `Drilling` frezu) ma znacznik w punkcie otworu.
+- Odległości między punktami: w połowie toru każdej akcji etykieta `… mm` z odległością (w linii prostej) od punktu początkowego do końcowego:
+  - przy łuku etykieta jest na łuku;
+  - bez etykiety: akcja zamknięta (okrąg), wiercenie, odległość poniżej 1 mm;
+  - niebieska ramka i tekst, aktualny krok automatu na czerwono;
+  - ten sam przełącznik XY (`planDistances`, `pathMiddle` w `planmarks.js`).
 - Znaczniki mają stałą wielkość na ekranie i są zawsze na wierzchu. Przełącznik **XY** na górnym pasku, zapamiętywany w przeglądarce. Limit 120 znaczników.
 - `src/shared/planmarks.js` (`planMarks`, `markLabel`), rysowanie w `view3d.addPlanMarks` (sprite'y z teksturą z canvas).
 - Sprawdzone:
-  - `npm test` 109/109, nowy `test/planmarks.test.js`;
-  - w przeglądarce: prostokąt z figury w automacie (4 narożniki z XY, podświetlenie aktywnego kroku), cięcie proste, wyłączenie XY.
+  - `npm test` 110/110, nowy `test/planmarks.test.js` (znaczniki i odległości);
+  - w przeglądarce: prostokąt z figury w automacie (4 narożniki z XY, boki 1000 / 600 mm, podświetlenie aktywnego kroku), cięcie proste, wyłączenie XY.
 
 ### Automat: końce cięć zewnętrznych i wewnętrznych (#135)
 - Cięcia proste i skosy w automacie:

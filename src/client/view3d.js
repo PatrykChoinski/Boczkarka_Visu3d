@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
 import { MachineModel } from './machine3d.js';
-import { planMarks } from '../shared/planmarks.js';
+import { planMarks, planDistances } from '../shared/planmarks.js';
 import { toolSpinMarks } from '../shared/toolspin.js';
 
 const COLORS = {
@@ -210,6 +210,17 @@ export class View3D {
       label.position.copy(dot.position);
       label.renderOrder = 8;
       this.planGroup.add(dot, label);
+    }
+    // odleglosci miedzy punktami: etykieta "… mm" w polowie toru akcji (niebieska, aktywny krok - czerwona)
+    for (const ds of planDistances(items)) {
+      const { texture, aspect } = labelTexture(ds.label, ds.active, 'distance');
+      const label = new THREE.Sprite(spriteMaterial(texture));
+      const h = 0.026;
+      label.scale.set(h * aspect, h, 1);
+      label.center.set(0.5, 0.5);
+      label.position.set(ds.x, ds.y, z + 2);
+      label.renderOrder = 8;
+      this.planGroup.add(label);
     }
   }
 
@@ -529,8 +540,10 @@ function dotTexture(color) {
   return t;
 }
 
-// Etykieta "X .. Y ..": ciemny tekst na jasnym tle (aktywny krok - czerwone tlo, bialy tekst)
-function labelTexture(text, active) {
+// Etykieta "X .. Y ..": ciemny tekst na jasnym tle (aktywny krok - czerwone tlo, bialy tekst);
+// kind 'distance' - odleglosc: niebieski tekst i ramka
+function labelTexture(text, active, kind = 'xy') {
+  const dist = kind === 'distance';
   const c = document.createElement('canvas');
   const g = c.getContext('2d');
   const font = '600 28px system-ui, Segoe UI, sans-serif';
@@ -540,13 +553,13 @@ function labelTexture(text, active) {
   c.height = 40;
   g.font = font;
   g.fillStyle = active ? 'rgba(214, 39, 40, 0.92)' : 'rgba(255, 255, 255, 0.88)';
-  g.strokeStyle = active ? '#8b1a1a' : '#8d877a';
+  g.strokeStyle = active ? '#8b1a1a' : dist ? '#1f5fa8' : '#8d877a';
   g.lineWidth = 2;
   g.beginPath();
   g.roundRect(1, 1, w - 2, 38, 8);
   g.fill();
   g.stroke();
-  g.fillStyle = active ? '#ffffff' : '#1f2933';
+  g.fillStyle = active ? '#ffffff' : dist ? '#1f5fa8' : '#1f2933';
   g.textBaseline = 'middle';
   g.fillText(text, 10, 21);
   const t = new THREE.CanvasTexture(c);

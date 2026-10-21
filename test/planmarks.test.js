@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planMarks, markLabel } from '../src/shared/planmarks.js';
+import { planMarks, markLabel, planDistances, pathMiddle } from '../src/shared/planmarks.js';
 import { previewSteps } from '../src/shared/automat.js';
 
 test('znaczniki planu (#137): poczatek i koniec kazdej akcji z wartosciami XY, punkty wspolne raz', () => {
@@ -34,4 +34,24 @@ test('znaczniki planu z automatu: punkty programu wzgledem punktu startowego', (
   const rows = [{ x: 0, y: 0, step: 1 }, { x: 1000, y: 0, step: 1 }, { x: 1000, y: 600, step: 2 }, { x: 0, y: 600, step: 0 }];
   const items = previewSteps(rows, 3, [500, 400], {}, { bladeWidth: 4 });
   assert.deepEqual(planMarks(items).map((p) => p.label), ['X 500  Y 400', 'X 1500  Y 400', 'X 1500  Y 1000', 'X 500  Y 1000']);
+});
+
+test('odleglosci miedzy punktami: poczatek - koniec kazdej akcji, etykieta w polowie toru', () => {
+  const items = [
+    { path: [[0, 0], [1000, 0]] },
+    { path: [[1000, 0], [1000, 600]], active: true },
+    { path: [[1000, 600], [700, 200]] },
+  ];
+  const d = planDistances(items);
+  assert.deepEqual(d.map((x) => [x.x, x.y, x.label, x.active]), [[500, 0, '1000 mm', false], [1000, 300, '600 mm', true], [850, 400, '500 mm', false]]);
+  // luk: odleglosc w linii prostej, etykieta na luku
+  const arc = Array.from({ length: 33 }, (_, k) => [100 * Math.cos(Math.PI * k / 32), 100 * Math.sin(Math.PI * k / 32)]);
+  const [da] = planDistances([{ path: arc }]);
+  assert.equal(da.label, '200 mm');
+  assert.ok(Math.abs(da.x) < 1e-6 && Math.abs(da.y - 100) < 0.5);
+  // okrag (zamkniety), wiercenie (wlasne punkty), pojedynczy punkt - bez odleglosci
+  const circle = Array.from({ length: 65 }, (_, k) => [100 * Math.cos(2 * Math.PI * k / 64), 100 * Math.sin(2 * Math.PI * k / 64)]);
+  assert.equal(planDistances([{ path: circle }, { path: [[0, 0], [5, 0]], marks: [[0, 0]] }, { path: [[1, 1]] }]).length, 0);
+  assert.deepEqual(pathMiddle([[0, 0], [10, 0], [10, 10]]), [10, 0]);
+  assert.equal(planDistances([{ path: [[0, 0], [123.44, 0]] }])[0].label, '123.4 mm');
 });

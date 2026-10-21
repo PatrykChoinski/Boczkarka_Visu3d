@@ -46,7 +46,7 @@ Budowa: serwer **Node.js** (`node-opcua-client`, SSE do strony) i strona
 | `src/shared/area.js` | stół i kamień z punktów XYZ jak w PLC (`WorkArea`): wierzchołki, Z min stołu, wielokąt |
 | `src/shared/cutst.js`, `sawlines.js`, `arcs.js`, `profiles.js`, `ops.js`, `common.js` | operacje piły jak w PLC (`CutST`, pasy, bloki, krawędzie, łuki, okręgi, elipsy, profile, wygładzanie) |
 | `src/shared/automat.js` | automat: bufor kroków jak `ProgramAutoCutST` / `ProgramAutoProfileST` |
-| `src/shared/planmarks.js` | znaczniki XY początku / końca akcji na podglądzie planu |
+| `src/shared/planmarks.js` | znaczniki XY początku / końca akcji i odległości między punktami na podglądzie planu |
 | `src/shared/jog.js` | ruchy ręczne (jog z rampą, interpolacja względem lasera), linia lasera |
 | `src/shared/figures/` | figury automatu 1:1 z PLC (`FiguresGeometricSt`, `Get…Positions`): `rectangle.js`, `groupA.js` (trójkąty, trapezy, krzyż, wielokąt), `groupB.js` (daszki, blat, schody, książki, ćwierćwałek), `groupC.js` (figury frezu i wiercenia), rejestr `index.js` |
 | `src/server/main.js` | serwer: strona, `/api/config`, `/api/events` (SSE), `/api/health` |
@@ -121,7 +121,9 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   X / Y (początek – zielona kropka i etykieta po lewej, koniec – czerwona po
   prawej, punkt wspólny dwóch akcji – pomarańczowy). Etykiety mają stałą
   wielkość na ekranie, a etykiety aktualnego kroku automatu są podświetlone
-  na czerwono. Przy wierceniu znacznik jest w punkcie otworu.
+  na czerwono. Przy wierceniu znacznik jest w punkcie otworu. W połowie toru
+  każdej akcji jest też odległość między jej punktem początkowym i końcowym
+  (`… mm`, w linii prostej; niebieska etykieta), poza okręgami i wierceniem.
   **Laser**: offline laser włączony; online pokazywany, gdy w PLC świeci
   (`IOVars.yLaser`).
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, krok
