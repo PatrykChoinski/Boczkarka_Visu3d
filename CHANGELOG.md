@@ -7,16 +7,21 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ## 2026-10-21
 
 ### Węże z wodą, moduł lasera, panel operatorski i mata (#141)
-- Dwa niebieskie węże z głowicy (od korpusu obrotu A) do dysz po obu stronach osłony tarczy, na przodzie osłony. Przy frezie, wierceniu i polerowaniu idą do dysz po obu stronach narzędzia.
-- Przy włączonych obrotach woda leci z obu dysz na tarczę (przy krawędzi wchodzącej w materiał) albo na czoło narzędzia: półprzezroczysta struga i animowane krople.
+- Osłona tarczy (osłonka na wodę) wg zdjęcia w zgłoszeniu: kanciasta aluminiowa płyta (`GUARD_OUTLINE` w `water.js`) w miejsce półokrągłej żółtej - pionowy przód, skos, płaska góra, dół tuż pod piastą, tarcza w szczelinie.
+- Woda wg zdjęcia:
+  - stalowy oplatany przewód z głowicy do rozdzielacza przy dolnym tylnym rogu osłony;
+  - z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line, segmenty jako kulki) pod dolną krawędzią osłony, po obu stronach tarczy;
+  - pomarańczowe dysze pod osłoną przy piaście.
+  - Przy frezie, wierceniu i polerowaniu dysze są po obu stronach narzędzia.
+- Przy włączonych obrotach woda leci z obu dysz na dolny przód tarczy (stronę wejścia w materiał) albo na czoło narzędzia: półprzezroczysta struga i animowane krople.
   - Offline: woda leci, gdy pracuje piła / wrzeciono.
   - Online: woda zależy od zaworów `IOVars.yWaterCut` (piła) i `IOVars.yWaterMill` (frez, wiercenie). Gdy PLC nie podaje tych zmiennych, woda leci przy obrotach.
   - Pasek stanu: „woda” / „woda (frez)”.
-- Moduł lasera (obudowa i okienko, które świeci na czerwono przy włączonym laserze) jest zamontowany na osłonie tarczy od strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Przy włączonym laserze półprzezroczysty wachlarz wiązki prowadzi od modułu do linii lasera na materiale.
+- Moduł lasera (obudowa i okienko, które świeci na czerwono przy włączonym laserze) jest zamontowany na krawędzi osłony tarczy od strony lasera, `laser.mountAngle` stopni od góry (domyślnie 50°). Przy włączonym laserze półprzezroczysty wachlarz wiązki prowadzi od modułu do linii lasera na materiale.
 - Suport: panel operatorski przed przednim końcem prawego murka (słupek, konsola pochylona o 30° do operatora, ekran HMI, grzybek STOP na żółtej podstawie, przyciski zielony / biały / niebieski) i zielona gumowa mata łapiąca wodę na płycie stołu pod kamieniem; wyłączane w configu (`frame.panel`, `frame.mat`).
 - Geometria w `src/shared/water.js` (`waterLayout`, `waterDrops`, `laserMount`, `headDims`), rysowanie w `machine3d.js` (węże, dysze, moduł) i `view3d.js` (`setWater`, wachlarz w `setLaser`). Testowy PLC podaje `waterMill` w trybach narzędzi.
 - Sprawdzone:
-  - `npm test` 120/120 (nowy `test/water.test.js`: dysze po obu stronach tarczy, woda na tarczę / czoło narzędzia, krople, moduł lasera na osłonie);
+  - `npm test` 121/121 (nowy `test/water.test.js`: dysze po obu stronach tarczy pod osłoną przy piaście, rozdzielacz za tarczą, obrys osłony, woda na tarczę / czoło narzędzia, krople, moduł lasera na krawędzi osłony);
   - `scripts/smoke-test.mjs` OK;
   - w przeglądarce piła i frez z włączonymi obrotami i laserem.
 

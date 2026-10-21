@@ -2,10 +2,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { machine, bladeFrame, toolFrame, sub, dot } from '../src/shared/geometry.js';
-import { waterLayout, waterDrops, laserMount } from '../src/shared/water.js';
+import { waterLayout, waterDrops, laserMount, guardRadius, GUARD_OUTLINE } from '../src/shared/water.js';
 
 const M = machine({ discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40 });
 const len = (p) => Math.hypot(...p);
+const near3 = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
 
 test('woda pila: dwie dysze po obu stronach tarczy, woda na tarcze, weze od korpusu A do dysz', () => {
   for (const pose of [{ x: 800, y: 600, z: 100, a: 0, b: 0 }, { x: 800, y: 600, z: 120, a: 37, b: 45 }]) {
@@ -21,7 +22,23 @@ test('woda pila: dwie dysze po obu stronach tarczy, woda na tarcze, weze od korp
       assert.ok(Math.hypot(dot(rel, f.u), dot(rel, f.d)) < f.radius, 'cel na tarczy');
     }
     w.hoses.forEach((h, i) => assert.deepEqual(h[h.length - 1], w.nozzles[i]));
+    // jak na zdjeciu w #141: dysze pod dolna krawedzia oslony, przy piascie; rozdzielacz za tarcza (z tylu)
+    const guardBottom = Math.min(...GUARD_OUTLINE.map((p) => p[1])) * f.radius;
+    for (const n of w.nozzles) {
+      const t = -dot(sub(n, f.center), f.d);
+      const s = dot(sub(n, f.center), f.u);
+      assert.ok(t < guardBottom && t > -0.5 * f.radius, `dysza pod oslona: t ${t}`);
+      assert.ok(Math.abs(s) < 0.5 * f.radius, `dysza przy piascie: s ${s}`);
+    }
+    assert.ok(dot(sub(w.manifold, f.center), f.u) < -f.radius, 'rozdzielacz za tarcza');
   }
+});
+
+test('oslona tarczy: obrys zamkniety nad piasta, krawedz w gore / do przodu / do tylu', () => {
+  near3(guardRadius([0, 1]), 1.12);
+  near3(guardRadius([1, 0]), 0.95);
+  near3(guardRadius([-1, 0]), 1.08);
+  assert.ok(guardRadius([0, -1]) < 0.3, 'dol oslony tuz pod piasta - tarcza pod spodem odslonieta');
 });
 
 test('woda frez / wiertlo: dysze przy narzedziu, woda na czolo', () => {
@@ -52,7 +69,8 @@ test('laser: modul na oslonie tarczy od strony lasera (kat od gory), w plaszczyz
     const mt = laserMount(pose, M, side, 50);
     const rel = sub(mt.pos, f.center);
     assert.ok(Math.abs(dot(rel, f.normal)) < 1e-6, 'w plaszczyznie tarczy');
-    assert.ok(Math.abs(len(rel) - (f.radius * 1.08 + 40)) < 1e-6, 'na oslonie');
+    const dir = [Math.sin(side * 50 * Math.PI / 180), Math.cos(50 * Math.PI / 180)];
+    assert.ok(Math.abs(len(rel) - (guardRadius(dir) * f.radius + 40)) < 1e-6, 'na krawedzi oslony');
     assert.ok(dot(rel, f.u) * side > 0, 'po stronie lasera');
     assert.ok(mt.pos[2] > f.center[2], 'nad tarcza');
   }

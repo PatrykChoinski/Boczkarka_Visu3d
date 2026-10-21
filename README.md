@@ -163,10 +163,16 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
   STOP oraz przyciskami. Na płycie stołu, pod kamieniem, leży zielona gumowa
   mata łapiąca wodę. Oba elementy da się wyłączyć: `frame.panel`,
   `frame.mat`.
-- **Woda (#141):** dwa niebieskie węże idą z głowicy do dysz po obu stronach
-  osłony tarczy (frez, wiercenie, polerowanie: po obu stronach narzędzia).
-  Przy włączonych obrotach woda leci z dysz na tarczę (narzędzie) jako struga
-  z kroplami. Online woda zależy od zaworów z PLC (`IOVars.yWaterCut` dla
+- **Osłona tarczy i woda (#141, wg zdjęcia w zgłoszeniu):** osłona tarczy
+  (osłonka na wodę) jest kanciastą aluminiową płytą: pionowy przód, skos,
+  płaska góra. Tarcza siedzi w szczelinie i pod osłoną jest odsłonięta.
+  Stalowy oplatany przewód schodzi z głowicy do rozdzielacza przy dolnym
+  tylnym rogu osłony. Z rozdzielacza dwa niebieskie węże segmentowe (Loc-Line)
+  biegną pod dolną krawędzią osłony, po obu stronach tarczy, do pomarańczowych
+  dysz przy piaście. Przy frezie, wierceniu i polerowaniu dysze są po obu
+  stronach narzędzia. Przy włączonych obrotach woda leci z dysz na dolny przód
+  tarczy (stronę wejścia w materiał) albo na czoło narzędzia, jako struga z
+  kroplami. Online woda zależy od zaworów z PLC (`IOVars.yWaterCut` dla
   piły, `IOVars.yWaterMill` dla frezu i wiercenia); bez tych zmiennych woda
   leci przy obrotach, tak jak offline.
 - **Cięcie w stół:** gdy tarcza schodzi poniżej spodu kamienia, rzaz w płycie

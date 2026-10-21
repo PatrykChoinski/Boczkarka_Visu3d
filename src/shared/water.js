@@ -1,7 +1,8 @@
-// Woda i laser na glowicy (#141): dwa niebieskie weze z woda do dysz po obu stronach oslony tarczy (frez / wiertlo /
-// polerka - przy kolnierzu narzedzia), strumien z dysz na tarcze (narzedzie) przy wlaczonych obrotach, modul lasera
-// zamontowany na oslonie tarczy od strony lasera. W PLC zawory: IOVars.yWaterCut (pila), IOVars.yWaterMill (frez,
-// wiercenie) - polozenie dysz i lasera nie jest w PLC, tylko w modelu (laser.mountAngle w configu).
+// Woda i laser na glowicy (#141): kanciasta oslona tarczy (oslonka na wode), dwa niebieskie weze segmentowe z woda
+// do dysz pod oslona po obu stronach tarczy (frez / wiertlo / polerka - przy kolnierzu narzedzia), strumien z dysz na
+// tarcze (narzedzie) przy wlaczonych obrotach, modul lasera zamontowany na oslonie tarczy od strony lasera.
+// W PLC zawory: IOVars.yWaterCut (pila), IOVars.yWaterMill (frez, wiercenie) - polozenie oslony, dysz i lasera nie
+// jest w PLC, tylko w modelu (wg zdjecia w #141; laser.mountAngle w configu).
 
 import { headFrame, isToolMode, add, mul, sub } from './geometry.js';
 
@@ -18,39 +19,54 @@ export function headDims(m) {
 // Punkt w plaszczyznie tarczy: kat od gory (0 - nad srodkiem, 90 - w strone u), odleglosc od srodka
 const inPlane = (f, angleDeg, dist) => add(f.center, add(mul(f.d, -Math.cos(angleDeg * DEG) * dist), mul(f.u, Math.sin(angleDeg * DEG) * dist)));
 
-// Uklad wody: {hoses: [[p0, p1, p2, p3], x2], nozzles: [p, p], targets: [p, p]} - punkty w ukladzie swiata.
-// Pila: dysze na brzegu oslony z przodu (75 stopni od gory w strone u) po obu stronach tarczy, woda na tarcze
-// przy krawedzi wchodzacej w material (95 stopni, 0.85 promienia). Narzedzie: dysze przy kolnierzu po obu stronach,
-// woda na czolo narzedzia.
+// Oslona tarczy (oslonka na wode, jak na zdjeciu w #141): kanciasta plyta w plaszczyznie tarczy - pionowa krawedz
+// z przodu (strona u), skos w gore, plaska gora, z tylu w strone silnika; dol oslony troche ponizej piasty, tarcza
+// pod spodem odslonieta. Punkty [s, t] w promieniach tarczy: s wzdluz u (przod), t w gore w plaszczyznie tarczy.
+export const GUARD_OUTLINE = [[0.95, -0.18], [0.95, 0.45], [0.45, 1.12], [-0.85, 1.12], [-1.08, 0.62], [-1.08, -0.18]];
+// grubosc oslony wzdluz normalnej tarczy: od strony silnika (-) i od zewnatrz (+) [mm poza polowa szerokosci tarczy]
+export const GUARD_SIDES = { inner: 40, outer: 80 };
+
+// Punkt w plaszczyznie tarczy z [s, t] w promieniach (s - przod, t - w gore) i odsunieciem wzdluz normalnej [mm]
+const inGuard = (f, st, off = 0) => add(add(add(f.center, mul(f.u, st[0] * f.radius)), mul(f.d, -st[1] * f.radius)), mul(f.normal, off));
+
+// Uklad wody: {supply, manifold, hoses: [[p...], x2], nozzles: [p, p], targets: [p, p]} - punkty w ukladzie swiata.
+// Pila (#141, zdjecie): stalowy oplatany przewod z gory glowicy do rozdzielacza przy dolnym tylnym rogu oslony
+// (za tarcza), z niego dwa niebieskie weze segmentowe (Loc-Line) wzdluz dolnej krawedzi oslony, po obu stronach
+// tarczy, do dysz pod oslona przy piascie; woda na dolny przod tarczy (strona wejscia w material).
+// Narzedzie: rozdzielacz nad kolnierzem, dysze po obu stronach narzedzia, woda na czolo.
 export function waterLayout(pose, m) {
   const f = headFrame(pose, m);
   const { ramW } = headDims(m);
-  const top = add(f.pivot, mul(UP, ramW * 0.7));            // wyjscie wezy z korpusu obrotu A
+  const top = add(f.pivot, mul(UP, ramW * 0.7));            // wyjscie przewodu z korpusu obrotu A
   const hoses = [];
   const nozzles = [];
   const targets = [];
-  for (const s of [1, -1]) {
-    let nozzle;
-    let target;
-    let over;
-    if (isToolMode(m)) {
+  let manifold;
+  let supply;
+  if (isToolMode(m)) {
+    manifold = add(f.flange, add(mul(f.normal, -40), mul(UP, 60)));
+    supply = [top, add(mul(add(top, manifold), 0.5), mul(f.u, -120)), manifold];
+    for (const s of [1, -1]) {
       const side = mul(f.u, s * (f.radius + 60));
-      nozzle = add(add(f.flange, mul(f.normal, Math.min(80, f.length * 0.4))), side);
-      target = add(f.tip, mul(f.u, s * f.radius * 0.5));
-      over = add(add(f.flange, mul(f.normal, -60)), mul(side, 1.3));
-    } else {
-      const off = mul(f.normal, s * (m.bladeWidth / 2 + 45));
-      const R = f.radius;
-      nozzle = add(inPlane(f, 75, R * 1.02), off);
-      target = add(inPlane(f, 95, R * 0.85), mul(f.normal, s * (m.bladeWidth / 2 + 0.5)));
-      over = add(inPlane(f, 55, R * 1.25), mul(off, 1.4));
+      const nozzle = add(add(f.flange, mul(f.normal, Math.min(80, f.length * 0.4))), side);
+      hoses.push([manifold, add(add(f.flange, mul(f.normal, -10)), mul(side, 1.3)), nozzle]);
+      nozzles.push(nozzle);
+      targets.push(add(f.tip, mul(f.u, s * f.radius * 0.5)));
     }
-    const start = add(top, add(mul(f.normal, s * 40), mul(f.u, ramW * 0.3)));
-    hoses.push([start, add(mul(add(start, over), 0.5), mul(UP, 120)), over, nozzle]);
-    nozzles.push(nozzle);
-    targets.push(target);
+    return { supply, manifold, hoses, nozzles, targets };
   }
-  return { hoses, nozzles, targets };
+  const bw2 = m.bladeWidth / 2;
+  manifold = inGuard(f, [-1.12, -0.12]);
+  supply = [top, inGuard(f, [-1.25, 0.9], bw2 + GUARD_SIDES.outer * 0.5), inGuard(f, [-1.2, 0.2], bw2 + 30), manifold];
+  for (const s of [1, -1]) {
+    const o = s * (bw2 + 45);
+    const nozzle = inGuard(f, [0.32, -0.24], o);
+    hoses.push([add(manifold, mul(f.normal, s * 20)), inGuard(f, [-0.85, -0.3], o * 1.25), inGuard(f, [-0.3, -0.38], o * 1.3),
+      inGuard(f, [0.12, -0.33], o * 1.15), nozzle]);
+    nozzles.push(nozzle);
+    targets.push(inGuard(f, [0.68, -0.44], s * (bw2 + 0.5)));
+  }
+  return { supply, manifold, hoses, nozzles, targets };
 }
 
 // Strumien wody z dyszy na tarcze: n kropli, faza 0..1 (czas) - punkty na luku z lekkim opadem
@@ -68,14 +84,36 @@ export function waterDrops(nozzle, target, n, phase, spread = 6) {
   return out;
 }
 
-// Modul lasera: na oslonie tarczy od strony lasera (side = laser.side), mountAngle stopni od gory w strone kierunku
-// lasera; narzedzie - nad kolnierzem w strone lasera. -> {pos, u, normal, up}
+// Odleglosc od srodka tarczy do krawedzi oslony (w promieniach) w kierunku dir = [s, t] (jednostkowy)
+export function guardRadius(dir) {
+  let best = 0;
+  const P = GUARD_OUTLINE;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i];
+    const b = P[(i + 1) % P.length];
+    // promien z (0, 0) w kierunku dir przecina odcinek a-b: k * dir = a + w * (b - a)
+    const ex = b[0] - a[0];
+    const ey = b[1] - a[1];
+    const det = dir[0] * -ey - dir[1] * -ex;
+    if (Math.abs(det) < 1e-12) continue;
+    const k = (a[0] * -ey - a[1] * -ex) / det;
+    const w = (dir[0] * a[1] - dir[1] * a[0]) / det;
+    if (k > 0 && w >= -1e-9 && w <= 1 + 1e-9) best = Math.max(best, k);
+  }
+  return best;
+}
+
+// Modul lasera: na krawedzi oslony tarczy od strony lasera (side = laser.side), mountAngle stopni od gory w strone
+// kierunku lasera; narzedzie - nad kolnierzem w strone lasera. -> {pos, u, normal, up}
 export function laserMount(pose, m, side = 1, mountAngle = 50) {
   const f = headFrame(pose, m);
   if (isToolMode(m)) {
     const pos = add(add(f.flange, mul(UP, 80)), mul(f.u, side * (f.radius + 160)));
     return { pos, u: mul(f.u, side), normal: f.normal, up: UP };
   }
-  const pos = inPlane(f, side * mountAngle, f.radius * 1.08 + 40);
+  // na krawedzi oslony (GUARD_OUTLINE) w kierunku mountAngle od gory, 40 mm nad nia
+  const dir = [Math.sin(side * mountAngle * DEG), Math.cos(mountAngle * DEG)];
+  const edge = guardRadius(dir) * f.radius;
+  const pos = inPlane(f, side * mountAngle, edge + 40);
   return { pos, u: mul(f.u, side), normal: f.normal, up: norm(sub(pos, f.center)) };
 }
