@@ -80,7 +80,9 @@ export class OpcUaSource extends EventEmitter {
         const dvs = await session.read(request);
         const values = {};
         keys.forEach((k, i) => {
-          if (dvs[i].statusCode.isGood()) values[k] = dvs[i].value.value;
+          if (!dvs[i].statusCode.isGood()) return;
+          const v = dvs[i].value.value;
+          values[k] = ArrayBuffer.isView(v) ? Array.from(v) : v;   // tablice LREAL (Float64Array) -> JSON
         });
         this.values = values;
         this.emit('values', values);

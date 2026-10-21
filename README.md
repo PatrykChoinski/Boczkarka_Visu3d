@@ -2,7 +2,7 @@
 
 Aplikacja przeglądarkowa na panel maszyny. Pokazuje w 3D maszynę (piła
 mostowa: ściany z prowadnicami, most z wózkiem, słup Z, głowica z obrotem A,
-silnik z wychyłem B, osłona tarczy), kamień o zadanym położeniu i wymiarach,
+silnik z wychyłem B, osłona tarczy), stół i kamień z punktów jak w PLC,
 tarczę oraz wycięty rzaz (ściany cięcia z obwiednią głębokości i szczelinę na
 górnej powierzchni).
 
@@ -97,19 +97,28 @@ Dodatkowo w HMI potrzebny jest przycisk ustawiający `bVizuApp`.
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, piła,
   woda; offline krok programu, czas i prędkość.
 
-### Kamień (oba tryby)
+### Stół i kamień (oba tryby)
 
-- **Punkt początkowy** X / Y: narożnik kamienia (najmniejsze X i Y) w układzie
-  maszyny.
-- **Długość (X)**, **szerokość (Y)**: wymiary kamienia.
-- **Grubość** i **Z góry kamienia**: offline wpisywane tutaj, online brane z
-  PLC (`fParameterMaterialThickness`, `fCutMaterialHeight`).
-- **Narożnik = pozycja tarczy**: wpisuje jako punkt początkowy miejsce, w
-  którym jest najniższy punkt tarczy. Pozwala ustawić tarczę na narożnik
-  kamienia i kliknąć.
-- **Bez wymiarów**: materiał rysowany wokół cięć, jak wcześniej.
-- W zakładce Cięcie pojawia się ostrzeżenie, gdy linia cięcia wychodzi poza
-  kamień.
+Działa tak jak w PLC (`Settings/WorkArea`). Stół i kamień to po **8 punktów
+XYZ**, czyli wierzchołki zapisane z pozycji osi:
+- stół: `aCuttingBoardX/Y/Z [0..7]`, liczba wierzchołków `iCuttingBoardApexNumber`,
+- kamień: `aCuttingRockX/Y/Z [0..7]`, liczba wierzchołków `iCuttingRockApexNumber`.
+
+- **Online:** punkty czytane z PLC; tabele są tylko do podglądu.
+- **Offline:** punkty wpisujesz w tabelach. „Poz.” wpisuje do wiersza aktualną
+  pozycję osi X, Y, Z, jak zapis w PLC. „Liczba punktów” odpowiada liczbie
+  wierzchołków.
+- **Stół i cała maszyna** (ściany, most) mają rozmiar z obrysu punktów stołu i
+  nie zmieniają się, gdy zmieniasz kamień. Przy mniej niż 3 punktach stołu
+  przyjęty jest stół 3500 × 3000 od (0, 0).
+- **Kamień** to wielokąt z punktów (nie musi być prostokątem) o grubości
+  `fParameterMaterialThickness`. Przy mniej niż 3 punktach materiał rysuje się
+  wokół cięć.
+- **Góra materiału:** online z PLC (`fCutMaterialHeight`). Offline liczona jak w
+  PLC: `Z min stołu − grubość`, gdzie Z min to jak `fCuttingBoardZMin`: pierwszy
+  punkt zawsze, kolejne tylko z Z > 0.
+- **Ostrzeżenia:** gdy kamień wychodzi poza stół (zakładka Stół i kamień) albo
+  linia cięcia wychodzi poza kamień (zakładka Cięcie).
 
 ### Tryb offline (panel po prawej)
 
@@ -154,9 +163,8 @@ Formularze są zapamiętywane w przeglądarce.
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
-| `stone` | `{auto: false, x0: 0, y0: 0, length: 3000, width: 2000}` | kamień: punkt początkowy i wymiary (mm), wartości początkowe zakładki Kamień |
-| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od kamienia), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
-| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s² |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show` |
+| `offline` | patrz plik | wartości początkowe formularzy offline; dynamika w m/min, m/s², °/s, °/s²; `board` / `rock` - punkty stołu i kamienia `{count, points: [[x, y, z], ...]}` |
 
 Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału):
 
@@ -167,6 +175,7 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 | głowica | `HMI.fParameterCutTiltDiameter`, `HMI.fParameterHeadRotationDiameter` |
 | materiał | `HMI.fCutMaterialHeight` (Z górnej powierzchni), `HMI.fParameterMaterialThickness` |
 | stan | `HMI2.CutStep`, `HMI2.bCutStart`, `Communication.bMainDriveRunning`, `IOVars.yWaterCut` |
+| stół, kamień | `HMI.aCuttingBoardX/Y/Z`, `HMI.iCuttingBoardApexNumber`, `HMI.aCuttingRockX/Y/Z`, `HMI.iCuttingRockApexNumber` |
 | dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `VelA`, `DecA`, `VelB`, `DecB` |
 
 ## Geometria

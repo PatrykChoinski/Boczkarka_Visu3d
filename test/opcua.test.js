@@ -38,6 +38,11 @@ test('wyszukiwanie wezlow w drzewie OPC UA, odczyt wszystkich zmiennych', async 
     assert.ok(xs.size > 5, 'pozycja X sie nie zmienia');
     assert.equal(typeof values.cutStep, 'number');
     assert.equal(typeof values.cutStart, 'boolean');
+    // tablice punktow stolu / kamienia jako zwykle tablice (JSON), liczba wierzcholkow
+    assert.ok(Array.isArray(values.boardX) && values.boardX.length === 8, 'aCuttingBoardX');
+    assert.ok(Array.isArray(values.rockY) && values.rockY.length === 8, 'aCuttingRockY');
+    assert.equal(values.boardCount, 4);
+    assert.equal(values.rockCount, 5);
     assert.match(source.resolved.x, new RegExp(`\\|var\\|${DEVICE}\\.Application\\.HMI2\\.fXActualPosition`));
     assert.ok(source.connected);
   } finally {

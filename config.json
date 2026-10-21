@@ -12,17 +12,10 @@
     1200,
     800
   ],
-  "stone": {
-    "auto": false,
-    "x0": 0,
-    "y0": 0,
-    "length": 3000,
-    "width": 2000
-  },
   "frame": {
     "show": true,
     "bridgeAlong": "x",
-    "margin": 400,
+    "margin": 150,
     "bridgeZ": 300,
     "ramLength": 1400,
     "tableHeight": 700
@@ -35,6 +28,56 @@
       "headRotationDiameter": 100,
       "materialHeight": 450,
       "materialThickness": 40
+    },
+    "board": {
+      "count": 4,
+      "points": [
+        [
+          0,
+          0,
+          490
+        ],
+        [
+          3500,
+          0,
+          490
+        ],
+        [
+          3500,
+          3000,
+          490
+        ],
+        [
+          0,
+          3000,
+          490
+        ]
+      ]
+    },
+    "rock": {
+      "count": 4,
+      "points": [
+        [
+          300,
+          200,
+          450
+        ],
+        [
+          2800,
+          200,
+          450
+        ],
+        [
+          2800,
+          1800,
+          450
+        ],
+        [
+          300,
+          1800,
+          450
+        ]
+      ]
     },
     "dynamics": {
       "cutVel": 1.8,

@@ -36,29 +36,26 @@
 
     <aside id="panel">
       <nav class="tabs">
-        <button data-tab="stone" class="active">Kamień</button>
+        <button data-tab="stone" class="active">Stół i kamień</button>
         <button data-tab="cut" data-offline>Cięcie</button>
         <button data-tab="pos" data-offline>Pozycja</button>
         <button data-tab="par" data-offline>Parametry</button>
       </nav>
 
       <div class="tab" data-tab="stone">
-        <p class="hint">Kamień na stole w układzie maszyny. Punkt początkowy = narożnik kamienia (najmniejsze X i Y), wymiary wzdłuż osi X i Y.</p>
-        <div class="grid2">
-          <label>Punkt początkowy X [mm] <input data-s="x0" type="number" step="any"></label>
-          <label>Punkt początkowy Y [mm] <input data-s="y0" type="number" step="any"></label>
-          <label>Długość (X) [mm] <input data-s="length" type="number" step="any" min="1"></label>
-          <label>Szerokość (Y) [mm] <input data-s="width" type="number" step="any" min="1"></label>
-        </div>
+        <p class="hint">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. „Poz.” wpisuje aktualną pozycję osi.</p>
+        <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
+        <label class="inline">Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
+        <table class="pts" data-pts="board"></table>
+        <h3>Kamień <span class="muted">aCuttingRockX/Y/Z</span></h3>
+        <label class="inline">Liczba punktów <input id="rockCount" data-count="rock" type="number" min="0" max="8" step="1"></label>
+        <table class="pts" data-pts="rock"></table>
         <div class="grid2" id="stoneOffline">
-          <label>Grubość [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
-          <label>Z góry kamienia [mm] <input data-m="materialHeight" type="number" step="any"></label>
+          <label>Grubość kamienia [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
         </div>
         <p class="hint" id="stonePlc" hidden></p>
-        <label class="check"><input type="checkbox" id="stoneAuto"> Bez wymiarów (materiał rysowany wokół cięć)</label>
         <div class="row">
-          <button id="stoneShow">Pokaż kamień</button>
-          <button id="stoneFromBlade">Narożnik = pozycja tarczy</button>
+          <button id="stoneShow">Pokaż z góry</button>
         </div>
         <div id="stoneInfo" class="info"></div>
       </div>

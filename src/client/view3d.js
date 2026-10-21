@@ -72,8 +72,9 @@ export class View3D {
 
   // --- material ---------------------------------------------------------------
 
-  setMaterial(extent, m) {
-    const key = JSON.stringify([extent, m.materialHeight, m.materialThickness]);
+  // Kamien: wielokat z punktow (aCuttingRock) wyciagniety na grubosc, albo prostokat extent (bez punktow)
+  setMaterial(extent, m, polygon = null) {
+    const key = JSON.stringify([extent, polygon, m.materialHeight, m.materialThickness]);
     if (key === this.extentKey) return;
     this.extentKey = key;
     disposeGroup(this.materialGroup);
@@ -81,14 +82,13 @@ export class View3D {
     const [x0, y0, x1, y1] = extent;
     const top = topZ(m);
     const thick = Math.max(m.materialThickness, 1);
-    const geo = new THREE.BoxGeometry(x1 - x0, y1 - y0, thick);
+    const pts = polygon || [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    const geo = prismGeometry(pts, top - thick, thick);
     const box = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
       color: COLORS.material, roughness: 0.9, transparent: true, opacity: 0.72, depthWrite: false,
     }));
-    box.position.set((x0 + x1) / 2, (y0 + y1) / 2, top - thick / 2);
     box.renderOrder = 2;
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: COLORS.materialEdge }));
-    edges.position.copy(box.position);
     const size = Math.max(x1 - x0, y1 - y0) * 1.4;
     const grid = new THREE.GridHelper(size, Math.max(4, Math.round(size / 100)), COLORS.grid, COLORS.grid);
     grid.rotation.x = Math.PI / 2;
@@ -160,8 +160,8 @@ export class View3D {
   }
 
   // glowica i suport (pila mostowa)
-  setMachine(pose, m, extent, frameCfg, showHead, showFrame) {
-    this.machineModel.update(pose, m, extent, frameCfg, showHead, showFrame);
+  setMachine(pose, m, frameCfg, board, showHead, showFrame) {
+    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame);
     // przy suporcie stol zastepuje siatke podlogi
     if (this.grid) this.grid.visible = !this.machineModel.frame.visible;
   }
@@ -201,6 +201,14 @@ export class View3D {
     this.controls.update();
     this.render();
   }
+}
+
+// Graniastoslup: wielokat [[x, y], ...] w XY od wysokosci z0, wysokosc h
+export function prismGeometry(points, z0, h) {
+  const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+  geo.translate(0, 0, z0);
+  return geo;
 }
 
 function stripMesh(strip, material) {

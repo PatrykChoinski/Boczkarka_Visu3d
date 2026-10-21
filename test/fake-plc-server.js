@@ -9,14 +9,27 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
-import { Variant, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
+import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
 import { machine } from '../src/shared/geometry.js';
 import { cutProgram, depthTable } from '../src/shared/motion.js';
+import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
 const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut']);
+const INTS = new Set(['cutStep', 'boardCount', 'rockCount']);
+const ARRAYS = new Set(['boardX', 'boardY', 'boardZ', 'rockX', 'rockY', 'rockZ']);
+
+// Stol 3500 x 3000 (Z 490 - gora materialu 450 przy grubosci 40, jak fCutMaterialHeight w WorkArea)
+// i kamien - pieciokat (nie musi byc prostokatem); tablice [0..7] jak aCuttingBoard / aCuttingRock
+const BOARD = rectangle(0, 0, 3500, 3000, 490);
+const ROCK = [[100, 150, 450], [2600, 150, 450], [2900, 900, 450], [2200, 1700, 450], [100, 1700, 450]];
+const column = (pts, i) => Array.from({ length: MAX_APEX }, (_, k) => (k < pts.length ? pts[k][i] : 0));
+const AREA = {
+  boardX: column(BOARD, 0), boardY: column(BOARD, 1), boardZ: column(BOARD, 2), boardCount: BOARD.length,
+  rockX: column(ROCK, 0), rockY: column(ROCK, 1), rockZ: column(ROCK, 2), rockCount: ROCK.length,
+};
 const STEP_CODES = { MoveToStartPosition: 10, StartCutDepth: 20, StartSingleCut: 50, StartLastCut: 60, StartMoveAboveMaterial: 70, CutFinish: 100 };
 
 // Petla dwoch ciec (proste i z wychylem) - wartosci wszystkich zmiennych w czasie t [s]
@@ -31,7 +44,7 @@ export function plcTimeline() {
     const r = t < p1.duration ? p1.at(t) : p2.at(t - p1.duration);
     const step = STEP_CODES[r.step];
     return {
-      ...r.pose, ...m, ...dyn,
+      ...r.pose, ...m, ...dyn, ...AREA,
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: step === 20 || step === 50 || step === 60,
     };
   };
@@ -64,14 +77,21 @@ export async function startFakePlc(port) {
   for (const [key, varPath] of Object.entries(VARIABLES)) {
     const [gvl, name] = varPath.split('.');
     gvls[gvl] ??= obj(globalVars, gvl);
-    const type = BOOLS.has(key) ? DataType.Boolean : key === 'cutStep' ? DataType.Int16 : DataType.Double;
+    const type = BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
+    const array = ARRAYS.has(key);
+    const value = () => {
+      const v = values()[key];
+      if (array) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: Float64Array.from(v) });
+      return new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(v) : Number(v) });
+    };
     ns.addVariable({
       componentOf: gvls[gvl],
       browseName: name,
       nodeId: `s=|var|${DEVICE}.Application.${varPath}`,
       dataType: type,
+      ...(array ? { valueRank: 1, arrayDimensions: [MAX_APEX] } : {}),
       minimumSamplingInterval: 50,
-      value: { get: () => new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(values()[key]) : Number(values()[key]) }) },
+      value: { get: value },
     });
   }
   await server.start();

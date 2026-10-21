@@ -1,9 +1,12 @@
 // Model maszyny (pila mostowa): suport - sciany z prowadnicami, most z wozkiem, stol pod kamieniem;
 // glowica - slup Z, korpus obrotu A, silnik wrzeciona z wychylem B, oslona tarczy.
-// Bryly uproszczone, polozenie wg pozycji osi (shared/geometry.js); wymiary z frame w configu.
+// Bryly uproszczone, polozenie wg pozycji osi (shared/geometry.js); stol i rozstaw maszyny wg punktow
+// stolu (aCuttingBoard), niezalezne od kamienia; reszta wymiarow z frame w configu.
 
 import * as THREE from 'three';
 import { bladeFrame, add, mul, dot, topZ } from '../shared/geometry.js';
+import { isArea, bounds } from '../shared/area.js';
+import { prismGeometry } from './view3d.js';
 
 const YELLOW = 0xf2b705;
 const GREY = 0xe4e6e8;
@@ -30,6 +33,11 @@ function orient(mesh, x, y, z, pos, scale) {
   mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(v3(x), v3(y), v3(z)));
   mesh.position.copy(v3(pos));
   mesh.scale.set(...scale);
+}
+
+// Obrys stolu [x0, y0, x1, y1] z punktow stolu; bez punktow - 3500 x 3000 od (0, 0)
+export function tableExtent(board) {
+  return isArea(board) ? bounds(board) : [0, 0, 3500, 3000];
 }
 
 export class MachineModel {
@@ -59,10 +67,10 @@ export class MachineModel {
     this.group.add(this.frame, this.head);
   }
 
-  // extent - kamien / material [x0, y0, x1, y1]; cfg - frame z configu
-  update(pose, m, extent, cfg, showHead, showFrame) {
+  // cfg - frame z configu, board - punkty stolu [[x, y, z], ...]
+  update(pose, m, cfg, board, showHead, showFrame) {
     this.head.visible = Boolean(pose && showHead);
-    this.frame.visible = Boolean(pose && showFrame && extent);
+    this.frame.visible = Boolean(pose && showFrame);
     if (!pose) return;
     const f = bladeFrame(pose, m);
     const r = f.radius;
@@ -101,7 +109,7 @@ export class MachineModel {
       const alongX = cfg.bridgeAlong !== 'y';
       // (wzdluz mostu, w poprzek) -> (x, y)
       const P = (a, c, z) => (alongX ? [a, c, z] : [c, a, z]);
-      const [x0, y0, x1, y1] = extent;
+      const [x0, y0, x1, y1] = tableExtent(board);
       const [a0, a1, c0, c1] = alongX ? [x0, x1, y0, y1] : [y0, y1, x0, x1];
       const mg = cfg.margin;
       const top = topZ(m);
@@ -121,7 +129,17 @@ export class MachineModel {
       box2(this.wallB, [wa1 - wall, cl0, floor], [wa1, cl1, zBridge - 60]);
       box2(this.railA, [wa0 + 40, cl0, zBridge - 60], [wa0 + wall - 40, cl1, zBridge]);
       box2(this.railB, [wa1 - wall + 40, cl0, zBridge], [wa1 - 40, cl1, zBridge - 60]);
-      box2(this.table, [a0 - mg / 2, c0 - mg / 2, tableTop - 80], [a1 + mg / 2, c1 + mg / 2, tableTop - 0.5]);   // plyta stolu
+      // plyta stolu - wielokat z punktow stolu (bez punktow - prostokat)
+      const tablePts = isArea(board) ? board : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      const tableKey = JSON.stringify([tablePts, tableTop]);
+      if (tableKey !== this.tableKey) {
+        this.tableKey = tableKey;
+        this.table.geometry.dispose();
+        this.table.geometry = prismGeometry(tablePts, tableTop - 80, 79.5);
+        this.table.position.set(0, 0, 0);
+        this.table.scale.set(1, 1, 1);
+        this.table.quaternion.identity();
+      }
       // most jedzie z osia poprzeczna (Y), wozek z osia wzdluz mostu (X); slup przed mostem
       const posA = alongX ? f.axis[0] : f.axis[1];
       const posC = alongX ? f.axis[1] : f.axis[0];

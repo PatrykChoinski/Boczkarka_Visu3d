@@ -67,6 +67,16 @@ input[type=number], select {
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 .info { margin-top: 8px; font-size: 14px; line-height: 1.5; }
 h3 { font-size: 14px; margin: 12px 0 6px; }
+h3 .muted { color: var(--muted); font-weight: 400; font-size: 12px; }
+table.pts { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; table-layout: fixed; }
+table.pts th { color: var(--muted); font-weight: 500; text-align: left; padding: 0 3px; }
+table.pts th:first-child { width: 22px; }
+table.pts th:last-child { width: 58px; }
+table.pts td { padding: 2px 3px; }
+table.pts input { width: 100%; min-height: 32px; padding: 2px 6px; }
+table.pts button { min-height: 32px; padding: 2px 6px; width: 100%; }
+table.pts tr.off input { opacity: 0.4; }
+#boardCount, #rockCount { width: 80px; }
 table.dyn { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 table.dyn th { color: var(--muted); font-weight: 500; text-align: left; padding: 4px 3px 0; }
 table.dyn th:first-child { width: 78px; }

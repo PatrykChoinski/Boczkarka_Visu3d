@@ -2,6 +2,8 @@
 // animacja z predkosciami i przyspieszeniami jak w napedach).
 
 import { View3D } from './view3d.js';
+import { tableExtent } from './machine3d.js';
+import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
 import { machine as makeMachine, bladeFrame, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { cutProgram, gotoProgram, depthTable, AXES } from '../shared/motion.js';
@@ -21,6 +23,7 @@ const state = {
   extent: null,
   extentProvisional: true,
   stoneKey: '',
+  areasKey: '',             // ostatnie punkty stolu / kamienia z PLC (odswiezanie tabel)
   fitted: false,
   online: { values: {}, status: 'Łączenie...', connected: false, lastCutStart: false },
   sim: { program: null, t: 0, running: false, step: '', velocity: 0 },
@@ -43,19 +46,29 @@ function clearCuts() {
   state.extentProvisional = true;
 }
 
-// Kamien z zakladki Kamien (punkt poczatkowy + wymiary) albo null (bez wymiarow - material wokol ciec)
-function stoneExtent() {
-  const s = readFields('s');
-  if ($('#stoneAuto').checked || !(s.length > 0) || !(s.width > 0)) return null;
-  return [s.x0, s.y0, s.x0 + s.length, s.y0 + s.width];
+// --- stol i kamien (punkty XYZ jak aCuttingBoard / aCuttingRock) -------------------
+
+// Punkty stolu / kamienia: online z PLC, offline z tabel w zakladce
+function areaPoints(name) {
+  if (state.mode === 'online') {
+    const v = state.online.values;
+    return apexPoints(v[`${name}X`], v[`${name}Y`], v[`${name}Z`], v[`${name}Count`]);
+  }
+  return readArea(name).points;
+}
+
+// Kamien jako wielokat (>= 3 punkty) albo null - wtedy material rysowany wokol ciec
+function rockPolygon() {
+  const pts = areaPoints('rock');
+  return isArea(pts) ? pts : null;
 }
 
 function growExtent() {
-  const stone = stoneExtent();
-  if (stone) {
-    state.extent = stone;
+  const rock = rockPolygon();
+  if (rock) {
+    state.extent = bounds(rock);
     state.extentProvisional = false;
-    const key = stone.join(',');
+    const key = JSON.stringify(rock);
     if (key !== state.stoneKey || !state.fitted) { state.stoneKey = key; state.fitted = true; fit(); }
     return;
   }
@@ -89,9 +102,14 @@ function growAutoExtent() {
   state.extent = [x0, y0, x1, y1];
 }
 
+// Dopasowanie widoku: kamien / material, a przy widocznym suporcie caly stol maszyny
 function sceneBox() {
   if (!state.extent) return null;
-  const [x0, y0, x1, y1] = state.extent;
+  let [x0, y0, x1, y1] = state.extent;
+  if ($('#showFrame').checked) {
+    const t = tableExtent(areaPoints('board'));
+    x0 = Math.min(x0, t[0]); y0 = Math.min(y0, t[1]); x1 = Math.max(x1, t[2]); y1 = Math.max(y1, t[3]);
+  }
   const top = topZ(state.machine);
   return [[x0, y0, top - state.machine.materialThickness], [x1, y1, top + radius(state.machine) * 0.6]];
 }
@@ -107,18 +125,19 @@ const fmt = (v, w, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-').padStart(
 
 function redraw() {
   const m = state.machine;
-  view.setMaterial(state.extent, m);
+  const rock = rockPolygon();
+  view.setMaterial(state.extent, m, rock);
   view.setCuts(state.recorder);
   view.setBlade(state.pose, m, $('#showBlade').checked);
-  view.setMachine(state.pose, m, state.extent, state.cfg.frame, $('#showBlade').checked, $('#showFrame').checked);
+  view.setMachine(state.pose, m, state.cfg.frame, areaPoints('board'), $('#showBlade').checked, $('#showFrame').checked);
   view.render();
 
   const s = state.recorder.summary();
   $('#hudCut').textContent = s
     ? `Cięcie: długość ${s.length.toFixed(0)} mm, głębokość ${s.depth.toFixed(1)} mm (cięć: ${s.count})`
     : 'Brak cięcia - tarcza nad materiałem';
-  const stone = stoneExtent();
-  const size = stone ? `${(stone[2] - stone[0]).toFixed(0)} × ${(stone[3] - stone[1]).toFixed(0)} × ${m.materialThickness.toFixed(1)} mm` : `grubość ${m.materialThickness.toFixed(1)} mm`;
+  const rb = rock && bounds(rock);
+  const size = rb ? `${(rb[2] - rb[0]).toFixed(0)} × ${(rb[3] - rb[1]).toFixed(0)} × ${m.materialThickness.toFixed(1)} mm` : `grubość ${m.materialThickness.toFixed(1)} mm`;
   $('#hudMachine').textContent = `Tarcza Ø${m.discDiameter.toFixed(0)} × ${m.bladeWidth.toFixed(1)} mm, kamień: ${size}, góra Z ${m.materialHeight.toFixed(1)}`;
 
   const p = state.pose;
@@ -167,8 +186,14 @@ function onlineValues(v) {
   const cutStart = Boolean(v.cutStart);
   if (cutStart && !state.online.lastCutStart && state.cfg.autoClearOnStart) clearCuts();
   state.online.lastCutStart = cutStart;
+  const areas = JSON.stringify(['board', 'rock'].map((n) => [v[`${n}X`], v[`${n}Y`], v[`${n}Z`], v[`${n}Count`]]));
+  if (areas !== state.areasKey) {
+    state.areasKey = areas;
+    for (const name of ['board', 'rock']) writeArea(name, { count: v[`${name}Count`], points: areaPoints(name) });
+    stoneChanged();
+  }
   applyPose({ x: v.x, y: v.y, z: v.z, a: v.a, b: v.b }, m);
-  $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
+  $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra materiału Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
   requestDraw();
 }
 
@@ -206,7 +231,7 @@ function writeFields(attr, obj) {
 function saveForms() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      units: 'm/min', cut: readFields('cut'), m: readFields('m'), d: readFields('d'), s: readFields('s'), stoneAuto: $('#stoneAuto').checked,
+      units: 'm/min', cut: readFields('cut'), m: readFields('m'), d: readFields('d'), board: readArea('board'), rock: readArea('rock'),
     }));
   } catch { /* brak dostepu do localStorage - formularze tylko w tej sesji */ }
 }
@@ -216,21 +241,27 @@ function loadForms() {
   writeFields('cut', off.cut);
   writeFields('m', off.machine);
   writeFields('d', off.dynamics);
-  const stone = state.cfg.stone || {};
-  writeFields('s', stone);
-  $('#stoneAuto').checked = Boolean(stone.auto);
+  writeArea('board', off.board);
+  writeArea('rock', off.rock);
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (saved) {
       writeFields('cut', saved.cut || {});
       writeFields('m', saved.m || {});
       if (saved.units === 'm/min') writeFields('d', saved.d || {});   // starsze zapisy byly w mm/s
-      if (saved.s) { writeFields('s', saved.s); $('#stoneAuto').checked = Boolean(saved.stoneAuto); }
+      if (saved.board) writeArea('board', saved.board);
+      if (saved.rock) writeArea('rock', saved.rock);
     }
   } catch { /* jw. */ }
 }
 
-const offlineMachine = () => makeMachine(readFields('m'));
+// Offline gora materialu jak w PLC (WorkArea): fCutMaterialHeight := fCuttingBoardZMin - grubosc
+function offlineMachine() {
+  const m = makeMachine({ ...state.cfg.offline.machine, ...readFields('m') });
+  const zMin = boardZMin(readArea('board').points);
+  if (zMin !== null) m.materialHeight = zMin - m.materialThickness;
+  return m;
+}
 const offlineDynamics = () => dynamicsToInternal(readFields('d'));
 
 function cutInput() {
@@ -251,9 +282,10 @@ function updateCutInfo() {
   if (validDynamics(d) && len > 0) {
     const prog = cutProgram(state.pose || state.cfg.offline.start, c, offlineMachine(), d);
     text += `<br>Czas programu: ${prog.duration.toFixed(1)} s`;
-    const stone = stoneExtent();
-    const inside = (x, y) => x >= stone[0] && x <= stone[2] && y >= stone[1] && y <= stone[3];
-    if (stone && !(inside(c.x0, c.y0) && inside(c.x1, c.y1))) text += '<br><span style="color:var(--bad)">Linia cięcia wychodzi poza kamień</span>';
+    const rock = rockPolygon();
+    if (rock && !(pointInPolygon(c.x0, c.y0, rock) && pointInPolygon(c.x1, c.y1, rock))) {
+      text += '<br><span style="color:var(--bad)">Linia cięcia wychodzi poza kamień</span>';
+    }
   } else {
     text += '<br><span style="color:var(--bad)">Uzupełnij parametry dynamiki (wartości &gt; 0)</span>';
   }
@@ -334,12 +366,16 @@ function setMode(mode) {
   if (mode !== 'offline') showTab('stone');
   $('#stoneOffline').hidden = mode !== 'offline';
   $('#stonePlc').hidden = mode === 'offline';
+  for (const el of $$('[data-pt], [data-count], [data-save]')) el.disabled = mode !== 'offline';
+  state.areasKey = '';
   clearCuts();
   state.fitted = false;
   if (mode === 'offline') {
     const start = state.pose || state.cfg.offline.start;
     applyPose({ ...start }, offlineMachine());
     writeFields('pos', start);
+    restoreOfflineAreas();
+    stoneChanged();
     updateCutInfo();
   } else {
     state.pose = null;
@@ -354,14 +390,80 @@ function showTab(name) {
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
 }
 
+// Tabele punktow (8 wierszy X / Y / Z + "Poz." - aktualna pozycja osi, jak zapis w PLC)
+function buildPointTables() {
+  for (const table of $$('table.pts')) {
+    const name = table.dataset.pts;
+    let html = '<tr><th>#</th><th>X</th><th>Y</th><th>Z</th><th></th></tr>';
+    for (let i = 0; i < MAX_APEX; i++) {
+      html += `<tr data-row="${i}"><td>${i + 1}</td>`
+        + [0, 1, 2].map((c) => `<td><input type="number" step="any" data-pt="${name}" data-i="${i}" data-c="${c}"></td>`).join('')
+        + `<td><button data-save="${name}" data-i="${i}" title="Aktualna pozycja osi X, Y, Z">Poz.</button></td></tr>`;
+    }
+    table.innerHTML = html;
+  }
+}
+
+function readArea(name) {
+  const count = Math.max(0, Math.min(MAX_APEX, Math.round(Number($(`[data-count="${name}"]`).value) || 0)));
+  const cols = [[], [], []];
+  for (const el of $$(`[data-pt="${name}"]`)) cols[el.dataset.c][el.dataset.i] = Number(el.value) || 0;
+  return { count, points: apexPoints(cols[0], cols[1], cols[2], count) };
+}
+
+function writeArea(name, area) {
+  const count = Math.max(0, Math.min(MAX_APEX, Math.round(Number(area.count) || 0)));
+  $(`[data-count="${name}"]`).value = count;
+  for (const el of $$(`[data-pt="${name}"]`)) {
+    const v = area.points?.[el.dataset.i]?.[el.dataset.c];
+    el.value = v === undefined ? 0 : Number(Number(v).toFixed(3));
+  }
+  markRows(name, count);
+}
+
+function markRows(name, count) {
+  for (const tr of $$(`table[data-pts="${name}"] tr[data-row]`)) tr.classList.toggle('off', Number(tr.dataset.row) >= count);
+}
+
+// Po powrocie do offline - punkty zapisane w przegladarce (tabele pokazywaly punkty z PLC)
+function restoreOfflineAreas() {
+  const off = state.cfg.offline;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { /* jw. */ }
+  writeArea('board', saved?.board || off.board);
+  writeArea('rock', saved?.rock || off.rock);
+}
+
 function stoneChanged() {
-  saveForms();
-  const stone = stoneExtent();
-  $('#stoneInfo').textContent = stone
-    ? `Kamień: X ${stone[0].toFixed(0)} … ${stone[2].toFixed(0)}, Y ${stone[1].toFixed(0)} … ${stone[3].toFixed(0)} mm`
-    : 'Bez wymiarów - materiał rysowany wokół cięć';
-  if (!stone) { state.extent = null; state.extentProvisional = true; }
-  if (state.pose) growExtent();
+  for (const name of ['board', 'rock']) markRows(name, Number($(`[data-count="${name}"]`).value) || 0);
+  if (state.mode === 'offline') saveForms();
+  const board = areaPoints('board');
+  const rock = rockPolygon();
+  const lines = [];
+  const tb = bounds(board);
+  if (isArea(board)) {
+    lines.push(`Stół: ${(tb[2] - tb[0]).toFixed(0)} × ${(tb[3] - tb[1]).toFixed(0)} mm (X ${tb[0].toFixed(0)} … ${tb[2].toFixed(0)}, Y ${tb[1].toFixed(0)} … ${tb[3].toFixed(0)}), Z min ${boardZMin(board).toFixed(1)}`);
+  } else {
+    const t = tableExtent([]);
+    lines.push(`Stół: mniej niż 3 punkty - przyjęty ${(t[2] - t[0]).toFixed(0)} × ${(t[3] - t[1]).toFixed(0)} mm od (0, 0)`);
+  }
+  if (rock) {
+    const rb = bounds(rock);
+    lines.push(`Kamień: ${rock.length} wierzchołków, obrys ${(rb[2] - rb[0]).toFixed(0)} × ${(rb[3] - rb[1]).toFixed(0)} mm`);
+    if (isArea(board) && rock.some(([x, y]) => !pointInPolygon(x, y, board))) lines.push('<span style="color:var(--bad)">Kamień wychodzi poza stół</span>');
+  } else {
+    lines.push('Kamień: mniej niż 3 punkty - materiał rysowany wokół cięć');
+  }
+  if (state.mode === 'offline') {
+    const m = offlineMachine();
+    lines.push(`Góra materiału Z ${m.materialHeight.toFixed(1)} mm (Z min stołu − grubość, jak fCutMaterialHeight w PLC)`);
+  }
+  $('#stoneInfo').innerHTML = lines.join('<br>');
+  if (!rock) { state.extent = null; state.extentProvisional = true; }
+  if (state.pose) {
+    if (state.mode === 'offline' && !state.sim.running) state.machine = offlineMachine();
+    growExtent();
+  }
   if (state.mode === 'offline') updateCutInfo();
   requestDraw();
 }
@@ -381,14 +483,20 @@ function bindUi() {
 
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-cut], [data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
-  for (const el of [...$$('[data-s]'), $('#stoneAuto')]) el.addEventListener('input', stoneChanged);
+  for (const el of $$('[data-pt], [data-count]')) el.addEventListener('input', stoneChanged);
+  for (const b of $$('[data-save]')) {
+    b.onclick = () => {
+      if (!state.pose) return;
+      const name = b.dataset.save;
+      const i = Number(b.dataset.i);
+      const cols = [0, 1, 2].map((c) => $$(`[data-pt="${name}"][data-c="${c}"]`).map((el) => Number(el.value) || 0));
+      [state.pose.x, state.pose.y, state.pose.z].forEach((v, c) => { cols[c][i] = v; });
+      const points = cols[0].map((x, k) => [x, cols[1][k], cols[2][k]]);
+      writeArea(name, { count: Math.max(readArea(name).count, i + 1), points });
+      stoneChanged();
+    };
+  }
   $('#stoneShow').onclick = () => { if (state.pose) growExtent(); view.viewName = 'top'; fit(); };
-  $('#stoneFromBlade').onclick = () => {
-    if (!state.pose) return;
-    const low = bladeFrame(state.pose, state.machine).lowest;
-    writeFields('s', { x0: low[0], y0: low[1] });
-    stoneChanged();
-  };
 
   $('#cutStart').onclick = () => {
     const d = offlineDynamics();
@@ -430,6 +538,7 @@ function bindUi() {
 async function init() {
   view = new View3D($('#view'));
   state.cfg = await (await fetch('api/config')).json();
+  buildPointTables();
   loadForms();
   $('#showFrame').checked = state.cfg.frame.show;
   try { const f = localStorage.getItem('vizuapp.frame'); if (f !== null) $('#showFrame').checked = f === '1'; } catch { /* jw. */ }

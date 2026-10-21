@@ -16,6 +16,15 @@ export const VARIABLES = {
   cutStart: 'HMI2.bCutStart',
   sawRunning: 'Communication.bMainDriveRunning',
   waterCut: 'IOVars.yWaterCut',
+  // stol i kamien (Settings/WorkArea): do 8 wierzcholkow XYZ
+  boardX: 'HMI.aCuttingBoardX',
+  boardY: 'HMI.aCuttingBoardY',
+  boardZ: 'HMI.aCuttingBoardZ',
+  boardCount: 'HMI.iCuttingBoardApexNumber',
+  rockX: 'HMI.aCuttingRockX',
+  rockY: 'HMI.aCuttingRockY',
+  rockZ: 'HMI.aCuttingRockZ',
+  rockCount: 'HMI.iCuttingRockApexNumber',
   // dynamika (Settings/VelocityAcceleration) - do trybu offline ("Pobierz z PLC")
   cutVel: 'HMI.fVelocitySawMode',
   cutAcc: 'HMI.Acc',
@@ -75,15 +84,17 @@ export const DEFAULTS = {
   autoClearOnStart: true,               // nowe ciecie (bCutStart) czysci poprzednie
   materialMargin: 300,
   materialMinSize: [1200, 800],
-  // kamien: punkt poczatkowy (naroznik - najmniejsze X i Y) i wymiary [mm];
-  // auto = material rysowany wokol ciec, bez wymiarow
-  stone: { auto: false, x0: 0, y0: 0, length: 3000, width: 2000 },
-  // model maszyny (pila mostowa) w widoku: most wzdluz osi bridgeAlong ('x' - most jedzie w Y), sciany
-  // margin mm od kamienia, spod mostu bridgeZ mm nad Z = 0, dlugosc slupa Z, wysokosc stolu (do podlogi)
-  frame: { show: true, bridgeAlong: 'x', margin: 400, bridgeZ: 300, ramLength: 1400, tableHeight: 700 },
+  // model maszyny (pila mostowa) w widoku - wg punktow stolu, niezalezny od kamienia: most wzdluz osi
+  // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu, spod mostu bridgeZ mm nad Z = 0,
+  // dlugosc slupa Z, wysokosc stolu (do podlogi)
+  frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700 },
   // tryb offline: wartosci poczatkowe formularzy (mm; m/min, m/s2; deg/s, deg/s2)
   offline: {
     machine: { discDiameter: 625, bladeWidth: 4, cutTiltDiameter: 200, headRotationDiameter: 100, materialHeight: 450, materialThickness: 40 },
+    // stol i kamien: punkty XYZ jak aCuttingBoard / aCuttingRock (pozycje osi), count = liczba wierzcholkow;
+    // gora materialu offline jak w PLC: Z min punktow stolu - grubosc
+    board: { count: 4, points: [[0, 0, 490], [3500, 0, 490], [3500, 3000, 490], [0, 3000, 490]] },
+    rock: { count: 4, points: [[300, 200, 450], [2800, 200, 450], [2800, 1800, 450], [300, 1800, 450]] },
     dynamics: { cutVel: 1.8, cutAcc: 0.06, cutDec: 0.06, fastVel: 9, fastAcc: 0.3, zVel: 1.2, zAcc: 0.04, aVel: 30, aAcc: 60, bVel: 10, bAcc: 20 },
     cut: { x0: 200, y0: 300, x1: 1000, y1: 300, b: 0, depth: 30, passes: 3, above: 20 },
     start: { x: 0, y: 0, z: 0, a: 0, b: 0 },
