@@ -6,6 +6,24 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-21
 
+### Przyciski „Zapisz” punktów początkowych / końcowych (#139)
+- Zakładka Operacja, pod polami X / Y każdego punktu: przycisk „Zapisz …” (początek, koniec, start, narożnik, punkt, punkt środkowy łuku, górny wierzchołek elipsy). Tak jak w PLC przepisuje aktualną pozycję osi X / Y zaokrągloną do 0,01 mm (`TO_REAL(TO_DINT(fXActualPosition*100))/100.0`).
+  - Zmienne PLC w podpowiedzi przycisku:
+    - cięcie proste i profil: `bManualXSaveZero` / `bManualYSaveZero`, `bManualEndPositionSave`;
+    - pasy: `bManualStripesStartSaveX/Y`, `bCutStripesEndPositionSave`;
+    - bloki: `bManualBlocksStartPositionSave90` / `…Save`;
+    - krawędzie: `bEdgesStartPositionSave`;
+    - zakoszenie: `bMowingSaveStartPosition`;
+    - łuk: `bManualArcZero/End/MiddlePositionSave`;
+    - frez, wiercenie: jak cięcie;
+    - polerowanie: `bSaveStartPosition`.
+  - Przycisk jest widoczny razem z polami punktu, np. „Zapisz koniec” znika przy kącie i długości.
+- Automat: „Zapisz punkt startowy” (`bProgramSaveStartPosition`, frez `bProgramMillStartPointSave`), tylko offline.
+- Definicje w operacjach: `saves: [{x, y, name, plc}]` (`ops.js`, `tools.js`), `savedPosition` - zaokrąglenie.
+- Sprawdzone:
+  - `npm test` 112/112, nowy `test/saves.test.js`;
+  - w przeglądarce: cięcie proste (812.35 / 455.11 i 1500.01 / 455.11, znaczniki planu odświeżone), ukrywanie przy kącie i długości, liczba przycisków w każdej operacji, punkt startowy automatu.
+
 ### Znaczniki pozycji XY na podglądzie planu (#137)
 - Przy rysowaniu kolejnych akcji (operacja, kroki automatu offline i online, figury, frez, wiercenie, polerowanie) na materiale są zaznaczone punkty początkowe i końcowe z wartościami `X … Y …`:
   - kropka: początek zielony, koniec czerwony, punkt wspólny (koniec akcji i = początek akcji i+1) pomarańczowy i tylko jeden;

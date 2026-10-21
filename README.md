@@ -177,6 +177,13 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
   - Programy: cięcie proste (zewnętrzne / wewnętrzne / odwrócone), pasy,
     bloki, krawędzie, zakoszenie, łuk (promień / trzy punkty / cięciwa),
     okrąg, elipsa, profil krawędzi z wygładzaniem.
+  - **Zapisz** (#139): pod polami X / Y każdego punktu (początek, koniec,
+    start, narożnik, punkt środkowy łuku, …) przycisk, który jak w PLC
+    przepisuje aktualną pozycję osi X / Y zaokrągloną do 0,01 mm
+    (`TO_REAL(TO_DINT(fXActualPosition*100))/100.0`; np. `bManualXSaveZero`,
+    `bManualEndPositionSave`, `bManualStripesStartSaveX/Y`,
+    `bEdgesStartPositionSave`, `bManualArc…PositionSave`). Przycisk jest
+    widoczny razem z polami punktu.
   - Cięcie proste jak `CutST.GetPositions` (`bManualTwoPoint`):
     - **dwa punkty**: kąt A liczony z punktów;
     - **kąt i długość**: koniec = start + L·(cos A, sin A), a z „Długość w
@@ -204,7 +211,9 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
     - koniec wewnętrzny (wewn., wewn. początek / koniec): rzaz nie wychodzi
       za punkt, także przy skosie. Odsunięcie końca jest liczone z
       głębokości w płaszczyźnie tarczy (z / cos B), a nie z pionowej jak w PLC.
-  - Offline: tabela do edycji i „Przykład”.
+  - Offline: tabela do edycji i „Przykład”; „Zapisz punkt startowy” wpisuje
+    aktualną pozycję X / Y (`bProgramSaveStartPosition`, frez
+    `bProgramMillStartPointSave`).
   - **Figura – wypełnij bufor jak PLC** (`FiguresGeometricSt`): wybierasz
     figurę i wpisujesz jej pola (jak na ekranach figur w HMI: start
     `fFigureX/YStartPosition`, długość, szerokość, kąt, promień, …).

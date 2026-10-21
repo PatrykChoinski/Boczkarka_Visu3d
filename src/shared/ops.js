@@ -1,6 +1,8 @@
 // Operacje piły w trybie offline: pola formularza (jak na ekranach HMI) i budowa programu ruchu jak w PLC.
-// Kazda operacja: {id, name, plc, fields: [...], build(pb, v, common)} - pb = ProgramBuilder,
+// Kazda operacja: {id, name, plc, fields: [...], saves: [...], build(pb, v, common)} - pb = ProgramBuilder,
 // v - wartosci pol operacji, common - wspolne parametry ciecia (glebokosc, wychyl, wyjazd).
+// saves - przyciski "Zapisz" (#139): {x, y, name, plc} - pola punktu, do ktorych wpisywana jest aktualna pozycja
+// osi X / Y (jak w PLC: TO_REAL(TO_DINT(fXActualPosition*100))/100.0).
 
 import { addCutST } from './cutst.js';
 export { COMMON_FIELDS } from './common.js';
@@ -22,9 +24,13 @@ function cutLines(pb, lines, common) {
   });
 }
 
+// Pozycja osi do zapisu jak w PLC: zaokraglenie do 0,01 mm
+export const savedPosition = (v) => Math.round(v * 100) / 100;
+
 export const OPS = [
   {
     id: 'cut', name: 'Cięcie proste', plc: 'CutST',
+    saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualXSaveZero, bManualYSaveZero' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualEndPositionSave' }],
     fields: [
       { k: 'twoPoint', label: 'Dwa punkty (inaczej kąt i długość) – bManualTwoPoint', t: 'bool', d: true },
       { k: 'x0', label: 'Początek X', t: 'num', d: 400 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 400 },
@@ -48,6 +54,7 @@ export const OPS = [
   },
   {
     id: 'stripes', name: 'Pasy', plc: 'CutStripesST',
+    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bManualStripesStartSaveX, bManualStripesStartSaveY' }, { x: 'xe', y: 'ye', name: 'koniec', plc: 'bCutStripesEndPositionSave' }],
     fields: [
       { k: 'xs', label: 'Start X', t: 'num', d: 400 }, { k: 'ys', label: 'Start Y', t: 'num', d: 400 },
       { k: 'xCut', label: 'Cięcia wzdłuż X', t: 'bool', d: true },
@@ -71,6 +78,7 @@ export const OPS = [
   },
   {
     id: 'blocks', name: 'Bloki', plc: 'CutBlocksST',
+    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bManualBlocksStartPositionSave90, bManualBlocksStartPositionSave' }],
     fields: [
       { k: 'xs', label: 'Start X', t: 'num', d: 400 }, { k: 'ys', label: 'Start Y', t: 'num', d: 300 },
       { k: 'lengths', label: 'Długości bloków w X', t: 'list', d: '500, 500, 400' },
@@ -83,6 +91,7 @@ export const OPS = [
   },
   {
     id: 'edges', name: 'Krawędzie (prostokąt)', plc: 'EdgesST',
+    saves: [{ x: 'xs', y: 'ys', name: 'narożnik', plc: 'bEdgesStartPositionSave' }],
     fields: [
       { k: 'xs', label: 'Narożnik X', t: 'num', d: 500 }, { k: 'ys', label: 'Narożnik Y', t: 'num', d: 400 },
       { k: 'length', label: 'Długość [mm]', t: 'num', d: 1200 }, { k: 'width', label: 'Szerokość [mm]', t: 'num', d: 700 },
@@ -99,6 +108,7 @@ export const OPS = [
   },
   {
     id: 'mowing', name: 'Zakoszenie', plc: 'MowingST',
+    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bMowingSaveStartPosition' }],
     fields: [
       { k: 'xs', label: 'Start X', t: 'num', d: 600 }, { k: 'ys', label: 'Start Y', t: 'num', d: 600 },
       { k: 'distance', label: 'Odległość D [mm]', t: 'num', d: 300 },
@@ -121,6 +131,8 @@ export const OPS = [
   },
   {
     id: 'arc', name: 'Łuk', plc: 'CutArcST',
+    saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualArcZeroPositionSave' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualArcEndPositionSave' },
+      { x: 'xm', y: 'ym', name: 'punkt środkowy', plc: 'bManualArcMiddlePositionSave' }],
     fields: [
       { k: 'x0', label: 'Początek X', t: 'num', d: 600 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 500 },
       { k: 'x1', label: 'Koniec X', t: 'num', d: 1600 }, { k: 'y1', label: 'Koniec Y', t: 'num', d: 500 },
@@ -142,6 +154,7 @@ export const OPS = [
   },
   {
     id: 'circle', name: 'Okrąg', plc: 'CutCircleST',
+    saves: [{ x: 'x', y: 'y', name: 'punkt' }],
     fields: [
       { k: 'x', label: 'Punkt X', t: 'num', d: 1500 }, { k: 'y', label: 'Punkt Y', t: 'num', d: 1500 },
       { k: 'center', label: 'Punkt = środek (inaczej góra okręgu)', t: 'bool', d: true },
@@ -154,6 +167,7 @@ export const OPS = [
   },
   {
     id: 'ellipse', name: 'Elipsa', plc: 'CutElipseST',
+    saves: [{ x: 'xs', y: 'ys', name: 'górny wierzchołek', plc: 'fManualElipseX/YStartPosition' }],
     fields: [
       { k: 'xs', label: 'Górny wierzchołek X', t: 'num', d: 1500 }, { k: 'ys', label: 'Górny wierzchołek Y', t: 'num', d: 1500 },
       { k: 'length', label: 'Długość (oś X) [mm]', t: 'num', d: 1400 }, { k: 'width', label: 'Szerokość (oś Y) [mm]', t: 'num', d: 900 },
@@ -163,6 +177,7 @@ export const OPS = [
   },
   {
     id: 'profile', name: 'Profil krawędzi', plc: 'ProgramAutoProfileST (kroki 8-11) + CutST',
+    saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualXSaveZero, bManualYSaveZero' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualEndPositionSave' }],
     fields: [
       { k: 'x0', label: 'Początek profilu X', t: 'num', d: 600 }, { k: 'y0', label: 'Początek profilu Y', t: 'num', d: 400 },
       { k: 'x1', label: 'Koniec profilu X', t: 'num', d: 640 }, { k: 'y1', label: 'Koniec profilu Y', t: 'num', d: 400 },

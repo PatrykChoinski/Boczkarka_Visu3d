@@ -84,6 +84,7 @@ export function polishingPath(v) {
 export const TOOL_OPS = [
   {
     id: 'millLine', mode: 'mill', name: 'Frezowanie linii', plc: 'MillST',
+    saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualXSaveZero, bManualYSaveZero' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualEndPositionSave' }],
     fields: [
       { k: 'twoPoint', label: 'Dwa punkty (inaczej kąt i długość) – bManualTwoPoint', t: 'bool', d: true },
       { k: 'x0', label: 'Początek X', t: 'num', d: 600 }, { k: 'y0', label: 'Początek Y', t: 'num', d: 600 },
@@ -118,6 +119,7 @@ export const TOOL_OPS = [
   },
   {
     id: 'drill', mode: 'drill', name: 'Wiercenie', plc: 'DrillST',
+    saves: [{ x: 'x', y: 'y', name: 'punkt', plc: 'bManualXSaveZero, bManualYSaveZero' }],
     fields: [
       { k: 'x', label: 'Punkt X (fManualXZeroPosition)', t: 'num', d: 1000 },
       { k: 'y', label: 'Punkt Y (fManualYZeroPosition)', t: 'num', d: 800 },
@@ -138,6 +140,7 @@ export const TOOL_OPS = [
   },
   {
     id: 'polishing', mode: 'polishing', name: 'Polerowanie', plc: 'Polishing',
+    saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bSaveStartPosition' }],
     fields: [
       { k: 'xs', label: 'Start X (fXStartPosition)', t: 'num', d: 600 },
       { k: 'ys', label: 'Start Y (fYStartPosition)', t: 'num', d: 500 },

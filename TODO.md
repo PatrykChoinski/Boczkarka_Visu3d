@@ -90,3 +90,7 @@ Gałąź `develop/AnimacjaObrotowNarzedzi` (Visu3D i repo główne), od najnowsz
 - [x] Przełącznik XY, podświetlenie aktualnego kroku
 - [x] Odległości między punktami (początek - koniec akcji) w połowie toru
 - [x] Przełącznik Odległości na górnym pasku (osobno od XY)
+
+## #139 Zapisz punkty
+- [x] Przyciski Zapisz przy punktach początkowych / końcowych wszystkich operacji (jak w PLC, 0,01 mm)
+- [x] Zapisz punkt startowy automatu

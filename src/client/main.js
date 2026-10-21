@@ -10,7 +10,7 @@ import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
 import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor } from '../shared/tools.js';
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
-import { OPS, COMMON_FIELDS, defaults, parseField } from '../shared/ops.js';
+import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
 import { JogMotion, interpolationDir, laserLine, A_PRESETS, B_PRESETS } from '../shared/jog.js';
@@ -414,13 +414,31 @@ function fieldHtml(group, f) {
 
 const fieldEl = (group, k) => $(`[data-g="${group}"][data-k="${k}"]`);
 
-function renderGroup(container, group, fields, values) {
-  container.innerHTML = fields.map((f) => fieldHtml(group, f)).join('');
+// saves - przyciski "Zapisz" punktow (#139): wiersz z przyciskiem za polem Y punktu
+function renderGroup(container, group, fields, values, saves = []) {
+  container.innerHTML = fields.map((f) => fieldHtml(group, f) + saves.filter((sv) => sv.y === f.k).map((sv) => saveHtml(group, sv)).join('')).join('');
   writeGroup(group, fields, values);
   applyVisibility(group, fields);
   for (const el of container.querySelectorAll('[data-g]')) {
     el.addEventListener('input', () => { applyVisibility(group, fields); offlineFormsChanged(); });
   }
+  for (const b of container.querySelectorAll('[data-save-x]')) b.onclick = () => savePoint(group, fields, b.dataset.saveX, b.dataset.saveY);
+}
+
+function saveHtml(group, sv) {
+  const title = `Wpisz aktualną pozycję osi X / Y jako ${sv.name}${sv.plc ? ` (jak w PLC: ${sv.plc})` : ''}`;
+  return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.y}"><button data-save-x="${sv.x}" data-save-y="${sv.y}" title="${title}">Zapisz ${sv.name}</button></div>`;
+}
+
+// "Zapisz": aktualna pozycja osi X / Y do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
+function savePoint(group, fields, kx, ky) {
+  const p = state.pose;
+  if (!p) return;
+  fieldEl(group, kx).value = savedPosition(p.x);
+  fieldEl(group, ky).value = savedPosition(p.y);
+  applyVisibility(group, fields);
+  offlineFormsChanged();
+  requestDraw();
 }
 
 // Pola z warunkiem show(v) widoczne tylko przy zaznaczonej opcji (np. koniec X/Y tylko przy "dwa punkty")
@@ -431,6 +449,9 @@ function applyVisibility(group, fields) {
     const el = fieldEl(group, f.k);
     const box = el?.closest('label');
     if (box) box.hidden = !f.show(v);
+    // przycisk "Zapisz" punktu widoczny razem z polem Y punktu
+    const save = $(`[data-save-group="${group}"][data-save-of="${f.k}"]`);
+    if (save) save.hidden = !f.show(v);
   }
 }
 
@@ -469,7 +490,7 @@ function showOp() {
   $('#opHint').textContent = `Jak w PLC: ${op.plc}`;
   // glebokosc / wychyl / wyjazd wspolne tylko dla pily - operacje narzedzi maja wlasne pola
   $('#commonBox').hidden = currentMode() !== 'saw';
-  renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields));
+  renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields), op.saves);
   updateCutInfo();
   requestDraw();
 }
@@ -580,6 +601,7 @@ function writeAutoHeader(a, editable) {
   for (const el of $$('[data-prof]')) el.hidden = a.kind !== 'profile';
   $('#autoEdit').hidden = !editable;
   $('#autoRun').hidden = !editable;
+  $('#autoSaveRow').hidden = !editable;
   $('#figBox').hidden = !editable;
 }
 
@@ -1325,6 +1347,13 @@ function bindUi() {
   $('#homeModes').innerHTML = MODES.map((x) => `<button data-home="${x.id}">${x.name} <small>B ${x.homeB}°</small></button>`).join('');
   for (const b of $$('[data-home]')) b.onclick = () => { state.tool.target = b.dataset.home; renderHoming(); };
   $('#homeStart').onclick = () => startHoming(state.tool.target || state.tool.mode);
+  // automat: punkt startowy z aktualnej pozycji (bProgramSaveStartPosition / bProgramMillStartPointSave)
+  $('#autoSaveStart').onclick = () => {
+    if (!state.pose || state.mode !== 'offline') return;
+    $('#autoOX').value = savedPosition(state.pose.x);
+    $('#autoOY').value = savedPosition(state.pose.y);
+    autoChanged();
+  };
   $('#fromPlc').onclick = fromPlc;
   $('#defaults').onclick = () => {
     writeFields('m', state.cfg.offline.machine);
