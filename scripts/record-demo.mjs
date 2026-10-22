@@ -80,9 +80,59 @@ async function main() {
   await page.evaluate(() => {
     for (const id of ['demoCap', 'demoCur']) { const d = document.createElement('div'); d.id = id; document.body.append(d); }
     document.getElementById('demoCap').style.opacity = 0;
-    // bez opisow punktow (X / Y) na widoku - przy wielu punktach nachodza na siebie
-    const marks = document.getElementById('showMarks');
-    if (marks?.checked) { marks.checked = false; marks.dispatchEvent(new Event('change', { bubbles: true })); }
+    // tor, punkty X / Y i wymiary - wlaczane na chwile przed kazdym programem (play)
+    for (const id of ['showPlan', 'showMarks', 'showDist']) {
+      const el = document.getElementById(id);
+      if (el?.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    // kamera filmu: 'follow' - plynny najazd blisko glowicy (i za nia), 'home' - powrot do widoku glownego
+    const cam = window.demoCam = { mode: 'free', home: null, off: null };
+    const head = () => {
+      const v = window.vizu.view;
+      // narzedzie frezu / polerki (widoczne z rodzicami), inaczej srodek tarczy
+      let toolOn = Boolean(v.toolLowest?.visible);
+      v.toolLowest?.traverseAncestors((a) => { if (!a.visible) toolOn = false; });
+      const obj = toolOn ? v.toolLowest : v.disc;
+      return obj.getWorldPosition(v.camera.position.clone());
+    };
+    cam.follow = (dist, angle) => {
+      const v = window.vizu.view;
+      cam.home = { p: v.camera.position.clone(), t: v.controls.target.clone() };
+      const d = cam.home.p.clone().sub(cam.home.t).normalize();
+      const a = angle * Math.PI / 180;
+      cam.off = d.set(d.x * Math.cos(a) - d.y * Math.sin(a), d.x * Math.sin(a) + d.y * Math.cos(a), d.z).normalize().multiplyScalar(dist);
+      cam.mode = 'follow';
+    };
+    // powrot: stały czas 1,2 s (ease in-out) od biezacej pozycji do widoku glownego
+    cam.back = () => {
+      if (!cam.home) return;
+      const v = window.vizu.view;
+      cam.from = { p: v.camera.position.clone(), t: v.controls.target.clone(), at: performance.now() };
+      cam.mode = 'home';
+    };
+    let last = performance.now();
+    const step = (now) => {
+      const v = window.vizu.view;
+      const dt = Math.min(0.2, (now - last) / 1000);
+      last = now;
+      const active = cam.mode !== 'free';
+      if (cam.mode === 'follow') {
+        // najazd i podazanie za glowica - wygladzanie zalezne od czasu (nie od liczby klatek)
+        const t = head();
+        const k = 1 - Math.exp(-dt * 2.5);
+        v.controls.target.lerp(t, k);
+        v.camera.position.lerp(t.clone().add(cam.off), k);
+      } else if (cam.mode === 'home') {
+        const u = Math.min(1, (now - cam.from.at) / 1200);
+        const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+        v.controls.target.copy(cam.from.t).lerp(cam.home.t, e);
+        v.camera.position.copy(cam.from.p).lerp(cam.home.p, e);
+        if (u >= 1) cam.mode = 'free';
+      }
+      if (active) { v.controls.update(); v.render(); }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   });
 
   // --- pomocnicze -------------------------------------------------------------------------------------------
@@ -138,8 +188,21 @@ async function main() {
   const tab = (name) => click(`#screens button[data-tab="${name}"]`, 450);
   const running = () => page.evaluate(() => window.vizu.state.sim.running);
   const setSpeed = (v) => page.evaluate((v) => { const s = document.querySelector('#speed'); s.value = String(v); s.dispatchEvent(new Event('change', { bubbles: true })); }, v);
-  // program trwa najwyzej ~seconds: tempo symulacji dobrane do czasu programu; czekanie do konca programu
-  const play = async (startSel, seconds, { maxSpeed = 1000, finish = true, speed: fixed = 0 } = {}) => {
+  const layers = (on) => page.evaluate((on) => {
+    for (const id of ['showPlan', 'showMarks', 'showDist']) {
+      const el = document.getElementById(id);
+      if (el && el.checked !== on) { el.checked = on; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+  }, on);
+  const camBack = async () => {
+    await page.evaluate(() => window.demoCam.back());
+    await page.waitForFunction(() => window.demoCam.mode === 'free', null, { timeout: 20000, polling: 100 });
+  };
+  // program trwa najwyzej ~seconds: tempo symulacji dobrane do czasu programu; czekanie do konca programu.
+  // plan - tor i punkty przed startem, schowane po planHide ms; zoom - {at, hold [s], dist [mm], angle [st.]}:
+  // najazd kamery na glowice w trakcie programu i powrot do widoku glownego
+  const play = async (startSel, seconds, { maxSpeed = 1000, finish = true, speed: fixed = 0, plan = true, planHide = 2500, zoom = null } = {}) => {
+    if (plan) { await layers(true); await sleep(1200); }
     // tempo z poprzedniego programu - krotki program skonczylby sie przed odczytem czasu
     await setSpeed(1);
     await click(startSel, 150);
@@ -148,13 +211,26 @@ async function main() {
     await setSpeed(speed);
     const t0 = Date.now();
     const limit = finish ? seconds * 1000 + 15000 : seconds * 1000;
-    while (await running() && Date.now() - t0 < limit) await sleep(100);
+    let planOn = plan;
+    let zoomState = 0;
+    while (await running() && Date.now() - t0 < limit) {
+      const e = Date.now() - t0;
+      if (planOn && e > planHide) { await layers(false); planOn = false; }
+      if (zoom && zoomState === 0 && e > zoom.at * 1000) {
+        await page.evaluate(([d, a]) => window.demoCam.follow(d, a), [zoom.dist ?? 1600, zoom.angle ?? 25]);
+        zoomState = 1;
+      }
+      if (zoomState === 1 && e > (zoom.at + zoom.hold) * 1000) { await page.evaluate(() => window.demoCam.back()); zoomState = 2; }
+      await sleep(100);
+    }
+    if (planOn) await layers(false);
+    if (zoomState) await camBack();
     log(`  ${startSel}: program ${dur.toFixed(0)} s, tempo ${speed}x, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   };
   const home = async (index, seconds = 2.5) => {
     await tab('home');
     await click(`#homeModes button:nth-child(${index + 1})`, 200);
-    await play('#homeStart', seconds, { maxSpeed: 30 });
+    await play('#homeStart', seconds, { maxSpeed: 30, plan: false });
   };
 
   // --- nagrywanie -----------------------------------------------------------------------------------------------
@@ -201,38 +277,43 @@ async function main() {
   mark('2. pila');
   await caption('Piła – programy', 'Manual: cięcie proste, pasy, łuk, elipsa');
   await tab('cut');
-  for (const [op, sec] of [['cut', 4], ['stripes', 8], ['arc', 4.5], ['ellipse', 4]]) {
+  for (const [op, sec, zoom, speed] of [['cut', 4], ['stripes', 8, { at: 2.6, hold: 3.6, dist: 1500, angle: 30 }, 100], ['arc', 4.5], ['ellipse', 4]]) {
     await choose('#op', op, 250);
     await click('#clear', 150);
-    await play('#cutStart', sec);
+    await play('#cutStart', sec, { zoom, speed });
   }
   await caption('Piła – Automat', 'Tabela kroków jak ProgramAutoCutST, figury z PLC');
   await tab('auto');
   await choose('#autoKind', 'cut');
   await click('#autoDemo', 300);
   await click('#clear', 150);
-  await play('#autoStart', 12);
+  await play('#autoStart', 7.5, { zoom: { at: 2.4, hold: 3.6, dist: 2100, angle: 15 } });
   await choose('#fig', 'WORKTOP', 300);
+  // blat na kamieniu (2500 x 1600): A 1500, boki poziome A = C + E + G
+  await page.evaluate(() => {
+    const el = document.querySelector('#figFields [data-k="lengths"]');
+    el.value = '1500, 600, 500, 400, 700, 300, 0, 0';
+    for (const ev of ['input', 'change']) el.dispatchEvent(new Event(ev, { bubbles: true }));
+  });
   await click('#figFill', 400);
   await click('#clear', 150);
-  await play('#autoStart', 10);
+  await play('#autoStart', 7);
 
   // 3. frez - automat i G-kod z Madonna (~30 %)
   mark('3. frez');
   await caption('Frez – Automat i G-kod', 'Bazowanie w trybie frezu, figury frezu, płaskorzeźba Madonny (G-kod)');
   await home(1, 2.5);
   await tab('auto');
-  await choose('#fig', 'SINK_DRAINER', 300);
+  await choose('#fig', 'RECTANGLE_CUTTED', 300);
   await click('#figFill', 300);
   await click('#clear', 150);
-  await play('#autoStart', 7, { finish: false, speed: 100 });
-  await click('#autoRun .stopBtn', 300);
+  await play('#autoStart', 6, { zoom: { at: 2.3, hold: 2.5, dist: 1300, angle: 30 } });
   await caption('Frez – G-kod CNC', 'Madonna, frez Ø25 – symulacja zdejmowania materiału');
   await tab('cnc');
   await click('#cncExample', 200);
   await page.waitForFunction(() => /madonna/i.test(document.querySelector('#cncName').textContent), null, { timeout: 30000 });
   await sleep(600);
-  await play('#cncStart', 8, { finish: false });
+  await play('#cncStart', 9, { finish: false, plan: false, zoom: { at: 3, hold: 4.5, dist: 1100, angle: 35 } });
   // reszta frezowania poza filmem - film wraca na gotowej plaskorzezbie
   cut = true;
   await page.waitForFunction(() => !window.vizu.state.sim.running, null, { timeout: 600000, polling: 500 });
@@ -249,9 +330,9 @@ async function main() {
   await caption('Polerowanie', 'Tryb polerowania – Manual');
   await home(3, 1);
   await tab('cut');
-  await play('#cutStart', 2.2, { finish: false });
+  await play('#cutStart', 1.8, { finish: false, planHide: 1000, speed: 100 });
   await caption('VizuApp', 'Promasz – piła mostowa jednosuportowa');
-  await sleep(1000);
+  await sleep(900);
   mark('koniec');
 
   await cdp.send('Page.stopScreencast');

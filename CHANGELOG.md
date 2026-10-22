@@ -6,6 +6,11 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Film prezentacyjny – druga wersja (#149)
+- Tor, punkty X / Y i wymiary pokazywane przed każdym programem i chowane po ok. 2,5 s; najazdy kamery blisko głowicy (płynne podążanie za tarczą / frezem) i powrót do widoku głównego – pasy, Automat piły, prostokąt frezu, G-kod.
+- Frez: prostokąt z zaokrąglonymi narożami zamiast ociekacza; G-kod Madonny pokazywany ok. 15 s dłużej; Blat z A = 1500 (C = 500, E = 700 – figura się domyka, tor na kamieniu).
+- Film: `E:\VizuApp_film\VizuApp_prezentacja_2026-10-22_v2.mp4` (2:13, Full HD, 30 kl./s); poprzednia wersja zostaje obok.
+
 ### Film prezentacyjny (#149)
 - `scripts/record-demo.mjs`: film ok. 2 min, Full HD, 30 kl./s z wersji statycznej (logowanie demo Serwis), Chrome bez okna z kartą graficzną, klatki z CDP (`Page.startScreencast`), MP4 przez ffmpeg (libx264). Podpisy części i kursor na filmie; tempo symulacji dobierane do czasu programu. Proporcje: ustawienia / bazowanie / ruchy ręczne 18 s (15 %), piła – Manual (cięcie proste, pasy, łuk, elipsa) i Automat (demo, figura Blat) 61 s (51 %), frez – Automat (Ociekacz) i G-kod z Madonną 31 s (26 %, reszta frezowania wycięta, film wraca na gotowej płaskorzeźbie w podglądzie z góry), polerowanie 9 s.
 - Film zapisany lokalnie: `E:\VizuApp_film\VizuApp_prezentacja_2026-10-22.mp4` (2:05, 9 MB) – nie w repo.
