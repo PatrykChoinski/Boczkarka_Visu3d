@@ -17,3 +17,11 @@ test('opisy zmiennych PLC (tylko Admin): nazwy w nawiasach i dopiskach rozpoznan
   assert.ok(hasPlcName('aCuttingBoardX/Y/Z') && hasPlcName('HMI.bService…') && hasPlcName('yLaser'));
   assert.ok(!hasPlcName('Zapisane_Pozycje w HMI') && !hasPlcName('OPC UA – węzeł, typ, wartość'));
 });
+
+test('opisy zmiennych PLC: zdanie z nazwa poza nawiasem chowane w calosci, programy PLC (…ST)', () => {
+  assert.equal(stripPlcNames('Tryb z PLC. Bity bService… są wspólne. Reszta jak w HMI.'), 'Tryb z PLC. Reszta jak w HMI.');
+  assert.equal(stripPlcNames('Prędkości z PLC (fVelocityFast, DecX; w PLC mm/s). Dalej opis.'), 'Prędkości z PLC. Dalej opis.');
+  assert.equal(stripPlcNames('Piła (ProgramAutoCutST)'), 'Piła');
+  assert.equal(stripPlcNames('Jak w PLC (BaseHomingST): Z do 0.'), 'Jak w PLC: Z do 0.');
+  assert.ok(hasPlcName('BaseHomingST') && !hasPlcName('TEST') && !hasPlcName('Ostatni POST'));
+});

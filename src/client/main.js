@@ -1249,7 +1249,7 @@ function renderService() {
   }
   const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
   $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. ${page.note ? `${page.note} ` : ''}`
-    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity bService… i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
+    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity serwisowe (HMI.bService…) i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
   const all = svcAll();
   const extra = page.id === 'settings' ? extraServiceGroup() : null;
   $('#servicePage').innerHTML = [...page.groups, ...(extra ? [{ ...extra, items: all.slice(all.length - extra.items.length) }] : [])]

@@ -1,5 +1,5 @@
 // Opisy zmiennych PLC tylko dla Admina (DOM): fragmenty tekstow z nazwami zmiennych (nawiasy, dopiski, <code>, szare
-// dopiski naglowkow) dostaja klase plcName - bez klasy admin na <body> sa ukryte (style.css); podpowiedzi (title)
+// dopiski naglowkow) dostaja klase plcName, pozycje list (option) maja napis bez nazw - bez klasy admin na <body> sa ukryte (style.css); podpowiedzi (title)
 // bez nazw zmiennych i opisow dzialania w PLC. Nowe i zmienione elementy - MutationObserver.
 
 import { hasPlcName, plcNameRanges, stripPlcNames } from '../shared/plcnames.js';
@@ -41,9 +41,20 @@ function markTitle(el) {
   }
 }
 
+// pozycje list (option nie moze miec ukrytego <span>) - pelny napis w data-text-full
+function markOption(o) {
+  if (o.dataset.textFull === undefined) {
+    if (!hasPlcName(o.text)) return;
+    o.dataset.textFull = o.text;
+  }
+  const want = admin ? o.dataset.textFull : stripPlcNames(o.dataset.textFull);
+  if (o.text !== want) o.text = want;
+}
+
 export function markPlcNames(root = document.body) {
   if (!root || root.nodeType !== 1 || root.closest?.(IGNORE)) return;
   for (const el of root.querySelectorAll('code, .muted')) if (hasPlcName(el.textContent)) el.classList.add('plcName');
+  for (const o of root.tagName === 'OPTION' ? [root] : root.querySelectorAll('option')) markOption(o);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => {
       const p = n.parentElement;
@@ -66,6 +77,7 @@ export function setPlcNamesAdmin(on) {
     if (want) el.setAttribute('title', want);
     else el.removeAttribute('title');
   }
+  for (const o of document.querySelectorAll('option[data-text-full]')) markOption(o);
 }
 
 export function watchPlcNames() {

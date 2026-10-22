@@ -217,7 +217,7 @@
       </div>
 
       <div class="tab" data-tab="home" hidden>
-        <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
+        <p class="hint">Jak w PLC (BaseHomingST): Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
         <div class="row">
           <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
@@ -298,7 +298,7 @@
           <button id="fromPlc" title="Pobierz parametry z PLC"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg></button>
           <button id="defaults" title="Wartości domyślne"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg></button>
         </div>
-        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB (w PLC mm/s i mm/s² - przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia.</p>
+        <p class="hint">Z PLC: prędkości i przyspieszenia (w PLC mm/s i mm/s² – przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia (fVelocitySawMode, Acc, Dec – cięcie; fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB).</p>
       </div>
     </aside>
   </main>
