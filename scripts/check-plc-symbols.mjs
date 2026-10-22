@@ -5,13 +5,14 @@
 //   (repo glowne: PLC/PilaJednosuportowa.Device.Application.xml, PLC/PilaJednosuportowaAI.Device.Application.xml)
 //
 // Wypisuje typ IEC kazdej zmiennej i sprawdza rodzaj (BOOL dla flag, tablice, liczby); kod wyjscia 1 - braki / zly typ.
+// #155 bity alarmow (zmienne opcjonalne 'alarm:...') - brak tylko w podsumowaniu (do dodania w symbol configu PLC).
 
 import fs from 'node:fs';
-import { VARIABLES } from '../src/shared/config.js';
+import { VARIABLES, isOptionalKey } from '../src/shared/config.js';
 import { SERVICE_SCREEN_VARS } from '../src/shared/servicescreens.js';
 
 // Oczekiwany rodzaj wartosci w aplikacji: bool, array albo liczba (num, w tym enumy i WORD)
-const BOOL_KEYS = /^(mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays|advancedDesktop)/;
+const BOOL_KEYS = /^(alarm:|mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays|advancedDesktop)/;
 const ARRAY_KEYS = /^(board[XYZ]|rock[XYZ]|prog(X|Y|Step|Radius|Angle|Depth|DepthEnd|Length|OutIn))$/;
 const svcKind = (t) => (/^ARRAY/.test(t ?? '') ? 'array' : t === 'BOOL' ? 'bool' : 'num');
 const expected = (k) => (k.startsWith('hmi:') ? (/^hmi:HMI\.bService/.test(k) && !SERVICE_SCREEN_VARS[VARIABLES[k]] ? 'bool' : svcKind(SERVICE_SCREEN_VARS[VARIABLES[k]]))
@@ -60,6 +61,7 @@ function lookup({ types, syms }, name) {
 const files = process.argv.slice(2);
 if (!files.length) { console.log('Użycie: node scripts/check-plc-symbols.mjs <plik symboli .xml> [...]'); process.exit(2); }
 let bad = 0;
+let optMissing = 0;
 for (const f of files) {
   const sym = parse(fs.readFileSync(f, 'utf8'));
   console.log(`\n${f}`);
@@ -71,9 +73,11 @@ for (const f of files) {
       const kind = t.kind === 'array' ? 'array' : t.iec === 'BOOL' ? 'bool' : 'num';
       ok = kind === exp;
     }
+    if (!t && isOptionalKey(k)) { optMissing++; continue; }
     if (!ok) bad++;
     console.log(`${ok ? 'OK  ' : 'BŁĄD'} ${k.padEnd(20)} ${name.padEnd(40)} ${t ? t.iec : 'brak w symbol configu'}${ok ? '' : `  (oczekiwane: ${exp})`}`);
   }
 }
+if (optMissing) console.log(`\nAlarmy (#155): ${optMissing} bitów HMI2.bAlarm... nie ma w symbol configu - online bez tych alarmów`);
 console.log(bad ? `\n${bad} problem(ów)` : '\nWszystkie zmienne są w symbol configu, typy zgodne');
 process.exit(bad ? 1 : 0);

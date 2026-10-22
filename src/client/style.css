@@ -242,6 +242,19 @@ label.cb .lt { display: inline-flex; }
 
 /* #143 Ruchy reczne jak ekrany HMI (MPG, MANUAL INTERPOLATION): uklad 1652 x 773 skalowany do szerokosci okna
    (czcionki i ikony w cqw - procent szerokosci ekranu); napisy zastapione piktogramami */
+/* #155 alarmy: licznik na przycisku, okno z tabela */
+#alarmOpen { position: relative; }
+#alarmOpen.on { background: var(--bad, #c62828); color: #fff; animation: alarmBlink 1s steps(2) infinite; }
+@keyframes alarmBlink { 50% { background: #8e1b1b; } }
+.alarmCount { position: absolute; top: 1px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: #fff; color: #c62828; font: 700 11px/16px "Segoe UI", sans-serif; }
+.win.alarmWin { width: min(620px, calc(100vw - 16px)); left: auto; right: 24px; }
+.alarmTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.alarmTable th, .alarmTable td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.alarmTable th { color: var(--muted); font-weight: 600; }
+.alarmTable tr.on td { color: #c62828; font-weight: 600; }
+.alarmTable tr.off td { color: var(--muted); }
+.alarmTable td.n { width: 34px; text-align: right; }
 .win.hmiWin { width: min(940px, calc(100vw - 16px)); resize: horizontal; min-width: 420px; }
 .hmiWin .winBody { padding: 0 0 10px; }
 #manPages { background: rgba(255, 255, 255, 0.1); }

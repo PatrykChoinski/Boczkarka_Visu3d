@@ -6,6 +6,11 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Alarmy z HMI (#155), ukrywanie wyciętych elementów (#156)
+- #155 Alarmy: wszystkie 81 alarmów z projektu HMI (sekcja `[Alarm]`: numer, bit `HMI2.bAlarm…`, teksty PL / EN, wyłączone 38 / 39, 84 bez bitu) w `src/shared/alarms.js` (eksport `HMI/scripts/dpa.py alarms`). Przycisk alarmów w górnym pasku (czerwony, migający, z liczbą aktywnych) i okno: aktywne, historia (wystąpił / ustąpił, potwierdzenie), lista wszystkich, „Kwituj”. Online – 78 bitów jako zmienne opcjonalne OPC UA (`alarm:…`, czytane co ok. 1 s; brak w symbol configu nie psuje połączenia, stan: „alarmy N/78”, `check-plc-symbols` tylko informuje). Offline – alarmy symulacji: 21 start bez bazowania, 58 krańcówka elektroniczna (#154), 45 skok o zero, 24 aktywny alarm; „Kwituj” kasuje. Testowy PLC zgłasza alarm 8 (ciśnienie powietrza) co 20 s.
+- #156 Ukryj wycięte elementy (przełącznik na pasku widoku): kamień dzielony cięciami przez całą grubość na kawałki (siatka nad kamieniem, rzazy z obwiedni głębokości cięć), największy zostaje, pozostałe ukryte – kamień jako kształt z otworami (`src/shared/cutout.js`, `shapesGeometry`). Przeliczane po zmianie cięć (w trakcie programu najwyżej co 1 s).
+- Sprawdzone: `npm test` 178/178 (`test/alarms.test.js`, `test/cutout.test.js`), smoke test, `check-plc-symbols` (oba pliki OK, 77 bitów alarmów brak w symbol configu); w przeglądarce online z testowym PLC (alarmy 78/78, alarm 8 pojawia się i ustępuje, historia) i offline (alarmy 21 / 58, Kwituj; prostokąt wycięty przez całą grubość – otwór w kamieniu).
+
 ### Zgłoszenia #150–#154
 - #150 Przezroczysty kamień: przełącznik na pasku widoku (ikona kamienia) – krycie kamienia 0,22 zamiast 0,72, widać cięcia wewnątrz materiału; zapamiętywany w przeglądarce.
 - #151 Cięcie pod kątem B (CutST ze skosem, skosy automatu): start nad materiałem na przedłużeniu skosu tarczy, wjazd w kamień i wyjazd z niego jednym ruchem XYZ pod kątem nachylenia (interpolacja), do wysokości nad materiałem – bez pionowego zjazdu na powierzchnię i pionowego wyjazdu.
