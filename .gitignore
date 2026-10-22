@@ -160,3 +160,6 @@ test-results/
 
 # Logowanie (#145): skroty hasel uzytkownikow (scripts/users.mjs) - tylko lokalnie / na maszynie
 users.json
+
+# Adres PLC wpisany na stronie (#148, okno Polaczenie z PLC) - lokalnie na maszynie / tablecie
+connection.json

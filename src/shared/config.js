@@ -198,8 +198,12 @@ export const CUT_STEPS = {
   81: 'CutStopReset', 90: 'CutPause', 91: 'CutResume', 100: 'CutFinish',
 };
 
+// Adres serwera OPC UA (#148): opc.tcp://host[:port][/sciezka]
+export const validEndpoint = (s) => typeof s === 'string' && s.length <= 200 && /^opc\.tcp:\/\/[A-Za-z0-9.-]+(:\d{1,5})?(\/[\w./-]*)?$/.test(s);
+
 export const DEFAULTS = {
   httpPort: 8128,                       // strona: http://localhost:8128
+  httpHost: '127.0.0.1',                // 127.0.0.1 - tylko ten komputer (maszyna); 0.0.0.0 - tez tablet w sieci (#148)
   endpoint: 'opc.tcp://localhost:4840', // serwer OPC UA sterownika (CODESYS)
   username: '',
   password: '',

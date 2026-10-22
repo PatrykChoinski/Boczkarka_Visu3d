@@ -168,10 +168,11 @@ footer { background: var(--bar); color: #dbe6f1; }
 
 @media (max-width: 900px) {
   main { flex-direction: column; }
-  #panel { width: auto; max-height: 45vh; border-left: none; border-top: 1px solid var(--border); }
+  /* tablet pionowo (#148): widok 3D i panel dziela wysokosc ekranu (bez przewijania strony, stopka zawsze widoczna) */
+  #panel { width: auto; flex: 45 1 0; min-height: 0; border-left: none; border-top: 1px solid var(--border); }
   .tabs.side { width: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 6px; }
   .tabs.side button { width: 46px; height: 46px; }
-  #viewWrap { min-height: 50vh; }
+  #viewWrap { flex: 55 1 0; min-height: 0; }
   .brand span { display: none; }
 }
 

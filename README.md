@@ -158,6 +158,33 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
   na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
   ani haseł, ani ich skrótów (dałyby się złamać).
 
+### Full HD na maszynie, tablet z adresem PLC (#148)
+
+- **Domyślnie (maszyna):** ekran Full HD (1920×1080), serwer VizuApp na
+  komputerze panelu, strona tylko lokalnie (`http://127.0.0.1:8128/`), PLC
+  przez OPC UA na `opc.tcp://localhost:4840`. Nic nie trzeba ustawiać.
+- **Okno „Połączenie z PLC”** (przycisk z błyskawicą w górnym pasku, Serwis
+  i Admin; bez `users.json` – każdy, ale zmiana tylko na komputerze z serwerem):
+  adres serwera OPC UA sterownika do wpisania, np. `opc.tcp://192.168.1.10:4840`.
+  „Połącz” – serwer VizuApp od razu łączy się z nowym adresem (bez restartu)
+  i zapamiętuje go w `connection.json` obok `config.json` (plik lokalny, poza
+  repo). „Domyślny” – wraca do adresu z `config.json` (albo `--endpoint`)
+  i usuwa `connection.json`. W oknie jest też stan połączenia i adresy strony
+  w sieci.
+- **Tablet z Windows:** paczka `dist\VizuApp\` jak na maszynie (`vizu.ps1`),
+  w oknie „Połączenie z PLC” adres sterownika w sieci.
+- **Tablet z przeglądarką (Android / iPad):** serwer VizuApp na komputerze
+  w sieci sterownika udostępniony w sieci: `"httpHost": "0.0.0.0"` w
+  `config.json` (albo `--host 0.0.0.0`), port 8128 otwarty w zaporze Windows.
+  Na tablecie `http://<IP komputera>:8128/` (adresy podaje okno „Połączenie
+  z PLC” i konsola serwera). Adres PLC – jak wyżej. Wtedy warto mieć
+  `users.json` (zmiana adresu i ekrany serwisowe tylko po zalogowaniu).
+- **Układ ekranu:** Full HD i tablet poziomo (1024×768, 1280×800) – menu po
+  lewej, widok 3D, panel po prawej; tablet pionowo (768×1024, 800×1280) – menu
+  u góry, widok 3D i panel jeden pod drugim, cała strona na ekranie (bez
+  przewijania), stopka zawsze widoczna. Przyciski ruchów ręcznych i widok 3D
+  obsługują dotyk.
+
 ## Ekran
 
 Przyciski ekranów są w kolumnie po lewej stronie w kolejności lewego menu HMI
@@ -572,7 +599,8 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | Klucz | Domyślnie | Opis |
 |---|---|---|
 | `httpPort` | 8128 | port strony |
-| `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika |
+| `httpHost` | `127.0.0.1` | adres nasłuchu strony: `127.0.0.1` – tylko ten komputer (maszyna), `0.0.0.0` – też tablet w sieci (#148) |
+| `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika (adres domyślny; adres wpisany w oknie „Połączenie z PLC” – `connection.json`) |
 | `username`, `password` | puste | logowanie do OPC UA; puste oznacza anonimowe |
 | `nodePrefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
 | `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |

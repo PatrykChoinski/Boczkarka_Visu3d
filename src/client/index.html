@@ -13,6 +13,7 @@
       <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span class="lbl">PLC</span></button>
       <button data-mode="offline" title="Offline – symulacja bez PLC"><svg class="ic" aria-hidden="true"><use href="#i-sim"/></svg><span class="lbl">SIM</span></button>
     </div>
+    <button id="connOpen" class="tool" title="Połączenie z PLC – adres OPC UA (np. tablet)" hidden><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
     <button id="manOpen" class="tool" title="Ruchy ręczne – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
     <div class="spacer"></div>
     <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
@@ -337,6 +338,19 @@
       <p class="hint" id="loginErr"></p>
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
       <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
+    </form>
+  </div>
+
+  <!-- #148 polaczenie z PLC: adres serwera OPC UA (domyslnie localhost na maszynie; tablet - adres sterownika) -->
+  <div id="connWin" class="win modal" hidden role="dialog" aria-label="Połączenie z PLC">
+    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Połączenie z PLC</span><button id="connClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <form class="winBody" id="connForm">
+      <label title="Adres serwera OPC UA sterownika">Adres PLC (OPC UA)
+        <input type="text" id="connEndpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="opc.tcp://192.168.1.10:4840"></label>
+      <p class="hint" id="connStatus"></p>
+      <p class="hint" id="connErr"></p>
+      <div class="row"><button type="submit" class="primary" id="connSave" title="Połącz z tym adresem (zapisany na serwerze VizuApp)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Połącz</span></button><button type="button" id="connDefault" title="Adres domyślny"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Domyślny</span></button></div>
+      <p class="hint" id="connUrls"></p>
     </form>
   </div>
 

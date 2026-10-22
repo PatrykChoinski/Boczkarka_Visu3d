@@ -1,6 +1,11 @@
 // VizuApp - serwer: czyta zmienne PLC przez OPC UA i podaje je stronie (http://localhost:8128).
 //
-//   node src/server/main.js [--config plik.json] [--users users.json] [--port 8128] [--endpoint opc.tcp://...] [--no-plc]
+//   node src/server/main.js [--config plik.json] [--users users.json] [--port 8128] [--host 127.0.0.1]
+//                           [--endpoint opc.tcp://...] [--no-plc]
+//
+// Domyslnie (maszyna, ekran Full HD): strona tylko na tym komputerze (127.0.0.1), PLC opc.tcp://localhost:4840.
+// Tablet (#148): --host 0.0.0.0 (albo "httpHost" w config.json) - strona dostepna w sieci (http://<IP komputera>:8128);
+// adres PLC do wpisania na stronie (okno Polaczenie z PLC), zapisany w connection.json obok config.json.
 //
 // GET /              strona (public/, budowana przez scripts/build-client.js)
 // GET /api/config    konfiguracja dla strony (zmienne, kroki CutStep, wartosci poczatkowe offline)
@@ -8,18 +13,23 @@
 // GET /api/health    "ok" (vizu.ps1 sprawdza, czy serwer juz dziala)
 // POST /api/login, POST /api/logout, GET /api/session - logowanie (#145, auth.js; uzytkownicy z users.json)
 // GET /api/variables zmienne PLC: nazwa, wezel OPC UA, typ, ostatnia wartosc (diagnostyka podpiecia)
+// GET /api/connection  adres PLC (OPC UA), domyslny adres, adresy strony w sieci (#148)
+// POST /api/connection {endpoint} - nowy adres PLC: zapis w connection.json i laczenie od razu (Serwis / Admin;
+//                    bez logowania - tylko z tego komputera)
 
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { VARIABLES, CUT_STEPS, DEFAULTS } from '../shared/config.js';
+import { VARIABLES, CUT_STEPS, DEFAULTS, validEndpoint } from '../shared/config.js';
 import { OpcUaSource } from './opcua-source.js';
 import { Auth, USERS_FILE, loadUsers, bearer } from './auth.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
+export const CONNECTION_FILE = 'connection.json';
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
 export function loadConfig(file) {
@@ -32,6 +42,13 @@ export function loadConfig(file) {
   const cfg = { ...DEFAULTS, ...user };
   // uzytkownicy (#145): users.json obok config.json; auth.timeoutMin - wylogowanie po bezczynnosci
   cfg.usersFile = path.join(dir, USERS_FILE);
+  // adres PLC wpisany na stronie (#148): connection.json obok config.json (lokalny, poza repo)
+  cfg.defaultEndpoint = cfg.endpoint;
+  cfg.connectionFile = path.join(dir, CONNECTION_FILE);
+  try {
+    const conn = JSON.parse(fs.readFileSync(cfg.connectionFile, 'utf8'));
+    if (validEndpoint(conn.endpoint)) cfg.endpoint = conn.endpoint;
+  } catch { /* brak pliku - adres z config.json */ }
   cfg.auth = { ...DEFAULTS.auth, ...(user.auth || {}) };
   cfg.variables = { ...VARIABLES, ...(user.variables || {}) };
   cfg.frame = { ...DEFAULTS.frame, ...(user.frame || {}) };
@@ -62,6 +79,42 @@ export function clientConfig(cfg, plc, auth = null) {
     tableThickness: cfg.tableThickness, laser: cfg.laser, saw: cfg.saw,
     auth: { enabled: Boolean(auth?.enabled), users: auth?.enabled ? auth.names() : [], timeoutMin: cfg.auth?.timeoutMin ?? 30 },
   };
+}
+
+// Adresy strony w sieci (do wpisania na tablecie): IPv4 kart sieciowych; przy 127.0.0.1 - tylko ten komputer
+export function pageUrls(host, port) {
+  if (host && !['0.0.0.0', '::'].includes(host)) return [`http://${host === '127.0.0.1' ? 'localhost' : host}:${port}/`];
+  const ips = Object.values(os.networkInterfaces()).flat().filter((n) => n && n.family === 'IPv4' && !n.internal).map((n) => n.address);
+  return [`http://localhost:${port}/`, ...ips.map((ip) => `http://${ip}:${port}/`)];
+}
+
+const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+
+async function handleConnection(cfg, source, auth, req, res) {
+  const info = () => ({
+    endpoint: cfg.endpoint, defaultEndpoint: cfg.defaultEndpoint, plc: Boolean(source),
+    status: source ? source.status : 'Bez PLC (--no-plc)', connected: Boolean(source?.connected),
+    urls: pageUrls(cfg.httpHost, cfg.httpPort),
+  });
+  if (req.method === 'GET') return json(res, 200, info());
+  if (req.method !== 'POST') return json(res, 405, { error: 'Metoda niedozwolona' });
+  // zmiana adresu: Serwis / Admin; bez logowania (brak users.json) - tylko z tego komputera
+  if (auth?.enabled ? (auth.session(bearer(req))?.level ?? 0) < 2 : !isLocal(req)) {
+    return json(res, 403, { error: auth?.enabled ? 'Zmiana adresu PLC – zaloguj jako Serwis albo Admin' : 'Zmiana adresu PLC tylko na komputerze z VizuApp' });
+  }
+  if (!source) return json(res, 409, { error: 'Serwer uruchomiony bez PLC (--no-plc)' });
+  const { endpoint } = await readJson(req);
+  const want = endpoint === '' || endpoint === null ? cfg.defaultEndpoint : endpoint;
+  if (!validEndpoint(want)) return json(res, 400, { error: 'Zły adres – np. opc.tcp://192.168.1.10:4840' });
+  try {
+    if (want === cfg.defaultEndpoint) fs.rmSync(cfg.connectionFile, { force: true });
+    else fs.writeFileSync(cfg.connectionFile, `${JSON.stringify({ endpoint: want }, null, 2)}
+`);
+  } catch (err) {
+    return json(res, 500, { error: `Nie zapisano ${CONNECTION_FILE}: ${err.message}` });
+  }
+  source.reconnect(want);
+  return json(res, 200, info());
 }
 
 const json = (res, code, obj) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(obj));
@@ -118,6 +171,8 @@ export function createServer(cfg, source, auth = null) {
     } else if (url.pathname === '/api/variables') {
       json(res, 200, { connected: Boolean(source?.connected), status: source ? source.status : 'Bez PLC (--no-plc)',
         variables: source ? source.variablesReport() : [] });
+    } else if (url.pathname === '/api/connection') {
+      handleConnection(cfg, source, auth, req, res);
     } else if (['/api/login', '/api/logout', '/api/session'].includes(url.pathname)) {
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
@@ -155,12 +210,14 @@ function serveStatic(pathname, res) {
 async function main() {
   const { values: args } = parseArgs({
     options: {
-      config: { type: 'string' }, users: { type: 'string' }, port: { type: 'string' }, endpoint: { type: 'string' }, 'no-plc': { type: 'boolean' },
+      config: { type: 'string' }, users: { type: 'string' }, port: { type: 'string' }, host: { type: 'string' },
+      endpoint: { type: 'string' }, 'no-plc': { type: 'boolean' },
     },
   });
   const cfg = loadConfig(args.config);
-  if (args.endpoint) cfg.endpoint = args.endpoint;
+  if (args.endpoint) cfg.endpoint = cfg.defaultEndpoint = args.endpoint;
   if (args.port) cfg.httpPort = Number(args.port);
+  if (args.host) cfg.httpHost = args.host;
   const source = args['no-plc'] ? null : new OpcUaSource(cfg);
   const auth = new Auth(loadUsers(args.users || cfg.usersFile), cfg.auth);
   const server = createServer(cfg, source, auth);
@@ -169,8 +226,8 @@ async function main() {
     if (err.code === 'EADDRINUSE') { console.log(`Port ${cfg.httpPort} zajety - VizuApp juz dziala`); process.exit(0); }
     throw err;
   });
-  server.listen(cfg.httpPort, '127.0.0.1', () => {
-    console.log(`VizuApp: http://localhost:${cfg.httpPort}/  (OPC UA: ${source ? cfg.endpoint : 'wylaczone'}, logowanie: ${auth.enabled ? auth.names().join(' / ') : 'wylaczone - brak users.json'})`);
+  server.listen(cfg.httpPort, cfg.httpHost, () => {
+    console.log(`VizuApp: ${pageUrls(cfg.httpHost, cfg.httpPort).join('  ')}  (OPC UA: ${source ? cfg.endpoint : 'wylaczone'}, logowanie: ${auth.enabled ? auth.names().join(' / ') : 'wylaczone - brak users.json'})`);
     if (source) source.start();
   });
 }

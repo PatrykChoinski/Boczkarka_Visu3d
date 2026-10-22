@@ -6,6 +6,12 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Full HD na maszynie, tablet z adresem PLC (#148)
+- Okno „Połączenie z PLC” (przycisk z błyskawicą w górnym pasku, Serwis / Admin): adres serwera OPC UA do wpisania (np. `opc.tcp://192.168.1.10:4840`), „Połącz” – serwer łączy się od razu z nowym adresem bez restartu (`OpcUaSource.reconnect`), adres zapamiętany w `connection.json` obok `config.json` (lokalny, `.gitignore`); „Domyślny” – adres z `config.json` / `--endpoint`. Stan połączenia i adresy strony w sieci w oknie. `GET/POST /api/connection` – zmiana tylko Serwis / Admin, bez `users.json` tylko z komputera z serwerem; zły adres odrzucany.
+- Serwer: `httpHost` w `config.json` / `--host` – domyślnie `127.0.0.1` (maszyna, jak dotąd), `0.0.0.0` – strona dostępna dla tabletu w sieci (`http://<IP>:8128/`, adresy w konsoli i oknie).
+- Tablet pionowo (768×1024, 800×1280): widok 3D i panel dzielą wysokość ekranu – cała strona na ekranie, stopka widoczna (wcześniej strona wychodziła poza ekran, stopka zasłaniała panel).
+- Sprawdzone: `npm test` 161/161 (`test/connection.test.js`, zmiana adresu w trakcie pracy z testowym serwerem OPC UA w `test/opcua.test.js`), smoke test; w przeglądarce: serwer ze złym adresem → wpisany adres testowego PLC → połączono 437/437 zmiennych bez restartu, „Domyślny” (usuwa `connection.json`), zły adres odrzucony; układ 1920×1080, 1280×800, 1024×768 (z oknem ruchów ręcznych), 768×1024, 800×1280 – bez przewijania strony.
+
 ### Opisy zmiennych PLC tylko dla Admina
 - Nazwy zmiennych PLC w interfejsie (np. „(fManualXZeroPosition)”, „– bManualTwoPoint”, `aCuttingBoardX/Y/Z`, nazwy pod polami Serwisu) i podpowiedzi z nazwami zmiennych / działaniem w PLC widoczne tylko po zalogowaniu jako Admin; dla innych użytkowników ukryte (podpowiedzi bez nazw). Działa w całej aplikacji, także dla elementów dodawanych później (MutationObserver). Strona Serwis → „Zmienne PLC” tylko dla Admina. Bez logowania (brak `users.json`) – pełny dostęp jak dotąd.
 - Etykiety „CutTiltDiameter”, „HeadRotationDiameter”, „MillTiltDiameter” w Parametrach po polsku (średnica wychyłu / obrotu głowicy / wychyłu frezu), nazwa zmiennej w nawiasie (Admin).
