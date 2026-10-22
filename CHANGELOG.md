@@ -6,6 +6,14 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Zgłoszenia #150–#154
+- #150 Przezroczysty kamień: przełącznik na pasku widoku (ikona kamienia) – krycie kamienia 0,22 zamiast 0,72, widać cięcia wewnątrz materiału; zapamiętywany w przeglądarce.
+- #151 Cięcie pod kątem B (CutST ze skosem, skosy automatu): start nad materiałem na przedłużeniu skosu tarczy, wjazd w kamień i wyjazd z niego jednym ruchem XYZ pod kątem nachylenia (interpolacja), do wysokości nad materiałem – bez pionowego zjazdu na powierzchnię i pionowego wyjazdu.
+- #152 Profile i wygładzanie (kroki 8–11 i 15–18, Manual „Profil krawędzi”): tarcza (dysk o grubości tarczy) obniża mapę wysokości kamienia (`HeightMap.bladeStamp / bladeCarve`), widoczną jak relief G-kodu – kształt profilu w XZ / YZ i ruch tarczy w poprzek po łuku przy wygładzaniu; offline i online (automat profili w toku).
+- #153 Ściany maszyny 300 mm od stołu z każdej strony (`frame.margin` 150 → 300).
+- #154 Krańcówki elektroniczne aktywne w symulacji: X / Y domyślnie obrys stołu (punkty `aCuttingBoard`), Z 0…5000, wartości zapisane w Serwis → Obszar pracy mają pierwszeństwo (strona pokazuje domyślne). Ruch ręczny staje na krańcówce (oś poza zakresem może wyjechać tylko do środka), program symulacji staje przed krańcówką z komunikatem „stop: krańcówka elektroniczna X max (3500 mm)”; bazowanie bez kontroli.
+- Sprawdzone: `npm test` 171/171 (`test/surface.test.js`, #151 w `test/ops.test.js`, #154 w `test/jog.test.js`), smoke test; w przeglądarce: przezroczysty kamień z rzazami krawędzi, profile (książki, ćwierćwałek, profil krawędzi z wygładzaniem), ściany 300 mm od stołu, krańcówki (Serwis, stop programu na X 3500).
+
 ### Daszki: ściany z przezroczystym tłem
 - Obrazki ścian daszków (`img/figures/roof_wall{1..4}_{0,1}.png`, rysunek figury Daszki jak ekran HMI 137) z przezroczystym tłem zamiast białego – ściany nie zasłaniają już narożników sąsiednich ścian. Te same pliki w repo HMI (`Pictures/`, skrypt `scripts/roof_walls_transparent.py`).
 - Sprawdzone: `npm test` 166/166; rysunek Daszków w przeglądarce przed / po.

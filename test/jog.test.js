@@ -91,3 +91,27 @@ test('okno ruchow recznych (#143): skosy 45 / 135 / 225 / 315 i ruch wzdluz wych
   const v = tiltMoveVector(37, 0, 20, false);
   near2(Math.hypot(v.x, v.y), 0); near2(v.z, 20);
 });
+
+test('#154 krancowki elektroniczne: ruch na zewnatrz zatrzymany na granicy, z poza zakresu tylko do srodka', () => {
+  const lim = { x: [0, 3500], y: [0, 3000], z: [0, 5000] };
+  // X+ do krancowki: stop dokladnie na 3500
+  let jog = new JogMotion({ x: 1 }, 1000, 1e6);
+  let p = { ...pose0, x: 3490 };
+  for (let i = 0; i < 100 && !jog.done; i++) p = jog.step(p, 0.01, lim);
+  near(p.x, 3500);
+  assert.ok(jog.done);
+  // os poza zakresem (X -50): ruch dalej na zewnatrz - stoi, bez skoku na granice
+  jog = new JogMotion({ x: -1 }, 100, 1e6);
+  p = jog.step({ ...pose0, x: -50 }, 0.01, lim);
+  near(p.x, -50);
+  // ... a do srodka - jedzie
+  jog = new JogMotion({ x: 1 }, 100, 1e6);
+  p = jog.step({ ...pose0, x: -50 }, 0.01, lim);
+  assert.ok(p.x > -50);
+  // ruch po skosie: krancowka jednej osi zatrzymuje caly ruch
+  jog = new JogMotion({ x: 1, y: 1 }, 1000, 1e6);
+  p = { ...pose0, x: 3495, y: 100 };
+  for (let i = 0; i < 100 && !jog.done; i++) p = jog.step(p, 0.01, lim);
+  near(p.x, 3500);
+  assert.ok(p.y < 120);
+});

@@ -5,14 +5,14 @@
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
-import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, workAxisZ, plcActualPosition, axisFromActual, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { machine as makeMachine, headFrame, bladeFrame, toolFrame, plcToolAxisZ, workAxisZ, plcActualPosition, axisFromActual, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { waterLayout, laserMount } from '../shared/water.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
 import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor } from '../shared/tools.js';
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition, opPlanLines } from '../shared/ops.js';
-import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
+import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays, hasSurfaceSteps } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
@@ -90,11 +90,96 @@ function tableMachine(m) {
 function recordPose(pose, m) {
   // G-kod (#124): probki programu CNC na mapie wysokosci zamiast osobnych sladow narzedzia
   if (cncRecording(m)) { cncRecord(pose, m); return; }
+  // #152 profile i wygladzanie: tarcza obniza mape wysokosci kamienia (ksztalt w XZ / YZ widoczny jako powierzchnia)
+  if (!isToolMode(m) && surfaceActive() && surfaceRecord(pose, m)) {
+    state.tableRecorder.update(pose, tableMachine(m));
+    return;
+  }
   const rock = rockPolygon();
   const low = headFrame(pose, m).lowest;
   const [stone, table] = isToolMode(m) ? [state.toolRecorder, state.toolTableRecorder] : [state.recorder, state.tableRecorder];
   if (!rock || pointInPolygon(low[0], low[1], rock)) stone.update(pose, m);
   table.update(pose, tableMachine(m));
+}
+
+// --- #152 profile i wygladzanie piła: mapa wysokosci kamienia ----------------------------------
+// Profil (seria ciec na roznych glebokosciach) i wygladzanie (tarcza w poprzek po luku w XZ / YZ) zmieniaja ksztalt
+// krawedzi - zamiast osobnych rzazow tarcza obniza mape wysokosci (jak frez w G-kodzie), widac powierzchnie profilu.
+const surfaceState = { hm: null, key: '', last: null };
+
+// Program z profilami / wygladzaniem: offline - flaga programu, online - automat profili w toku
+function surfaceActive() {
+  if (state.mode === 'online') {
+    const au = onlineAuto();
+    return au.kind !== 'mill' && au.running && hasSurfaceSteps(au.rows, au.count);
+  }
+  return Boolean(state.sim.program?.surface && state.sim.running);
+}
+
+// Mapa na obszarze kamienia (albo stolu), spod - grubosc kamienia; najwyzej ok. 400 tys. komorek
+function surfaceHeightMap(m) {
+  const pts = rockPolygon() || areaPoints('board');
+  const top = topZ(m);
+  const key = JSON.stringify([pts, top, m.materialThickness]);
+  if (surfaceState.hm && surfaceState.key === key) return surfaceState.hm;
+  if (!isArea(pts)) return null;
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const res = Math.max(1, Math.sqrt((box[2] - box[0]) * (box[3] - box[1]) / 400000));
+  surfaceState.hm = new HeightMap(box, top, top - Math.max(1, m.materialThickness), Math.round(res * 10) / 10);
+  surfaceState.key = key;
+  surfaceState.last = null;
+  return surfaceState.hm;
+}
+
+// false - brak obszaru kamienia / stolu (zapis zwyklych rzazow)
+function surfaceRecord(pose, m) {
+  const hm = surfaceHeightMap(m);
+  if (!hm) return false;
+  const f = bladeFrame(pose, m);
+  const c = f.center;
+  const last = surfaceState.last;
+  // ten sam kierunek tarczy - ruch od poprzedniej probki; inaczej (obrot A) tylko biezaca pozycja
+  const same = last && Math.abs(last.u[0] - f.u[0]) < 1e-6 && Math.abs(last.u[1] - f.u[1]) < 1e-6;
+  hm.bladeCarve(same ? last.c : c, c, f.u, f.radius, m.bladeWidth);
+  surfaceState.last = { c, u: f.u };
+  return true;
+}
+
+// --- #154 krancowki elektroniczne (WorkArea: fServiceX/Y/ZLimitNegative/Positive -> fSWLimit osi) ----------------
+// Offline: X / Y domyslnie obrys stolu (punkty aCuttingBoard, bez nich prostokat stolu modelu), Z 0 .. 5000 (w pile
+// PLC liczy Z+ ze stolu i tarczy); wartosci zapisane na stronie Serwis -> Obszar pracy maja pierwszenstwo.
+// Ruchy reczne zatrzymuja sie na krancowce, program symulacji - stop z komunikatem przed wyjazdem poza nia.
+const SOFT_LIMITS = {
+  'HMI.fServiceXLimitNegative': ['x', 0], 'HMI.fServiceXLimitPositive': ['x', 1],
+  'HMI.fServiceYLimitNegative': ['y', 0], 'HMI.fServiceYLimitPositive': ['y', 1],
+  'HMI.fServiceZLimitNegative': ['z', 0], 'HMI.fServiceZLimitPositive': ['z', 1],
+};
+
+function softLimits() {
+  const [x0, y0, x1, y1] = tableExtent(areaPoints('board'));
+  const def = { x: [x0, x1], y: [y0, y1], z: [0, 5000] };
+  const lim = { x: [...def.x], y: [...def.y], z: [...def.z] };
+  for (const [k, [ax, i]] of Object.entries(SOFT_LIMITS)) {
+    const v = Number(state.hmi?.[k]);
+    if (k in (state.hmi || {}) && Number.isFinite(v)) lim[ax][i] = v;
+  }
+  return lim;
+}
+
+// Krancowki sprawdzane w programie: osie, ktore na starcie programu sa w zakresie
+function programLimits(start) {
+  const lim = softLimits();
+  return Object.fromEntries(Object.entries(lim).filter(([ax, [lo, hi]]) => start[ax] >= lo - 0.01 && start[ax] <= hi + 0.01));
+}
+
+// Opis przekroczonej krancowki albo null
+function limitHit(pose, lim) {
+  for (const [ax, [lo, hi]] of Object.entries(lim || {})) {
+    if (pose[ax] < lo - 0.01) return `${ax.toUpperCase()} min (${fmt(lo, 0, 0)} mm)`;
+    if (pose[ax] > hi + 0.01) return `${ax.toUpperCase()} max (${fmt(hi, 0, 0)} mm)`;
+  }
+  return null;
 }
 
 // Rekorder biezacego trybu (podsumowanie na pasku, zakres materialu)
@@ -107,6 +192,8 @@ function clearCuts() {
   state.toolTableRecorder.clear();
   cncState.hm = null;
   cncState.lastTip = null;
+  surfaceState.hm = null;
+  surfaceState.last = null;
   state.extent = null;
   state.extentProvisional = true;
 }
@@ -270,7 +357,7 @@ function redraw() {
     conn.textContent = state.cfg.static ? 'Offline - symulacja (GitHub Pages, bez PLC)' : 'Offline - symulacja (bez PLC)';
     conn.className = 'ok';
     $('#step').textContent = (sim.program
-      ? `${sim.label ? `${sim.label}   ` : ''}${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.running ? '' : '   (zatrzymane)'}`
+      ? `${sim.label ? `${sim.label}   ` : ''}${sim.step}   ${sim.t.toFixed(1)} / ${sim.program.duration.toFixed(1)} s${sim.limitHit ? `   (stop: krańcówka elektroniczna ${sim.limitHit})` : sim.running ? '' : '   (zatrzymane)'}`
       : (state.jog ? 'Ruch ręczny' : '')) + sawText() + ($('#showLaser').checked ? '   laser' : '');
   }
 }
@@ -881,7 +968,9 @@ function buildAutoProgram(from) {
   if (a.kind === 'mill') addAutomatMill(pb, a.rows, a.rows.length, [a.ox, a.oy], commonValues(), { closedShapes: a.repeatOver, startIndex: (a.from || 1) - 1 });
   else addAutomat(pb, a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), commonValues());
   pb.dwell(0.5, 'CutFinish');
-  return pb.build();
+  const prog = pb.build();
+  prog.surface = a.kind !== 'mill' && hasSurfaceSteps(a.rows);
+  return prog;
 }
 
 function updateAutoInfo() {
@@ -1033,7 +1122,10 @@ function buildOpProgram(from) {
   const pb = new ProgramBuilder(from, offlineMachine(), offlineDynamics());
   op.build(pb, readGroup('op', op.fields), commonValues());
   pb.dwell(0.5, 'CutFinish');
-  return pb.build();
+  const prog = pb.build();
+  // #152 profil krawedzi (kroki 8-11) - powierzchnia na mapie wysokosci
+  prog.surface = op.id === 'profile';
+  return prog;
 }
 
 function updateCutInfo() {
@@ -1113,6 +1205,9 @@ function startProgram(program, homing = null) {
   state.sim.program = program;
   state.sim.t = 0;
   state.sim.running = true;
+  // #154 krancowki elektroniczne (bazowanie bez kontroli - jak w PLC)
+  state.sim.limitHit = null;
+  state.sim.limits = homing ? null : programLimits(program.at(0).pose);
   state.sim.label = null;
   state.sim.index = null;
   state.sim.lastFrame = performance.now();
@@ -1140,8 +1235,15 @@ function simFrame(now) {
   const tEnd = Math.min(sim.program.duration, sim.t + dt);
   // probki co SIM_STEP, zeby przy szybkim tempie nie gubic ciecia
   let res;
-  for (let t = sim.t + SIM_STEP; t < tEnd; t += SIM_STEP) recordPose(sim.program.at(t).pose, m);
+  let prev = { ...sim.program.at(sim.t), t: sim.t };
+  for (let t = sim.t + SIM_STEP; t < tEnd; t += SIM_STEP) {
+    const s = sim.program.at(t);
+    if (limitHit(s.pose, sim.limits)) { stopAtLimit(prev, s.pose, m); return; }
+    recordPose(s.pose, m);
+    prev = { ...s, t };
+  }
   res = sim.program.at(tEnd);
+  if (limitHit(res.pose, sim.limits)) { stopAtLimit(prev, res.pose, m); return; }
   sim.t = tEnd;
   axisVelocityFromProgram(sim.program, tEnd);
   sim.step = res.step;
@@ -1159,6 +1261,19 @@ function simFrame(now) {
   }
   redraw();
   if (sim.running) requestAnimationFrame(simFrame);
+}
+
+// #154 program dojechal do krancowki elektronicznej: stop w ostatniej pozycji w zakresie
+function stopAtLimit(prev, over, m) {
+  const sim = state.sim;
+  sim.limitHit = limitHit(over, sim.limits);
+  sim.running = false;
+  sim.velocity = 0;
+  if (Number.isFinite(prev.t)) sim.t = prev.t;
+  zeroAxisVelocity();
+  setPauseButtons(false);
+  applyPose(prev.pose, m);
+  redraw();
 }
 
 function stopProgram() {
@@ -1204,6 +1319,8 @@ function svcValue(it) {
   const bit = svcBitKey(v);
   if (bit) return Boolean(state.service[bit]);
   if (v in state.hmi) return state.hmi[v];
+  // #154 krancowki elektroniczne: bez zapisanej wartosci - domyslne (obrys stolu)
+  if (SOFT_LIMITS[v]) return softLimits()[SOFT_LIMITS[v][0]][SOFT_LIMITS[v][1]];
   if (v.startsWith('IoConfig') || v.startsWith('Communication.') || v.startsWith('IOVars.')) return null;   // odczyty sprzetu - tylko online
   return it.init ?? (it.t === 'BOOL' ? false : it.t === 'STRING' ? '' : null);
 }
@@ -1748,7 +1865,7 @@ function jogFrame(now) {
   let p = state.pose;
   const n = Math.max(1, Math.ceil(dt / SIM_STEP));
   for (let i = 0; i < n; i++) {
-    p = jog.step(p, dt / n, { z: [0, 5000] });    // Z nie powyzej bazy (Z = 0)
+    p = jog.step(p, dt / n, softLimits());    // #154 krancowki elektroniczne (Z nie powyzej bazy Z = 0)
     if (i < n - 1) recordPose(p, m);
   }
   state.sim.velocity = jog.dir.x || jog.dir.y || jog.dir.z ? jog.v : 0;
@@ -2361,9 +2478,12 @@ function drawCnc() {
     cncState.infoAt = now;
     updateCncInfo();
   }
-  view.setHeightMap(show ? cncState.hm : null);
-  // kamien nad reliefem prawie przezroczysty (inaczej gorna sciana bryly rozmywa wynik)
-  view.setMaterialOpacity(show && cncState.hm && cncState.hm.cut ? 0.18 : 0.72);
+  // #152 profile / wygladzanie pila - mapa wysokosci kamienia (w trybie frezu - G-kod)
+  const hm = show ? cncState.hm : (currentMode() === 'saw' ? surfaceState.hm : null);
+  view.setHeightMap(hm);
+  // kamien nad reliefem prawie przezroczysty (inaczej gorna sciana bryly rozmywa wynik); #150 przezroczysty kamien -
+  // ciecia wewnatrz materialu widoczne
+  view.setMaterialOpacity(hm && hm.cut ? 0.18 : $('#showGlass').checked ? 0.22 : 0.72);
   drawCncPreview(now);
   const paths = show && $('#cncShowPath').checked ? cncPaths() : null;
   view.setCncPath(paths, paths ? cncState.pathsKey : null);
@@ -2527,8 +2647,8 @@ function bindUi() {
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
   $('#showPlan').onchange = requestDraw;
-  // przelaczniki XY i Odleglosci (zapamietywane w przegladarce)
-  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist']]) {
+  // przelaczniki XY, Odleglosci i przezroczysty kamien #150 (zapamietywane w przegladarce)
+  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist'], ['#showGlass', 'vizuapp.glass']]) {
     $(id).onchange = () => { try { localStorage.setItem(store, $(id).checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
     try { const v = localStorage.getItem(store); if (v !== null) $(id).checked = v === '1'; } catch { /* jw. */ }
   }

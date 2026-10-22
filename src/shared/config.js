@@ -217,9 +217,9 @@ export const DEFAULTS = {
   // logowanie (#145): wylogowanie po bezczynnosci [min] (0 - bez limitu); uzytkownicy w users.json (scripts/users.mjs)
   auth: { timeoutMin: 30 },
   // model maszyny (pila mostowa) w widoku - wg punktow stolu, niezalezny od kamienia: most wzdluz osi
-  // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu, spod mostu bridgeZ mm nad Z = 0,
+  // bridgeAlong ('x' - most jedzie w Y), sciany margin mm od stolu z kazdej strony (#153: 300), spod mostu bridgeZ mm nad Z = 0,
   // dlugosc slupa Z, wysokosc stolu (do podlogi); panel - panel operatorski przed prawym murkiem (#141)
-  frame: { show: true, bridgeAlong: 'x', margin: 150, bridgeZ: 300, ramLength: 1400, tableHeight: 700, panel: true },
+  frame: { show: true, bridgeAlong: 'x', margin: 300, bridgeZ: 300, ramLength: 1400, tableHeight: 700, panel: true },
   // plyta stolu pod kamieniem [mm] - ciecie w stol rysowane na czerwono do tej glebokosci
   tableThickness: 80,
   // laser: linia na powierzchni wzdluz kierunku ciecia; side 1 - w prawa strone (+kierunek ciecia przy A), -1 - w lewa;

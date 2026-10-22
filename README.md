@@ -196,7 +196,8 @@ prawej, z tytułem (ikona i nazwa ekranu).
 **Serwis** (#147, od poziomu Serwis): ekran serwisowy HMI `serwis` (70) i
 wszystkie ekrany z niego otwierane – przyciski u góry: „Serwis” (70: parametry
 maszyny piła / frez / wiertło, przejścia), „Obszar pracy” (`serwis_2`, 71:
-krańcówki elektroniczne z zapisem, pozycje osi, wyprzedzanie, korekty wychyłu i
+krańcówki elektroniczne z zapisem – #154: w symulacji aktywne, domyślnie X / Y jak obrys stołu, Z 0…5000;
+ruch ręczny staje na krańcówce, program staje przed nią z komunikatem w stopce –, pozycje osi, wyprzedzanie, korekty wychyłu i
 obrotu z JOG, zerowanie ABS), „Ustawienia” (`serwis_3`, 75: 42 bity serwisowe z
 napisami stanów jak w HMI), „Zmienne PLC” (tryb PLC: węzeł OPC UA, typ, wartość);
 lista „Inne ekrany serwisowe”: ustawienia frez (`serwis_cd`, 90), polerowanie
@@ -281,7 +282,15 @@ podpowiedzi i komunikaty.
   (`… mm`, w linii prostej; niebieska etykieta), poza okręgami i wierceniem.
   **Odległości**: pokaż / ukryj odległości niezależnie od XY.
   **Laser**: offline laser włączony; online pokazywany, gdy w PLC świeci
-  (`IOVars.yLaser`).
+  (`IOVars.yLaser`). **Przezroczysty kamień** (#150): kamień prawie
+  przezroczysty – widać cięcia wewnątrz materiału (zapamiętywane w przeglądarce).
+- **Profile i wygładzanie** (#152, kroki automatu 8–11 i 15–18, Manual „Profil
+  krawędzi”): tarcza obniża mapę wysokości kamienia (jak frez w G-kodzie), więc
+  kształt profilu w płaszczyźnie XZ / YZ widać jako powierzchnię – także ruch
+  tarczy w poprzek po łuku przy wygładzaniu; zwykłe cięcia nadal jako rzazy.
+- **Cięcie pod kątem B** (#151): wjazd w kamień i wyjazd z niego po skosie tarczy
+  jednym ruchem XYZ (interpolacja), od / do wysokości nad materiałem, bez
+  pionowego zjazdu na powierzchnię.
 - Pasek na dole: X/Y/Z/A/B, głębokość. Online dodatkowo `CutStep`, krok
   automatu, piła (częstotliwość i kierunek), woda, laser. Offline: krok
   programu, czas i prędkość.
@@ -619,7 +628,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
-| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem) |
+| `frame` | patrz plik | model maszyny: `bridgeAlong` `"x"` (most wzdłuż X, jeździ w Y) albo `"y"`, `margin` (ściany od stołu z każdej strony, #153: 300 mm), `bridgeZ` (spód mostu nad Z = 0), `ramLength` (słup Z), `tableHeight`, `show`, `panel` (panel operatorski przed prawym murkiem) |
 | `tableThickness` | 80 | grubość płyty stołu - do tej głębokości rysowane cięcie w stół (mm) |
 | `laser` | `{side: 1, length: 2500, mountAngle: 40}` | laser: `side` 1 - w prawą stronę (+kierunek cięcia), −1 - w lewą; długość linii (mm); `mountAngle` - moduł na osłonie tarczy, kąt od góry w stronę lasera (°) |
 | `saw` | `{freqScale: 0.01, visualRps: 1.5, toolVisualRps: 3, fwdSign: -1}` | napęd tarczy / wrzeciona: `iMainDriveFreqAct` × `freqScale` = Hz; obroty na ekranie (obr/s przy 50 Hz) tarczy i narzędzi (frez, wiertło, polerka); kierunek dla FWD (−1: strona −u tarczy schodzi w materiał - tam leci woda z dysz) |

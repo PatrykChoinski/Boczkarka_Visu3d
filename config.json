@@ -15,7 +15,7 @@
   "frame": {
     "show": true,
     "bridgeAlong": "x",
-    "margin": 150,
+    "margin": 300,
     "bridgeZ": 300,
     "ramLength": 1400,
     "tableHeight": 700

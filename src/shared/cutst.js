@@ -158,13 +158,16 @@ export function addCutST(pb, c) {
   const plan = cutPlan(c, m);
   const above = c.above ?? 20;
   const zAt = (depth) => plcAxisZ(depth, plan.b, m);
-  // MoveToStartPosition: GoToPosition (Z nad material, X/Y/A, B, Z na powierzchnie)
+  // MoveToStartPosition: GoToPosition (Z nad material, X/Y/A, B, Z na powierzchnie). #151 przy skosie start nad
+  // materialem na przedluzeniu skosu tarczy (wyjazd nad material = glebokosc -above): wjazd w kamien jednym ruchem
+  // XYZ pod katem nachylenia, bez pionowego zjazdu na powierzchnie
   const first = plan.passes[0].from;
-  const [sx, sy] = axisPoint(first, 0, plan, m);
+  const startDepth = plan.tilt ? -above : 0;
+  const [sx, sy] = axisPoint(first, startDepth, plan, m);
   pb.liftFor(plan.b, above, 'MoveToStartPosition');
   pb.axesTo({ x: sx, y: sy, a: plan.a }, 'MoveToStartPosition');
   pb.axesTo({ b: plan.b }, 'MoveToStartPosition');
-  pb.axesTo({ z: zAt(0) }, 'MoveToStartPosition');
+  pb.axesTo({ z: zAt(startDepth) }, 'MoveToStartPosition');
   const zVel = [pb.dyn.zVel, pb.dyn.zAcc];
   for (const pass of plan.passes) {
     // zjazd: pionowo, przy skosie po skosie tarczy (interpolacja XYZ z predkoscia Z)
@@ -183,11 +186,11 @@ export function addCutST(pb, c) {
       pb.linearTo({ x: tx, y: ty }, 'StartLastCut');
     }
   }
-  // MoveAboveMaterial: przy skosie najpierw po skosie do powierzchni
+  // MoveAboveMaterial: #151 przy skosie wyjazd z kamienia po skosie tarczy (interpolacja XYZ) az nad material
   if (plan.tilt) {
     const lastPass = plan.passes[plan.passes.length - 1];
-    const [ux, uy] = axisPoint(lastPass.to, 0, plan, m);
-    pb.linearTo({ x: ux, y: uy, z: zAt(0) }, 'StartMoveAboveMaterial', zVel[0], zVel[1], zVel[1]);
+    const [ux, uy] = axisPoint(lastPass.to, -above, plan, m);
+    pb.linearTo({ x: ux, y: uy, z: zAt(-above) }, 'StartMoveAboveMaterial', zVel[0], zVel[1], zVel[1]);
   }
   pb.zUp(zAt(-above), 'StartMoveAboveMaterial');
   return plan;
