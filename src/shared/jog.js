@@ -27,7 +27,9 @@ export class JogMotion {
     return !this.pressed && this.v <= 0;
   }
 
-  // krok czasu dt [s]: nowa pozycja (pose nie jest zmieniane); limits - {os: [min, max]} (krancowki)
+  // krok czasu dt [s]: nowa pozycja (pose nie jest zmieniane); limits - {os: [min, max]} (krancowki elektroniczne,
+  // #154): ruch na zewnatrz zakresu zatrzymany na granicy; os juz poza zakresem nie przeskakuje na granice
+  // (zatrzymany tylko ruch dalej na zewnatrz), ruch do srodka dozwolony
   step(pose, dt, limits = null) {
     const v0 = this.v;
     let v1;
@@ -40,8 +42,11 @@ export class JogMotion {
     for (const ax of AXES) out[ax] = pose[ax] + this.dir[ax] * ds;
     if (limits) {
       for (const [ax, [lo, hi]] of Object.entries(limits)) {
-        if (out[ax] < lo || out[ax] > hi) {
-          out[ax] = Math.min(hi, Math.max(lo, out[ax]));
+        const d = this.dir[ax] || 0;
+        if ((d < 0 && out[ax] < lo) || (d > 0 && out[ax] > hi)) {
+          const edge = d < 0 ? lo : hi;
+          out[ax] = d < 0 ? Math.min(pose[ax], edge) : Math.max(pose[ax], edge);
+          if ((d < 0 && pose[ax] < lo) || (d > 0 && pose[ax] > hi)) out[ax] = pose[ax];
           this.v = 0;
           this.pressed = false;
         }

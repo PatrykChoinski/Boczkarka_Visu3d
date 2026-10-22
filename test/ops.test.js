@@ -102,6 +102,33 @@ test('skos: plaszczyzna tarczy przecina gorna powierzchnie na linii ciecia przy 
   assert.ok(n > 10);
 });
 
+test('#151 skos: wjazd i wyjazd z kamienia po skosie tarczy (interpolacja XYZ), bez pionowego ruchu przy materiale', () => {
+  const pb = new ProgramBuilder(START, M, DYN);
+  OPS[0].build(pb, { x0: 400, y0: 400, x1: 1200, y1: 400, internal: 0, reverse: false, tilt: true, b: 45 }, COMMON);
+  const prog = pb.build();
+  const above = COMMON.above;
+  const top = -M.materialHeight;
+  const lineY = (pose) => { const f = bladeFrame(pose, M); return f.center[1] - f.normal[2] * (top - f.center[2]) / f.normal[1]; };
+  const seen = { StartCutDepth: 0, StartMoveAboveMaterial: 0 };
+  let firstDepth = null;
+  for (let t = 0; t <= prog.duration; t += 0.02) {
+    const { pose, step } = prog.at(t);
+    if (!(step in seen)) continue;
+    // plaszczyzna tarczy caly czas przecina gore materialu na linii ciecia - ruch wzdluz skosu
+    near(lineY(pose), 400, 1e-6);
+    seen[step]++;
+    if (step === 'StartCutDepth' && firstDepth === null) firstDepth = pose;
+  }
+  assert.ok(seen.StartCutDepth > 5 && seen.StartMoveAboveMaterial > 5, JSON.stringify(seen));
+  // wjazd zaczyna sie nad materialem (wyjazd nad material), nie na powierzchni
+  near(firstDepth.z, plcAxisZ(-above, 45, M), 0.5);
+  // koniec wyjazdu: nad materialem, na przedluzeniu skosu
+  const out = prog.segments.filter((s) => s.step === 'StartMoveAboveMaterial').at(-1);
+  const end = prog.at(out.start + out.duration).pose;
+  near(end.z, plcAxisZ(-above, 45, M), 1e-6);
+  near(lineY(end), 400, 1e-6);
+});
+
 test('pasy / bloki / krawedzie: linie jak w PLC', () => {
   const s = stripesLines({ xs: 0, ys: 0, xCut: true, twoPoint: false, length: 1000, constant: true, width: 100, number: 3, bladeWidth: 4, passes: 1 });
   assert.equal(s.length, 4);

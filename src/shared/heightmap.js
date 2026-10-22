@@ -70,6 +70,57 @@ export class HeightMap {
     return changed;
   }
 
+  // #152 tarcza (profil i wygladzanie): pionowy dysk - srodek c [x, y, z swiata], kierunek w plaszczyznie tarczy
+  // u [ux, uy] (poziomy, jednostkowy), promien r, grubosc w. Komorki w pasie |(p - c) . n| <= w / 2 (n prostopadle
+  // do u) obnizone do dolnego luku tarczy: z = cz - sqrt(r^2 - s^2), s = (p - c) . u
+  bladeStamp(c, u, r, w) {
+    if (c[2] - r >= this.top) return false;
+    const n = [u[1], -u[0]];
+    // pas co najmniej komorka (cienka tarcza na rzadkiej siatce)
+    const hw = Math.max(w / 2, this.res * 0.75);
+    const ex = Math.abs(u[0]) * r + Math.abs(n[0]) * hw;
+    const ey = Math.abs(u[1]) * r + Math.abs(n[1]) * hw;
+    const i0 = Math.max(0, Math.floor((c[0] - ex - this.x0) / this.res));
+    const i1 = Math.min(this.nx - 1, Math.ceil((c[0] + ex - this.x0) / this.res));
+    const j0 = Math.max(0, Math.floor((c[1] - ey - this.y0) / this.res));
+    const j1 = Math.min(this.ny - 1, Math.ceil((c[1] + ey - this.y0) / this.res));
+    const r2 = r * r;
+    let changed = false;
+    for (let j = j0; j <= j1; j++) {
+      const dy = this.y0 + j * this.res - c[1];
+      for (let i = i0; i <= i1; i++) {
+        const dx = this.x0 + i * this.res - c[0];
+        if (Math.abs(dx * n[0] + dy * n[1]) > hw) continue;
+        const s = dx * u[0] + dy * u[1];
+        if (s * s >= r2) continue;
+        const z = Math.max(c[2] - Math.sqrt(r2 - s * s), this.bottom);
+        const k = j * this.nx + i;
+        if (z < this.z[k]) {
+          if (this.z[k] === this.top) this.cut++;
+          this.z[k] = z;
+          changed = true;
+          const d = this.dirty;
+          if (!d) this.dirty = [i, j, i, j];
+          else { d[0] = Math.min(d[0], i); d[1] = Math.min(d[1], j); d[2] = Math.max(d[2], i); d[3] = Math.max(d[3], j); }
+        }
+      }
+    }
+    if (changed) this.version++;
+    return changed;
+  }
+
+  // Ruch tarczy c0 -> c1 (srodki), probki co najwyzej pol komorki - ruch w poprzek tarczy (wygladzanie) bez przerw
+  bladeCarve(c0, c1, u, r, w) {
+    const len = Math.hypot(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
+    const n = Math.max(1, Math.ceil(len / (this.res / 2)));
+    let changed = false;
+    for (let k = c0 === c1 ? n : 0; k <= n; k++) {
+      const t = k / n;
+      changed = this.bladeStamp([c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t], u, r, w) || changed;
+    }
+    return changed;
+  }
+
   // Wysokosc w komorce (i, j) i najglebsze miejsce
   at(i, j) { return this.z[j * this.nx + i]; }
   minZ() { let m = this.top; for (const v of this.z) if (v < m) m = v; return m; }

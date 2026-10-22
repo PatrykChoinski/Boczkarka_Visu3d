@@ -89,6 +89,9 @@ function stepLine(rows, i, origin, opt, bladeWidth) {
   return l;
 }
 
+// #152 program z profilami / wygladzaniem (ruchy tarczy w XZ / YZ) - w widoku jako powierzchnia (mapa wysokosci)
+export const hasSurfaceSteps = (rows, count = rows.length) => rows.slice(0, count).some((r) => PROFILE_STEPS[r.step] || SMOOTH_STEPS[r.step]);
+
 // Opis krokow do podgladu: [{i, step, kind, path: [[x, y], ...], ends?}]; m - maszyna (tarcza): linie ciecia jako
 // zasieg rzazu na powierzchni (zewnetrzne wychodza za punkty, wewnetrzne koncza sie na nich), ends - zadane punkty
 export function previewSteps(rows, count, origin, opt, common, m = null) {
