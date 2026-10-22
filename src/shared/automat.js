@@ -4,7 +4,7 @@
 // okrag: punkt i = gora / srodek). Kazdy krok uruchamia program jak w PLC (CutST, CutArcST, CutCircleST, GoTo,
 // profil, wygladzanie); kolejny krok startuje po zakonczeniu poprzedniego.
 
-import { addCutST } from './cutst.js';
+import { addCutST, cutSurfaceSpan } from './cutst.js';
 import { cutParams } from './common.js';
 import { addArc, addCircle, arcPlan, circlePlan } from './arcs.js';
 import { addProfile, addSmoothing, profileCuts } from './profiles.js';
@@ -89,14 +89,26 @@ function stepLine(rows, i, origin, opt, bladeWidth) {
   return l;
 }
 
-// Opis krokow do podgladu: [{i, step, kind, path: [[x, y], ...]}]
-export function previewSteps(rows, count, origin, opt, common) {
+// Opis krokow do podgladu: [{i, step, kind, path: [[x, y], ...], ends?}]; m - maszyna (tarcza): linie ciecia jako
+// zasieg rzazu na powierzchni (zewnetrzne wychodza za punkty, wewnetrzne koncza sie na nich), ends - zadane punkty
+export function previewSteps(rows, count, origin, opt, common, m = null) {
   const out = [];
   for (let i = 0; i < count; i++) {
     const st = rows[i].step;
     const l = stepLine(rows, i, origin, opt, common.bladeWidth);
     let path = null;
-    if (LINE_STEPS[st] || st === 2) path = [[l.x0, l.y0], [l.x1, l.y1]];
+    let ends = null;
+    if (LINE_STEPS[st] && m?.discDiameter && i + 1 < rows.length) {
+      // jak addAutomat: skos - wychyl z kata wiersza; przy dwoch cieciach (skos w obie strony) - zasieg obu
+      const ls = LINE_STEPS[st];
+      const tilt = Boolean(ls.slope);
+      const spans = (ls.slope || [Boolean(ls.reverse)]).map((rev) => cutSurfaceSpan(cutParams({ ...l, internal: ls.internal, reverse: rev },
+        { ...common, tilt, b: tilt ? rows[i].angle : 0 }, OUTER_INNER_ENDS(m)), m));
+      const L = Math.hypot(l.x1 - l.x0, l.y1 - l.y0) || 1;
+      const s = (p) => ((p[0] - l.x0) * (l.x1 - l.x0) + (p[1] - l.y0) * (l.y1 - l.y0)) / L;
+      path = [spans.map((sp) => sp[0]).reduce((a, b) => (s(b) < s(a) ? b : a)), spans.map((sp) => sp[1]).reduce((a, b) => (s(b) > s(a) ? b : a))];
+      ends = [[l.x0, l.y0], [l.x1, l.y1]];
+    } else if (LINE_STEPS[st] || st === 2) path = [[l.x0, l.y0], [l.x1, l.y1]];
     else if (st === 3 || st === 4) {
       const p = arcPlan([l.x0, l.y0], [l.x1, l.y1], rows[i].r, st === 3);
       if (p) {
@@ -115,7 +127,7 @@ export function previewSteps(rows, count, origin, opt, common) {
     } else if (SMOOTH_STEPS[st]) {
       path = [[l.x0, l.y0], [l.x1, l.y1]];
     }
-    out.push({ i, step: st, path });
+    out.push(ends ? { i, step: st, path, ends } : { i, step: st, path });
   }
   return out;
 }

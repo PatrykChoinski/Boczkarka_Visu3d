@@ -4,7 +4,7 @@
 // saves - przyciski "Zapisz" (#139): {x, y, name, plc} - pola punktu, do ktorych wpisywana jest aktualna pozycja
 // osi X / Y (jak w PLC: TO_REAL(TO_DINT(fXActualPosition*100))/100.0).
 
-import { addCutST } from './cutst.js';
+import { addCutST, cutSurfaceSpan } from './cutst.js';
 export { COMMON_FIELDS } from './common.js';
 import { stripesLines, blocksLines, edgesLines } from './sawlines.js';
 import { plcAxisXY, plcAxisZ } from './geometry.js';
@@ -24,12 +24,25 @@ function cutLines(pb, lines, common) {
   });
 }
 
+// Plan linii operacji: {path: zasieg rzazu na powierzchni, ends: zadane punkty}. Operacje ciete przez CutST
+// (ciecie proste, pasy, bloki, krawedzie) - jak tarcza naprawde tnie: zewnetrzne wychodza za punkty, wewnetrzne
+// koncza sie na punktach; inne (zakoszenie) - linia z punktow.
+export function opPlanLines(op, v, common, m) {
+  const lines = op.lines ? op.lines(v, common, m) : [];
+  return lines.map((l) => {
+    const ends = [[l.x0, l.y0], [l.x1, l.y1]];
+    if (!op.cutST || !m?.discDiameter) return { path: ends, ends };
+    const tilt = op.id === 'cut' && Boolean(v.tilt);
+    return { path: cutSurfaceSpan(cutParams(l, { ...common, tilt, b: v.b }), m), ends };
+  });
+}
+
 // Pozycja osi do zapisu jak w PLC: zaokraglenie do 0,01 mm
 export const savedPosition = (v) => Math.round(v * 100) / 100;
 
 export const OPS = [
   {
-    id: 'cut', name: 'Cięcie proste', plc: 'CutST',
+    id: 'cut', name: 'Cięcie proste', plc: 'CutST', cutST: true,
     saves: [{ x: 'x0', y: 'y0', name: 'początek', plc: 'bManualXSaveZero, bManualYSaveZero' }, { x: 'x1', y: 'y1', name: 'koniec', plc: 'bManualEndPositionSave' }],
     fields: [
       { k: 'twoPoint', label: 'Dwa punkty (inaczej kąt i długość) – bManualTwoPoint', t: 'bool', d: true },
@@ -57,7 +70,7 @@ export const OPS = [
     build(pb, v, common) { addCutST(pb, cutParams(this.lines(v)[0], { ...common, tilt: Boolean(v.tilt), b: v.b })); },
   },
   {
-    id: 'stripes', name: 'Pasy', plc: 'CutStripesST',
+    id: 'stripes', name: 'Pasy', plc: 'CutStripesST', cutST: true,
     saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bManualStripesStartSaveX, bManualStripesStartSaveY' }, { x: 'xe', y: 'ye', name: 'koniec', plc: 'bCutStripesEndPositionSave' }],
     fields: [
       { k: 'xs', label: 'Start X', t: 'num', d: 400 }, { k: 'ys', label: 'Start Y', t: 'num', d: 400 },
@@ -81,7 +94,7 @@ export const OPS = [
     build(pb, v, common) { cutLines(pb, this.lines(v, common), common); },
   },
   {
-    id: 'blocks', name: 'Bloki', plc: 'CutBlocksST',
+    id: 'blocks', name: 'Bloki', plc: 'CutBlocksST', cutST: true,
     saves: [{ x: 'xs', y: 'ys', name: 'start', plc: 'bManualBlocksStartPositionSave90, bManualBlocksStartPositionSave' }],
     fields: [
       { k: 'xs', label: 'Start X', t: 'num', d: 400 }, { k: 'ys', label: 'Start Y', t: 'num', d: 300 },
@@ -94,7 +107,7 @@ export const OPS = [
     build(pb, v, common) { cutLines(pb, this.lines(v, common), common); },
   },
   {
-    id: 'edges', name: 'Krawędzie (prostokąt)', plc: 'EdgesST',
+    id: 'edges', name: 'Krawędzie (prostokąt)', plc: 'EdgesST', cutST: true,
     saves: [{ x: 'xs', y: 'ys', name: 'narożnik', plc: 'bEdgesStartPositionSave' }],
     fields: [
       { k: 'xs', label: 'Narożnik X', t: 'num', d: 500 }, { k: 'ys', label: 'Narożnik Y', t: 'num', d: 400 },

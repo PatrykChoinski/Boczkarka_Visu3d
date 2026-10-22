@@ -9,8 +9,20 @@ import { FIGURES_C } from './groupC.js';
 import { INTERNAL } from '../common.js';
 import { arcPlan, circlePlan } from '../arcs.js';
 
+// Rodzaj ciecia na ekranie figury jak w HMI (lista ComboBox_077 -> HMI.iManualInternal: 0 Zewnetrzne, 1 Wewnetrzne)
+// - ekrany Prostokat, trojkaty, Prostokat_Zaokraglony, Narozniki, Daszki, Elipsa, Trapez (142, 153), L Narozniki,
+// Krzyz, Serce, Wielokat; wartosc z formularza figury trafia do bloku figury jako iInner (ctx.internal)
+export const FIGURE_INTERNAL = [[0, 'Zewnętrzne'], [1, 'Wewnętrzne']];
+const INTERNAL_FIGURES = new Set(['RECTANGLE', 'TRIANGLE_RECT', 'TRIANGLE_EQUAL', 'TRIANGLE_ISOS', 'RECTANGLE_CUTTED', 'RECTANGLE_CORNERS',
+  'ROOFS', 'ELIPSE_ONE_POINT', 'ELIPSE_120_POINT', 'TRAPEZOID', 'L_CORNERS', 'CROSS', 'TRAPEZOID45', 'HEART', 'POLYGON']);
+const withInternal = (f) => (!INTERNAL_FIGURES.has(f.id) ? f : {
+  ...f,
+  fields: [...f.fields, { k: 'internal', label: 'Rodzaj cięcia (iManualInternal)', t: 'sel', d: 0, o: FIGURE_INTERNAL }],
+  build: (v, ctx) => f.build(v, { ...ctx, internal: v.internal ?? ctx.internal }),
+});
+
 // Kolejnosc jak FigureType w PLC
-export const FIGURES = [RECTANGLE, ...FIGURES_A, ...FIGURES_B, ...FIGURES_C].sort((a, b) => a.v - b.v);
+export const FIGURES = [RECTANGLE, ...FIGURES_A, ...FIGURES_B, ...FIGURES_C].sort((a, b) => a.v - b.v).map(withInternal);
 export const figureById = (id) => FIGURES.find((f) => f.id === id);
 
 // Zmienne globalne / serwisowe, ktore FiguresGeometricSt podaje figurom (pola "Parametry figury");

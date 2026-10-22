@@ -6,6 +6,18 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Daszki: ściany z przezroczystym tłem
+- Obrazki ścian daszków (`img/figures/roof_wall{1..4}_{0,1}.png`, rysunek figury Daszki jak ekran HMI 137) z przezroczystym tłem zamiast białego – ściany nie zasłaniają już narożników sąsiednich ścian. Te same pliki w repo HMI (`Pictures/`, skrypt `scripts/roof_walls_transparent.py`).
+- Sprawdzone: `npm test` 166/166; rysunek Daszków w przeglądarce przed / po.
+
+### Automat: rodzaj cięcia wewn. / zewn. w figurach (piła i frez)
+- Pole „Rodzaj cięcia” (Zewnętrzne / Wewnętrzne) w formularzu figury jak lista `ComboBox_077 → HMI.iManualInternal` na ekranach figur HMI (Prostokąt, trójkąty, Prostokąt zaokrąglony, Narożniki, Daszki, Elipsa, Trapez 142 / 153, L Narożniki, Krzyż, Serce, Wielokąt – sprawdzone `dpa.py find iManualInternal`). Dotąd wybór był tylko w „Parametrach figury” (Admin). Wartość trafia do bloku figury jako `iInner`: piła – kroki cięcia wewnętrznego (5 / 23 zamiast 1 / 22), frez – korekta o promień frezu do środka; pole Admina „Rodzaj” zsynchronizowane.
+- Sprawdzone: `npm test` 166/166 (`test/figinternal.test.js`), smoke test; w przeglądarce prostokąt piły zewn. / wewn. (bufor i plan), prostokąt zaokrąglony frezu.
+
+### Plan cięcia: zewnętrzne poza materiał, wewnętrzne bez przecięć
+- Plan linii cięcia piłą (Manual: cięcie proste, pasy, bloki, krawędzie; kroki cięcia automatu offline i online) rysowany jako rzeczywisty zasięg rzazu na powierzchni (`cutSurfaceSpan` w `cutst.js` – przejścia z `cutPlan` + połowa cięciwy tarczy na głębokości przejścia, przy skosie w płaszczyźnie tarczy). Zewnętrzne – linia wychodzi za punkty (tarcza poza materiałem, krawędzie prostokąta krzyżują się za narożami), wewnętrzne – kończy się na punktach, linie się nie przecinają; wewn. początek / koniec – za punkt wychodzi tylko drugi koniec. Znaczniki XY i odległości zostają na zadanych punktach (`ends`).
+- Sprawdzone: `npm test` 164/164 (`test/plancut.test.js`: ciecie proste zewn. / wewn. / wewn. początek, krawędzie – wewn. bez przecięć, zewn. przecięte za narożami, automat), smoke test; zrzuty planu z góry (krawędzie zewn. / wewn., cięcie proste).
+
 ### Film prezentacyjny – druga wersja (#149)
 - Tor, punkty X / Y i wymiary pokazywane przed każdym programem i chowane po ok. 2,5 s; najazdy kamery blisko głowicy (płynne podążanie za tarczą / frezem) i powrót do widoku głównego – pasy, Automat piły, prostokąt frezu, G-kod.
 - Frez: prostokąt z zaokrąglonymi narożami zamiast ociekacza; G-kod Madonny pokazywany ok. 15 s dłużej; Blat z A = 1500 (C = 500, E = 700 – figura się domyka, tor na kamieniu).

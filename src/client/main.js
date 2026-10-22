@@ -11,7 +11,7 @@ import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
 import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor } from '../shared/tools.js';
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
-import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
+import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition, opPlanLines } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
 import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
@@ -707,6 +707,9 @@ function showFig() {
     label.prepend(row);
   }
   for (const el of $$('#figFields [data-g]')) el.addEventListener('input', showFigPicture);
+  // rodzaj ciecia figury = HMI.iManualInternal - ta sama zmienna co "Rodzaj" w Parametrach figury (Admin)
+  const inner = fieldEl('fig', 'internal');
+  if (inner) inner.addEventListener('change', () => { const ctx = fieldEl('figctx', 'internal'); if (ctx) ctx.value = inner.value; });
   showFigPicture();
   $('#figInfo').textContent = '';
 }
@@ -959,35 +962,40 @@ function planItems() {
   if (state.mode === 'online') {
     const au = onlineAuto();
     if (!au.count || !au.rows.length) return [];
-    const key = JSON.stringify(['on', au.kind, au.rows, au.count, au.origin, au.opt, bw, state.machine.millWidth]);
+    const common = { ...commonValues(), bladeWidth: bw };
+    const key = JSON.stringify(['on', au.kind, au.rows, au.count, au.origin, au.opt, common, state.machine]);
     if (key !== planCache.key) {
       planCache = { key, items: au.kind === 'mill' ? previewMill(au.rows, au.count, au.origin, state.machine.millWidth)
-        : previewSteps(au.rows, au.count, au.origin, au.opt, { bladeWidth: bw }) };
+        : previewSteps(au.rows, au.count, au.origin, au.opt, common, state.machine) };
     }
-    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, active: au.running && it.i === au.index }));
+    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, ends: it.ends, active: au.running && it.i === au.index }));
   }
   if (state.planSource === 'auto') {
     const a = state.forms.auto || demoAuto();
-    const key = JSON.stringify(['auto', a, bw]);
+    const m = offlineMachine();
+    const common = commonValues();
+    const key = JSON.stringify(['auto', a, common, m]);
     if (key !== planCache.key) {
       planCache = { key, items: a.kind === 'mill'
-        ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], offlineMachine().millWidth)
-        : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), { bladeWidth: bw }) };
+        ? previewMill(a.rows, a.rows.length, [a.ox, a.oy], m.millWidth)
+        : previewSteps(a.rows, a.rows.length, [a.ox, a.oy], autoOpts(a), common, m) };
     }
-    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, active: state.sim.running && it.i === state.sim.index }));
+    return planCache.items.map((it) => ({ path: it.path, marks: it.marks, ends: it.ends, active: state.sim.running && it.i === state.sim.index }));
   }
   const op = currentOp();
   const v = state.forms.ops[op.id] || defaults(op.fields);
-  const common = { ...(state.forms[commonSlot()] || {}), bladeWidth: bw };
-  const key = JSON.stringify(['op', op.id, v, common, state.machine.millWidth]);
+  const common = commonValues();
+  const m = offlineMachine();
+  const key = JSON.stringify(['op', op.id, v, common, m]);
   if (key !== planCache.key) {
     let items = [];
     try {
-      const lines = op.lines ? op.lines(v, common, state.machine) : [];
-      const paths = op.path ? op.path(v, common, state.machine) : [];
+      // linie ciecia: zasieg rzazu (zewnetrzne za punkty, wewnetrzne do punktow), znaczniki na zadanych punktach
+      const lines = opPlanLines(op, v, common, m);
+      const paths = op.path ? op.path(v, common, m) : [];
       // marks - wlasne punkty akcji (wiercenie: punkt otworu zamiast konca krzyzyka)
       const marks = op.marks ? op.marks(v) : null;
-      items = [...lines.map((l) => ({ path: [[l.x0, l.y0], [l.x1, l.y1]] })), ...paths.map((path) => (marks ? { path, marks } : { path }))];
+      items = [...lines, ...paths.map((path) => (marks ? { path, marks } : { path }))];
     } catch { /* niepelne dane formularza */ }
     planCache = { key, items };
   }
