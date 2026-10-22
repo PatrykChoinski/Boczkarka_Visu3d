@@ -13,11 +13,12 @@ import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor 
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
 import { SERVICE_BITS, SERVICE_GROUPS, serviceDefaults } from '../shared/service.js';
+import { SERVICE_PAGES } from '../shared/servicescreens.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -46,6 +47,9 @@ const state = {
   manContinuous: true, manToggle: null, points: {},
   // bity serwisowe HMI.bService... (ekran Ustawienia, service.js)
   service: serviceDefaults(),
+  // ekrany serwisowe (#147): wartosci zmiennych HMI bez odpowiednika w symulacji (offline), GVL.zmienna -> wartosc
+  hmi: {},
+  servicePage: 'main',
   // aktualne predkosci osi (mm/s, °/s): offline z programu / jogu, online z PLC albo z roznicy pozycji
   axisVel: { x: 0, y: 0, z: 0, a: 0, b: 0 }, velTrack: { p: null, t: 0 },
   // logowanie (#145): enabled - serwer ma users.json; level 0 niezalogowany, 1 Operator, 2 Serwis, 3 Admin
@@ -230,8 +234,13 @@ function redraw() {
     for (const el of $$('[data-act]')) el.value = fmtAxis(p[el.dataset.act]);
   }
   syncManualWin();
+  if (!$('.tab[data-tab="speed"]').hidden) syncSpeed();
+  if (!$('.tab[data-tab="service"]').hidden) syncService();
   if (p) {
-    const depth = Math.max(0, penetration(headFrame(p, m), m));
+    // glebokosc jak HMI2.fStatusActualCutDepth (fZActualPosition - fCutMaterialHeight): nad materialem ujemna;
+    // online z PLC, offline z geometrii (najnizszy punkt narzedzia wzgledem gornej powierzchni)
+    const ov = state.online.values;
+    const depth = state.mode === 'online' && typeof ov.cutDepth === 'number' ? ov.cutDepth : penetration(headFrame(p, m), m);
     let line = `X ${fmt(p.x, 8)}  Y ${fmt(p.y, 8)}  Z ${fmt(p.z, 7)}  A ${fmt(p.a, 6)}°  B ${fmt(p.b, 5)}°  głęb. ${fmt(depth, 6)} mm`;
     if (state.mode === 'offline') line += `  v ${fmt(state.sim.velocity * 0.06, 6, 2)} m/min`;
     $('#pos').textContent = line;
@@ -446,6 +455,7 @@ function saveForms() {
     state.forms.op = op.id;
     state.forms.modeOp = { ...(state.forms.modeOp || {}), [currentMode()]: op.id };
     state.forms.service = state.service;
+    state.forms.hmi = state.hmi;
     if (commonFields()) state.forms[commonSlot()] = readGroup('common', commonFields());
     if (state.mode === 'offline' && $('#autoTable').rows.length) state.forms.auto = readAuto();
     if ($('#figFields').children.length) {
@@ -477,6 +487,7 @@ function loadForms() {
       if (saved.rock) writeArea('rock', saved.rock);
       if (saved.forms) {
         state.service = { ...serviceDefaults(), ...(saved.forms.service || {}) };
+        state.hmi = { ...(saved.forms.hmi || {}) };
         state.forms = {
           ...state.forms, ...saved.forms,
           ops: saved.forms.ops || {},
@@ -1097,6 +1108,248 @@ function stopProgram() {
   requestDraw();
 }
 
+// --- ekran Serwis (#147, HMI serwis / serwis_2 / serwis_3) --------------------------------------
+// Offline wartosci wspolne z symulacja: parametry glowicy i narzedzi (pola Parametrow), bity bService... z Ustawien,
+// predkosc jog A, pozycje osi; pozostale zmienne - wartosci HMI (poczatkowe z GVL), zapamietane w przegladarce.
+// Online wszystko z PLC (OPC UA), tylko odczyt.
+
+const SVC_MACHINE = {
+  'HMI.fParameterHeadRotationDiameter': 'headRotationDiameter', 'HMI.fParameterCutTiltDiameter': 'cutTiltDiameter',
+  'HMI.fParameterDiscDiameter': 'discDiameter', 'HMI.fParameterMillTiltDiameter': 'millTiltDiameter', 'HMI.fParameterMillWidth': 'millWidth',
+  'HMI.fParameterMillLength': 'millLength', 'HMI.fParameterMillCorrection': 'millCorrection', 'HMI.fParameterDrillLength': 'drillLength',
+};
+const SVC_DYN = { 'HMI.fJogAVelocity': 'jogAVel' };
+const SVC_POSE = { 'HMI2.fXRealPosition': 'x', 'HMI2.fYRealPosition': 'y', 'HMI2.fZRealPosition': 'z', 'HMI2.fAActualPosition': 'a', 'HMI2.fBActualPosition': 'b' };
+const svcBitKey = (v) => (v.startsWith('HMI.bService') && SERVICE_BITS.some((b) => b.k === v.slice(4)) ? v.slice(4) : null);
+
+// Wartosc zmiennej HMI (surowa, jak w PLC)
+function svcValue(it) {
+  const v = it.v;
+  if (state.mode === 'online') {
+    const k = plcKey(v);
+    return k ? state.online.values[k] ?? null : null;
+  }
+  if (SVC_POSE[v]) return state.pose?.[SVC_POSE[v]] ?? null;
+  if (SVC_MACHINE[v]) return Number($(`[data-m="${SVC_MACHINE[v]}"]`)?.value);
+  if (SVC_DYN[v]) return Number($(`[data-d="${SVC_DYN[v]}"]`)?.value);
+  const bit = svcBitKey(v);
+  if (bit) return Boolean(state.service[bit]);
+  if (v in state.hmi) return state.hmi[v];
+  if (v.startsWith('IoConfig')) return null;
+  return it.init ?? (it.t === 'BOOL' ? false : null);
+}
+
+function setSvcValue(it, val) {
+  if (state.mode !== 'offline') return;
+  const v = it.v;
+  if (SVC_MACHINE[v]) { $(`[data-m="${SVC_MACHINE[v]}"]`).value = val; offlineFormsChanged(); }
+  else if (SVC_DYN[v]) { $(`[data-d="${SVC_DYN[v]}"]`).value = val; offlineFormsChanged(); }
+  else if (svcBitKey(v)) { state.service[svcBitKey(v)] = Boolean(val); renderServiceBits(); serviceChanged(); }
+  else { state.hmi[v] = val; saveForms(); }
+  syncService(true);
+}
+
+const svcAll = () => SERVICE_PAGES.flatMap((p) => p.groups.flatMap((g) => g.items));
+
+function svcItemHtml(it, i, ro) {
+  const id = `data-svc-i="${i}"`;
+  const tip = `${it.v ? `HMI: ${it.v}` : ''}${it.use ? `\n${it.use}` : ''}${it.note ? `\n${it.note}` : ''}`.replace(/"/g, '&quot;');
+  const code = it.v ? `<code>${it.v}</code>` : '';
+  switch (it.k) {
+    case 'num':
+      return `<label class="svcItem" title="${tip}">${it.label ?? it.v}<span class="row2"><input type="number" step="any" ${id}${ro ? ' disabled' : ''}>${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</span>${code}</label>`;
+    case 'display':
+      return `<div class="svcItem" title="${tip}">${it.label ?? it.v}<output ${id}></output>${code}</div>`;
+    case 'bit':
+      return `<div class="svcItem" title="${tip}">${it.label ? `<span>${it.label}</span>` : ''}<button type="button" class="svcBit" ${id}${ro ? ' disabled' : ''}></button>${code}</div>`;
+    case 'button':
+      return `<div class="svcItem" title="${tip}"><button type="button" class="svcBtn" ${id}${ro || !it.act ? ' disabled' : ''}>${it.label ?? it.v}</button>${code}</div>`;
+    case 'goto':
+      return `<div class="svcItem" title="HMI: ${it.hmi}${it.page || it.tab ? '' : ' – brak w Visu3D'}"><button type="button" class="svcGoto" ${id}${it.page || it.tab ? '' : ' disabled'}>${it.label}</button></div>`;
+    case 'dead':
+      return `<div class="svcItem" title="${tip}"><button type="button" class="svcBtn" disabled>${it.label}</button></div>`;
+    default: return '';
+  }
+}
+
+function renderService() {
+  const ro = state.mode === 'online';
+  const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
+  for (const b of $$('#servicePages [data-spage]')) {
+    b.classList.toggle('active', b.dataset.spage === page.id);
+    b.onclick = () => { state.servicePage = b.dataset.spage; renderService(); };
+  }
+  $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. `
+    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity bService… i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce.');
+  const all = svcAll();
+  $('#servicePage').innerHTML = page.groups.map((g) => `<div class="svcCard">${g.title ? `<h4>${g.title}</h4>` : ''}<div class="svcItems">${
+    g.items.map((it) => svcItemHtml(it, all.indexOf(it), ro)).join('')}</div></div>`).join('');
+  for (const el of $$('#servicePage [data-svc-i]')) {
+    const it = all[Number(el.dataset.svcI)];
+    if (el.tagName === 'INPUT') {
+      el.addEventListener('change', () => {
+        const n = Number(el.value);
+        if (!Number.isFinite(n)) return;
+        const raw = it.gain ? n / it.gain : n;
+        setSvcValue(it, Math.min(it.max ?? Infinity, Math.max(it.min ?? -Infinity, raw)));
+      });
+    } else if (it.k === 'bit') {
+      el.onclick = () => setSvcValue(it, !svcValue(it));
+    } else if (it.k === 'goto') {
+      el.onclick = () => { if (it.page) { state.servicePage = it.page; renderService(); } else if (it.tab && !$(`.tabs [data-tab="${it.tab}"]`).hidden) showTab(it.tab); };
+    } else if (it.k === 'button' && it.act) {
+      if (it.act.startsWith('jog:')) {
+        // JOG obrot / wychyl (bManualA/BJogLeft/Right) - trzymany
+        const [, ax, sign] = it.act.split(':');
+        el.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          const { vel, acc } = jogVelocity(ax, offlineDynamics(), false);
+          startJog({ [ax]: Number(sign) }, vel, acc);
+        });
+        for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, releaseJog);
+      } else if (it.act.startsWith('limit:')) {
+        // zapis krancowki (WorkArea: fServiceX/Y/ZLimit... := aktualna pozycja osi) - A w PLC nie obslugiwane
+        const [, ax, side] = it.act.split(':');
+        el.onclick = () => {
+          if (!state.pose || ax === 'a') return;
+          const target = all.find((x) => x.v === `HMI.fService${ax.toUpperCase()}Limit${side === 'min' ? 'Negative' : 'Positive'}`);
+          if (target) setSvcValue(target, savedPosition(state.pose[ax]));
+        };
+      }
+    }
+  }
+  syncService(true);
+}
+
+function syncService(force = false) {
+  const all = svcAll();
+  for (const el of $$('#servicePage [data-svc-i]')) {
+    const it = all[Number(el.dataset.svcI)];
+    if (!it.v || it.k === 'button') continue;
+    const raw = svcValue(it);
+    if (it.k === 'bit') {
+      const on = Boolean(raw);
+      el.classList.toggle('on', on);
+      el.textContent = (on ? it.on : it.off) ?? (on ? 'ZAŁĄCZONE' : 'WYŁĄCZONE');
+      continue;
+    }
+    const val = typeof raw === 'number' && Number.isFinite(raw) ? (it.gain ? raw * it.gain : raw) : null;
+    const txt = val === null ? '' : val.toFixed(it.dec ?? 2);
+    if (el.tagName === 'OUTPUT') el.textContent = txt || '–';
+    else if (force || el !== document.activeElement) el.value = txt;
+  }
+}
+
+// --- ekran Predkosc (#146, HMI predkosc) -----------------------------------------------------
+// Grupy jak w HMI: przesuw szybki, przesuw roboczy (pila / frez wg trybu), Z dojazd, Z praca, silnik glowny.
+// Offline: pole i +/- (przytrzymanie powtarza: +/-1 % maksimum na krok jak PLC przy trzymaniu przycisku, silnik +/-0,1 Hz)
+// zmieniaja dynamike symulacji (te same pola co Parametry) i czestotliwosc pily. Online: wartosci z PLC (tylko odczyt),
+// procent jak HMI2.iVelocity...Precent = predkosc / maksimum.
+
+const M_MIN = 0.06;   // mm/s -> m/min
+
+function speedGroups() {
+  const online = state.mode === 'online';
+  const v = state.online.values;
+  const mx = state.cfg.offline.speedMax || { fast: 20, saw: 10, mill: 2, zUp: 3, zWork: 3, mainDrive: 200 };
+  const saw = currentMode() === 'saw';
+  // wartosc i maksimum w m/min (Hz dla silnika): online z PLC (mm/s), offline z pol dynamiki (m/min)
+  const plc = (k) => (typeof v[k] === 'number' ? v[k] * M_MIN : null);
+  const d = (k) => Number($(`[data-d="${k}"]`)?.value);
+  return [
+    { k: 'fast', icon: 'continuous', title: 'Przesuw szybki', plc: 'fVelocityFast', field: 'fastVel', unit: 'm/min', dec: 2,
+      value: online ? plc('fastVel') : d('fastVel'), max: online ? plc('maxFastVel') : mx.fast },
+    { k: 'work', icon: saw ? 'saw' : 'mill', title: saw ? 'Przesuw roboczy – piła' : 'Przesuw roboczy – frez',
+      plc: saw ? 'fVelocitySawMode' : 'fVelocityMillMode', field: 'cutVel', unit: 'm/min', dec: 2,
+      value: online ? plc(saw ? 'cutVel' : 'millVel') : d('cutVel'), max: online ? plc(saw ? 'maxSawVel' : 'maxMillVel') : (saw ? mx.saw : mx.mill) },
+    { k: 'zUp', icon: 'arrowUp', title: 'Prędkość osi Z – dojazd', plc: 'fVelocityAxisZApproach', field: 'zUpVel', unit: 'm/min', dec: 3,
+      value: online ? plc('zUpVel') : d('zUpVel'), max: online ? plc('maxZUpVel') : mx.zUp },
+    { k: 'zWork', icon: 'arrowDown', title: 'Prędkość osi Z – praca', plc: 'fVelocityAxisZWork', field: 'zVel', unit: 'm/min', dec: 3,
+      value: online ? plc('zVel') : d('zVel'), max: online ? plc('maxZVel') : mx.zWork },
+    { k: 'drive', icon: saw ? 'saw' : 'mill', title: saw ? 'Prędkość silnika głównego (piła)' : 'Prędkość wrzeciona', plc: 'fVelocityMainDrive', unit: 'Hz', dec: 1,
+      value: online ? v.mainDriveHz : Number($('#sawFreq').value), max: online ? v.maxMainDriveHz : mx.mainDrive, step: 0.1 },
+  ];
+}
+
+function renderSpeed() {
+  const online = state.mode === 'online';
+  const groups = speedGroups();
+  $('#speedHint').innerHTML = online
+    ? `Jak ekran HMI „predkosc”: wartości z PLC (tylko odczyt).${state.online.values.advancedDesktop ? ' <b>Pulpit rozszerzony</b> (bServiceAdvancedDesktop) – prędkości z potencjometrów pulpitu.' : ''}`
+    : 'Jak ekran HMI „predkosc”: wpisz wartość albo +/- (przytrzymaj – szybciej). Zmiana działa od razu w symulacji (te same wartości co w Parametrach).';
+  $('#speedGroups').innerHTML = groups.map((g) => `
+    <div class="speedGroup" data-speed="${g.k}" title="HMI.${g.plc}">
+      <h4>${icon(g.icon)}<span>${g.title}</span></h4>
+      <div class="speedBar"><i></i><span></span></div>
+      <div class="speedRow">
+        <button type="button" data-speed-dec="${g.k}" title="−"${online ? ' disabled' : ''}>−</button>
+        <input type="number" step="any" min="0" data-speed-in="${g.k}"${online ? ' disabled' : ''}>
+        <span class="unit">${g.unit}</span>
+        <button type="button" data-speed-inc="${g.k}" title="+"${online ? ' disabled' : ''}>+</button>
+      </div>
+      ${g.k === 'drive' ? '<div class="speedRow sub"><span></span><output data-speed-rpm></output><span class="unit">rpm</span><span></span></div>' : ''}
+    </div>`).join('');
+  for (const el of $$('[data-speed-in]')) el.addEventListener('change', () => setSpeed(el.dataset.speedIn, Number(el.value)));
+  for (const b of $$('[data-speed-dec], [data-speed-inc]')) {
+    const k = b.dataset.speedDec || b.dataset.speedInc;
+    const sign = b.dataset.speedInc ? 1 : -1;
+    let timer = null;
+    const stepOnce = () => {
+      const g = speedGroups().find((x) => x.k === k);
+      const step = g.step ?? (g.max > 0 ? g.max / 100 : 0.01);
+      setSpeed(k, Math.min(g.max ?? Infinity, Math.max(0, (Number.isFinite(g.value) ? g.value : 0) + sign * step)));
+    };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      stepOnce();
+      timer = setTimeout(function rep() { stepOnce(); timer = setTimeout(rep, 80); }, 400);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => clearTimeout(timer));
+  }
+  syncSpeed(true);
+}
+
+// Offline: nowa predkosc do pol dynamiki (m/min) albo czestotliwosci pily (Hz), LIMIT(0, wartosc, maksimum) jak w PLC
+function setSpeed(k, value) {
+  if (state.mode !== 'offline' || !Number.isFinite(value)) return;
+  const g = speedGroups().find((x) => x.k === k);
+  const val = Math.min(g.max ?? Infinity, Math.max(0, value));
+  if (k === 'drive') {
+    $('#sawFreq').value = +val.toFixed(2);
+    requestDraw();
+  } else {
+    $(`[data-d="${g.field}"]`).value = +val.toFixed(4);
+    offlineFormsChanged();
+  }
+  syncSpeed(true);
+}
+
+function syncSpeed(force = false) {
+  const p = state.pose;
+  if (p) {
+    const v = state.online.values;
+    const online = state.mode === 'online';
+    const tool = online && typeof v.toolX === 'number' ? { x: v.toolX, y: v.toolY, z: v.toolZ } : plcActualPosition(p, state.machine);
+    // nad materialem ujemna (jak fStatusActualCutDepth w PLC)
+    const depth = online && typeof v.cutDepth === 'number' ? v.cutDepth : penetration(headFrame(p, state.machine), state.machine);
+    const a = online && typeof v.aFixed === 'number' ? v.aFixed : p.a;
+    $('#speedPos').innerHTML = [['Pozycja osi X [mm]', tool.x], ['Pozycja osi Y [mm]', tool.y], ['Wysokość osi Z [mm]', tool.z],
+      ['Kąt obrotu głowicy [°]', a], ['Pozycja wychył [°]', p.b], ['Głębokość [mm]', depth]]
+      .map(([t, x]) => `<div><small>${t}</small><b>${fmtAxis(x)}</b></div>`).join('');
+  }
+  for (const g of speedGroups()) {
+    const box = $(`[data-speed="${g.k}"]`);
+    if (!box) continue;
+    const pct = g.max > 0 && Number.isFinite(g.value) ? Math.round(g.value / g.max * 100) : null;
+    box.querySelector('.speedBar i').style.width = `${Math.min(100, Math.max(0, pct ?? 0))}%`;
+    box.querySelector('.speedBar span').textContent = pct === null ? '–' : `${pct} %`;
+    const inp = box.querySelector('input');
+    if ((force || inp !== document.activeElement) && Number.isFinite(g.value)) inp.value = g.value.toFixed(g.dec);
+    const rpm = box.querySelector('[data-speed-rpm]');
+    if (rpm) rpm.textContent = Number.isFinite(g.value) ? (g.value * 30).toFixed(0) : '–';    // rpm = Hz * 30 (HMI)
+  }
+}
+
 // --- bity serwisowe (ekran Ustawienia) ----------------------------------------------------------
 // Jeden bit dla wszystkich programow (jak HMI.bService... w PLC); zmiana odswieza formularze, plan i informacje.
 
@@ -1647,6 +1900,8 @@ function showTab(name) {
   setPanelTitle(name);
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
   if (name === 'stone') showSetPage($('#setPages .active')?.dataset.set || 'area');
+  if (name === 'speed') renderSpeed();
+  if (name === 'service') renderService();
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
   if (name === 'cnc') updateCncInfo();
@@ -1991,7 +2246,7 @@ function isBased() {
 // Manual (operacje), Automat - wg trybu i tylko po bazowaniu (Manual tylko offline); Ruchy reczne (okno z gornego menu, #143) -
 // offline, po bazowaniu. Bez bazowania (#144) ustawienia (stol i kamien, Pozycja, Parametry) zablokowane.
 // Logowanie (#145): niezalogowany - podglad, Operator - praca, Serwis - Parametry i opcje serwisowe, Admin - parametry figur
-const TAB_LEVEL = { stone: 1, cut: 1, cnc: 1, pos: 1, par: 2 };
+const TAB_LEVEL = { stone: 1, cut: 1, cnc: 1, pos: 1, par: 2, speed: 1, service: 2 };
 
 function updateTabs() {
   const mode = modeById(currentMode());

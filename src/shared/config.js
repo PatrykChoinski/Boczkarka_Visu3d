@@ -1,3 +1,5 @@
+import { SERVICE_SCREEN_VARS } from './servicescreens.js';
+
 // Zmienne PLC (symbol config, jak w HMI): klucz w aplikacji -> "GVL.zmienna".
 // Wymagane sa pozycje osi i parametry tarczy / materialu, reszta opcjonalna.
 export const VARIABLES = {
@@ -80,6 +82,19 @@ export const VARIABLES = {
   autoTaccZ: 'HMI.fAutoTaccZ',
   taccA: 'HMI.TaccA',
   taccB: 'HMI.TaccB',
+  // ekran Predkosc (#146, HMI predkosc): predkosc pracy frezu, silnik glowny [Hz], maksima (mm/s, Hz), pulpit z potencjometrami,
+  // glebokosc ciecia (Status: fZActualPosition - fCutMaterialHeight), kat obrotu glowicy jak na ekranie HMI
+  millVel: 'HMI.fVelocityMillMode',
+  mainDriveHz: 'HMI.fVelocityMainDrive',
+  maxMainDriveHz: 'HMI.fMaxVelocityMainDrive',
+  maxFastVel: 'HMI2.fMaxVelocityFast',
+  maxSawVel: 'HMI2.fMaxVelocitySawMode',
+  maxMillVel: 'HMI2.fMaxVelocityMillMode',
+  maxZUpVel: 'HMI2.fMaxVelocityAxisZApproach',
+  maxZVel: 'HMI2.fMaxVelocityAxisZWork',
+  advancedDesktop: 'HMI.bServiceAdvancedDesktop',
+  cutDepth: 'HMI2.fStatusActualCutDepth',
+  aFixed: 'HMI2.fAActualPositionFixed',
   // ruchy reczne (Manual): predkosci jog
   jogXVel: 'HMI.fJogXVelocity',
   jogYVel: 'HMI.fJogYVelocity',
@@ -113,11 +128,20 @@ export const VARIABLES = {
   smoothingArrays: 'HMI.bServiceSmoothingArrays',
 };
 
+// Ekrany serwisowe (#147, servicescreens.js): zmienne, ktorych nie ma wyzej - klucz "hmi:GVL.zmienna"
+for (const v of Object.keys(SERVICE_SCREEN_VARS)) {
+  if (!Object.values(VARIABLES).includes(v)) VARIABLES[`hmi:${v}`] = v;
+}
+// klucz odczytu zmiennej PLC (sciezka GVL.zmienna) w wartosciach z serwera
+export const plcKey = (v) => Object.keys(VARIABLES).find((k) => VARIABLES[k] === v) ?? null;
+
 // Zmienne czytane rzadziej (co slowEvery odczytow) - duze tablice i ustawienia programu
 export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
   'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progMillCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
   'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount',
-  'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB'];
+  'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB',
+  'maxMainDriveHz', 'maxFastVel', 'maxSawVel', 'maxMillVel', 'maxZUpVel', 'maxZVel', 'advancedDesktop',
+  ...Object.keys(VARIABLES).filter((k) => k.startsWith('hmi:'))];
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
@@ -209,6 +233,9 @@ export const DEFAULTS = {
     },
     // tryb po bazowaniu na starcie (saw | mill | drill | polishing) - ekran Bazowanie
     mode: 'saw',
+    // ekran Predkosc (#146): maksima jak HMI2.fMaxVelocityFast / SawMode / MillMode / AxisZApproach / AxisZWork [m/min]
+    // i HMI.fMaxVelocityMainDrive [Hz] - w PLC liczone z przekladni osi (VelocityAcceleration)
+    speedMax: { fast: 20, saw: 10, mill: 2, zUp: 3, zWork: 3, mainDrive: 200 },
     // stol i kamien: punkty XYZ jak aCuttingBoard / aCuttingRock (pozycje osi), count = liczba wierzcholkow;
     // gora materialu offline jak w PLC: Z min punktow stolu - grubosc
     board: { count: 4, points: [[0, 0, 490], [3500, 0, 490], [3500, 3000, 490], [0, 3000, 490]] },

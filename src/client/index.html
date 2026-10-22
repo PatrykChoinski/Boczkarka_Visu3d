@@ -42,7 +42,9 @@
       <button data-tab="cnc" title="G-kod (CNC)"><svg class="ic big" aria-hidden="true"><use href="#i-gcode"/></svg></button>
       <button data-tab="cut" data-offline title="Manual"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
       <button data-tab="home" title="Bazowanie"><svg class="ic big" aria-hidden="true"><use href="#i-homing"/></svg></button>
-      <button data-tab="par" data-offline title="Parametry (serwis)"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>
+      <button data-tab="service" title="Serwis"><svg class="ic big" aria-hidden="true"><use href="#i-wrench"/></svg></button>
+      <button data-tab="par" data-offline title="Parametry"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>
+      <button data-tab="speed" title="Prędkość"><svg class="ic big" aria-hidden="true"><use href="#i-speed"/></svg></button>
       <button data-tab="stone" class="active" title="Ustawienia"><svg class="ic big" aria-hidden="true"><use href="#i-settings"/></svg></button>
       <button data-tab="pos" data-offline title="Pozycja"><svg class="ic big" aria-hidden="true"><use href="#i-pos"/></svg></button>
     </nav>
@@ -73,6 +75,24 @@
     <aside id="panel">
       <div class="panelTitle" id="panelTitle"></div>
       <p class="lockInfo" id="lockInfo" hidden>Maszyna niezbazowana – ruchy i ustawienia zablokowane. Zbazuj maszynę w zakładce <b>Bazowanie</b>.</p>
+
+      <!-- #147 Serwis jak ekrany HMI serwis (70), serwis_2 (71), serwis_3 (75): zmienne i bity w grupach z HMI -->
+      <div class="tab" data-tab="service" hidden>
+        <div class="seg sub" id="servicePages">
+          <button type="button" data-spage="main" class="active" title="Serwis – ustawienia (HMI serwis)"><svg class="ic" aria-hidden="true"><use href="#i-wrench"/></svg><span>Serwis</span></button>
+          <button type="button" data-spage="area" title="Obszar pracy maszyny (HMI serwis_2)"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span>Obszar pracy</span></button>
+          <button type="button" data-spage="settings" title="Ustawienia serwisowe (HMI serwis_3)"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>Ustawienia</span></button>
+        </div>
+        <p class="hint" id="serviceHint"></p>
+        <div id="servicePage" data-lock></div>
+      </div>
+
+      <!-- #146 Predkosc jak ekran HMI predkosc: pozycje (jak HMI) i glowne predkosci z paskiem %, polem i +/- -->
+      <div class="tab" data-tab="speed" hidden>
+        <p class="hint" id="speedHint"></p>
+        <div class="speedPos" id="speedPos"></div>
+        <div id="speedGroups" data-lock></div>
+      </div>
 
       <div class="tab" data-tab="stone">
         <!-- Ustawienia: podekrany Stol i kamien, Bity serwisowe -->
