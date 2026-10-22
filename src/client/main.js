@@ -707,6 +707,9 @@ function showFig() {
     label.prepend(row);
   }
   for (const el of $$('#figFields [data-g]')) el.addEventListener('input', showFigPicture);
+  // rodzaj ciecia figury = HMI.iManualInternal - ta sama zmienna co "Rodzaj" w Parametrach figury (Admin)
+  const inner = fieldEl('fig', 'internal');
+  if (inner) inner.addEventListener('change', () => { const ctx = fieldEl('figctx', 'internal'); if (ctx) ctx.value = inner.value; });
   showFigPicture();
   $('#figInfo').textContent = '';
 }

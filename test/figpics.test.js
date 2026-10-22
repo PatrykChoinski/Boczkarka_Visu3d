@@ -31,7 +31,8 @@ test('litery: kazda zmienna z ekranu HMI odpowiada polu figury, X / Y przy punkc
     assert.ok(letters.length > 0, `${fig.id}: brak liter`);
   }
   const rect = FIGURES.find((f) => f.id === 'RECTANGLE');
-  assert.deepEqual(rect.fields.map((f) => fieldLetter('RECTANGLE', f)), ['X', 'Y', 'A', 'B', null]);
+  // ostatnie pole - rodzaj ciecia (iManualInternal), bez litery
+  assert.deepEqual(rect.fields.map((f) => fieldLetter('RECTANGLE', f)), ['X', 'Y', 'A', 'B', null, null]);
   const cross = FIGURES.find((f) => f.id === 'CROSS');
   assert.equal(fieldLetter('CROSS', cross.fields.find((f) => f.k === 'width2')), 'W');
 });

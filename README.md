@@ -425,6 +425,12 @@ XYZ**, czyli wierzchołki zapisane z pozycji osi:
       serce, narożniki, otwory, ociekacz, elipsy, stół frezarski, narożniki
       L, płyta indukcyjna). Kod przeniesiony 1:1 z bloków PLC
       (`src/shared/figures/`).
+    - „Rodzaj cięcia” (Zewnętrzne / Wewnętrzne) w polach figury, jak lista
+      `iManualInternal` na ekranach figur w HMI: prostokąt, trójkąty, daszki,
+      trapezy, krzyż, wielokąt (piła) oraz prostokąt zaokrąglony, narożniki,
+      narożniki L, elipsy, serce (frez). Wewnętrzne – kroki cięcia
+      wewnętrznego piły (linie nie wychodzą za narożniki), frez – korekta
+      o promień do środka figury.
     - „Parametry figury”: zmienne PLC, które `FiguresGeometricSt` podaje
       figurom (`iManualInternal`, `bManualAdditionalDistance`,
       `bServiceRectangleACBD`, `fParameterMillWidth`, korekty daszków, …).
