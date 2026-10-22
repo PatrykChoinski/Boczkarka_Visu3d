@@ -173,7 +173,7 @@ falownik wychyłu 77 – w HMI nieosiągalny), prędkości serwisowe (78), wejś
 wyjścia (73, polerowanie 69 – przypisania X / Y jako listy), skalowanie osi
 (74), pomiar narzędzia (66), obszar stołu frez / wiercenie / polerowanie (46).
 Przejścia między ekranami jak w HMI (obszar stołu / kamienia – Ustawienia).
-Razem 17 stron, 461 elementów (wszystkie z ekranów HMI poza lampką pod przełącznikiem tego samego bitu), 370 zmiennych PLC (`src/shared/servicescreens.js`,
+Razem 17 stron, 462 elementy (wszystkie z ekranów HMI), 370 zmiennych PLC (`src/shared/servicescreens.js`,
 wygenerowane z projektu HMI i GVL: grupy jak ramki, opisy, jednostki, zakresy,
 wartości początkowe, warunki widoczności, działanie w PLC w podpowiedzi).
 Online wszystko z PLC (OPC UA, tylko odczyt; tablice jak `aMillingBoardX` w

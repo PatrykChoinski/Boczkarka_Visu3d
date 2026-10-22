@@ -509,6 +509,14 @@ export const SERVICE_PAGES = [
       "use": "Cut/Arc/Circle/Stripes/Blocks: enables overtaking (blended next move) at fCutOvertakingPrecent of the segment."
      },
      {
+      "k": "lamp",
+      "v": "HMI.bCutOvertaking",
+      "t": "BOOL",
+      "label": "WYPRZEDZANIE",
+      "init": false,
+      "use": "Cut/Arc/Circle/Stripes/Blocks: enables overtaking (blended next move) at fCutOvertakingPrecent of the segment."
+     },
+     {
       "k": "num",
       "v": "HMI.fCutOvertakingPrecent",
       "t": "LREAL",
