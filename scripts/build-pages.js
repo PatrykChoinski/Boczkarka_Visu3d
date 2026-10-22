@@ -16,6 +16,9 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'public'), out, { recursive: true });
 // konfiguracja z config.json repo (bez hasel - clientConfig ich nie podaje), bez PLC
 const cfg = { ...clientConfig(loadConfig(path.join(root, 'config.json')), false), static: true };
+// logowanie demonstracyjne (#145): bez serwera nie ma czym sprawdzic hasla, a skroty hasel w publicznej stronie
+// dalyby sie zlamac - wybor uzytkownika bez hasla, poziomy (pokazywanie / ukrywanie funkcji) jak na maszynie
+cfg.auth = { enabled: true, demo: true, users: ['Operator', 'Serwis', 'Admin'], timeoutMin: 0 };
 fs.mkdirSync(path.join(out, 'api'), { recursive: true });
 fs.writeFileSync(path.join(out, 'api', 'config'), JSON.stringify(cfg));
 // bez Jekylla - pliki jak sa

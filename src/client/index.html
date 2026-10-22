@@ -111,7 +111,7 @@
       </div>
 
       <div class="tab" data-tab="cut" hidden>
-        <label>Operacja <select id="op"></select></label>
+        <label>Program <select id="op"></select></label>
         <p class="hint" id="opHint"></p>
         <div class="grid2" id="opFields"></div>
         <details id="commonBox">
@@ -208,7 +208,7 @@
       </div>
 
       <div class="tab" data-tab="home" hidden>
-        <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Operacja / Automat / Ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
+        <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
         <div class="row">
           <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
@@ -323,10 +323,11 @@
     <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span><button id="loginClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
     <form class="winBody" id="loginForm">
       <label class="inline" title="Użytkownik"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><select id="loginUser"></select></label>
-      <label class="inline" title="Hasło"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><input type="password" id="loginPass" autocomplete="current-password"></label>
+      <label class="inline" id="loginPassRow" title="Hasło"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><input type="password" id="loginPass" autocomplete="current-password"></label>
+      <p class="hint" id="loginDemo" hidden>Wersja demonstracyjna (GitHub Pages): wybór użytkownika bez hasła – pokazuje i ukrywa funkcje jak na maszynie. Hasła sprawdza tylko serwer VizuApp na maszynie.</p>
       <p class="hint" id="loginErr"></p>
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-      <p class="hint">Operator – praca (operacje, automat, ruchy ręczne, pozycja, bazowanie, stół i kamień). Serwis – dodatkowo Parametry i opcje serwisowe. Admin – dodatkowo parametry figur (zmienne PLC).</p>
+      <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo Parametry i bity serwisowe (Ustawienia → Serwis). Admin – dodatkowo parametry figur (zmienne PLC).</p>
     </form>
   </div>
 

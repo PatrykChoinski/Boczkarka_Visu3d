@@ -166,10 +166,17 @@ async function main() {
       if (!info.isStatic || info.mode !== 'offline' || !info.onlineHidden) throw new Error(`wersja statyczna: ${JSON.stringify(info)}`);
       if (requests.some((u) => u.includes('api/events'))) throw new Error('wersja statyczna laczy sie z api/events');
       await checkView(page);
+      // logowanie demonstracyjne (bez hasla): niezalogowany - bez ekranu Manual, Operator - Manual widoczny
+      const hiddenBefore = await page.evaluate(() => document.querySelector('.tabs [data-tab="cut"]').hidden);
+      if (!hiddenBefore) throw new Error('wersja statyczna: Manual widoczny bez logowania');
+      await page.click('#loginBtn');
+      await page.selectOption('#loginUser', 'Operator');
+      await page.click('#loginForm button[type="submit"]');
+      await page.waitForFunction(() => window.vizu.state.auth.user === 'Operator' && !document.querySelector('.tabs [data-tab="cut"]').hidden);
       const hud = await checkOfflineCut(page);
       await page.screenshot({ path: path.join(OUT, 'pages.png') });
       assertNoErrors('wersja statyczna', errors);
-      log(`OK wersja statyczna (GitHub Pages): ${hud}`);
+      log(`OK wersja statyczna (GitHub Pages): logowanie demo (Operator), ${hud}`);
       await context.close();
     } finally {
       st.close();

@@ -4,6 +4,21 @@ Zmiany w Promasz Visu3D (VizuApp) – wizualizacji cięcia piły mostowej Promas
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-22
+
+### Logowanie na GitHub Pages (demo)
+- Wersja statyczna (GitHub Pages) ma logowanie demonstracyjne: wybór Operator / Serwis / Admin bez hasła, te same poziomy co na maszynie (niezalogowany – tylko Bazowanie, Operator – praca, Serwis – Parametry i bity serwisowe, Admin – parametry figur), sesja do zamknięcia karty. Hasła sprawdza tylko serwer VizuApp na maszynie – skróty haseł w publicznej stronie dałyby się złamać (np. 11111111). Smoke test wersji statycznej: bez logowania brak ekranu Manual, po zalogowaniu demo (Operator) cięcie działa.
+- Poprawione opisy po zmianie nazw (Manual, Ustawienia → Serwis).
+
+### Zmienne PLC (OPC UA): pozycje osi, punkt narzędzia, przyspieszenia, sprawdzenie na sterowniku
+- Pozycje X / Y / Z z `HMI2.fX/Y/ZRealPosition` (rzeczywiste osie) zamiast `fX/Y/ZActualPosition` – to w PLC punkt narzędzia (oś − przesunięcie głowicy wg A / B, w Z + średnica tarczy / 2), a wizualizacja liczy z osi; na maszynie głowica byłaby przesunięta (Y ok. 50 mm, Z ok. 312 mm przy tarczy Ø625). Testowe PLC podawało osie pod starą nazwą, więc tego nie wykrywało.
+- Punkt narzędzia `HMI2.fX/Y/ZActualPosition` podpięty osobno – okno Ruchy ręczne pokazuje te same pozycje co ekrany HMI; offline ten sam wzór (`plcActualPosition` z `Settings/ActualPosition` dla piły, frezu, wiertła, polerki).
+- Zapis jak w PLC: „Zapisz” (punkty operacji, punkt startowy automatu), punkty stołu i kamienia (z Z), punkty ręczne A / B / C i Z polerowania wpisują punkt narzędzia (`fX/Y/ZActualPosition`) zamiast pozycji osi; przejazd na punkt A / B / C liczy oś z punktu (`axisFromActual`). G54 – jak w PLC – osie.
+- Aktualne prędkości osi z PLC: `HMI2.f[XYZ]ActualVelocity` (m/min), `fAActualVelocity` (°/s × 0,06); `fBActualVelocity` niepodpięta (w PLC `VelocityAcceleration` liczy ją z `MCActualVelocityA` – błąd w PLC), prędkość B z różnicy pozycji.
+- „Pobierz z PLC”: przyspieszenia X / Z / A / B wzorami PLC (`fMaxVelocityJog* / fAutoTacc* / Tacc*`) zamiast `HMI.DecX/DecZ/DecA/DecB` (opóźnienia) – `AccX/Z/A/B` są w GVL bez symbol configu.
+- Diagnostyka: status połączenia „zmienne N/M” z brakującymi nazwami, `GET /api/variables` (węzeł, typ, wartość), tabela „Zmienne PLC” w Ustawienia → Serwis (tryb PLC), smoke test wymaga wszystkich zmiennych z typem i wartością; `scripts/check-plc-symbols.mjs` (plik symboli z kompilacji) i `scripts/check-plc-live.mjs opc.tcp://<IP>:4840` (sterownik, tylko odczyt, porównanie geometrii z PLC).
+- Sprawdzone: oba pliki symboli (AI i produkcyjny) – 94/94 zmiennych, typy zgodne; enumy `CutStepType`, `ProgramCutStep`, `ProgramMillStep`, `OutInType` jak w PLC; jednostki prędkości (mm/s) jak w PLC; `npm test` 154/154 (`test/plcvars.test.js`), smoke test 94/94. Nie sprawdzone na prawdziwym sterowniku – z tego komputera żaden nie jest osiągalny (adresy maszyn z repo nie odpowiadają na 4840).
+
 ## 2026-10-21
 
 ### Podpięcie zmiennych PLC przez OPC UA – sprawdzone (#128)

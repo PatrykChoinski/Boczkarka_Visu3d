@@ -147,8 +147,11 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
   `node scripts/users.mjs list` – lista.
 - Wylogowanie po bezczynności: `auth.timeoutMin` w `config.json` (domyślnie
   30 min, 0 – bez limitu). Sesja trwa do zamknięcia karty przeglądarki.
-- Bez `users.json` (i w wersji na GitHub Pages) logowanie jest wyłączone i
-  wszystko jest dostępne.
+- Bez `users.json` logowanie jest wyłączone i wszystko jest dostępne.
+- Wersja na GitHub Pages (bez serwera): logowanie demonstracyjne – wybór
+  użytkownika bez hasła, te same poziomy (pokazywanie / ukrywanie funkcji) co
+  na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
+  ani haseł, ani ich skrótów (dałyby się złamać).
 
 ## Ekran
 
@@ -550,7 +553,10 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 
 | Co | Zmienne PLC |
 |---|---|
-| X, Y, Z, A, B | `HMI2.fXActualPosition` … `HMI2.fBActualPosition` |
+| X, Y, Z (osie) | `HMI2.fXRealPosition`, `fYRealPosition`, `fZRealPosition` – rzeczywiste pozycje osi (`MCActualPosition*.Position`). Nie `fX/Y/ZActualPosition`: to punkt narzędzia (oś − przesunięcie głowicy wg A / B, w Z + średnica tarczy / 2 …, `Settings/ActualPosition`) |
+| A, B | `HMI2.fAActualPosition`, `HMI2.fBActualPosition` (osie) |
+| punkt narzędzia | `HMI2.fXActualPosition`, `fYActualPosition`, `fZActualPosition` – jak na ekranach HMI (pozycje w oknie Ruchy ręczne). Offline ten sam wzór: `plcActualPosition` (`geometry.js`); tak zapisują przyciski „Zapisz”, punkty stołu / kamienia, punkty ręczne A / B / C, Z polerowania |
+| prędkości osi | `HMI2.fXActualVelocity`, `fYActualVelocity`, `fZActualVelocity` (m/min), `fAActualVelocity` (°/s × 0,06). `fBActualVelocity` niepodpięta – w PLC liczona z osi A (`VelocityAcceleration`: `MCActualVelocityA`), prędkość B z różnicy pozycji |
 | tarcza | `HMI.fParameterDiscDiameter`, `HMI.fParameterBladeWidth` |
 | głowica | `HMI.fParameterCutTiltDiameter`, `HMI.fParameterHeadRotationDiameter` |
 | frez, wiertło, polerka | `HMI.fParameterMillWidth`, `HMI.fParameterMillTiltDiameter`, `HMI.fParameterMillLength`, `HMI.fParameterDrillLength`, `HMI.fParameterMillCorrection`, `ToolChangeGVL.ActiveTool.Height` |
@@ -560,7 +566,7 @@ Czytane zmienne (wymagane są pozycje, średnica tarczy i wysokość materiału)
 | laser, napęd tarczy | `IOVars.yLaser`, `Communication.iMainDriveFreqAct`, `Communication.bMainDriveRunFWD`, `Communication.bMainDriveRunREV` |
 | automat | `HMI2.aProgramXPosition/YPosition/NextStep/Radius/Angle/Depth/DepthEnd/Length/OutIn`, `HMI.fProgramStartPositionX/Y`, `HMI2.iProgramCutNumber`, `HMI2.iActualNumberOfProgramCuts` (i odpowiedniki profili oraz frezu: `iProgramMillNumber`, `iActualNumberOfProgramMills`, `bProgramMillStart`) |
 | stół, kamień | `HMI.aCuttingBoardX/Y/Z`, `HMI.iCuttingBoardApexNumber`, `HMI.aCuttingRockX/Y/Z`, `HMI.iCuttingRockApexNumber` |
-| dynamika (offline) | `HMI.fVelocitySawMode`, `Acc`, `Dec`, `fVelocityFast`, `DecX`, `fVelocityAxisZWork`, `DecZ`, `fVelocityAxisZApproach`, `VelA`, `DecA`, `VelB`, `DecB`, `fJog[XYZAB]Velocity` |
+| dynamika (offline, „Pobierz z PLC”) | prędkości w mm/s (HMI pokazuje m/min ×0,06): `HMI.fVelocitySawMode`, `fVelocityFast`, `fVelocityAxisZWork`, `fVelocityAxisZApproach`, `VelA`, `VelB`, `fJog[XYZAB]Velocity`; przyspieszenia: `HMI.Acc`, `HMI.Dec` (tor) i jak w PLC (`AccX/Z/A/B` są w GVL bez symbol configu): `HMI2.fMaxVelocityJogX / HMI.fAutoTaccX`, `fMaxVelocityJogZ / fAutoTaccZ`, `fMaxVelocityJogA / MAX(TaccA, 5)`, `fMaxVelocityJogB / TaccB` (`plcDynamics`) |
 
 ## Geometria
 
@@ -636,6 +642,14 @@ typ (flagi BOOL, tablice, liczby).
 ```powershell
 node scripts/check-plc-symbols.mjs ..\PLC\PilaJednosuportowaAI.Device.Application.xml ..\PLC\PilaJednosuportowa.Device.Application.xml
 ```
+
+**Na sterowniku** (tylko odczyt OPC UA): `node scripts/check-plc-live.mjs
+opc.tcp://<IP>:4840` – każda zmienna z węzłem, typem i wartością, porównanie
+punktu narzędzia liczonego przez Visu3D z osi z `fX/Y/ZActualPosition` z PLC
+(zgodność geometrii, różnica ≤ 0,1 mm) i prędkości. To samo na żywo: Ustawienia
+→ Serwis → „Zmienne PLC” (tryb PLC) i `GET /api/variables`; status połączenia
+podaje „zmienne N/M” i brakujące nazwy. Smoke test sprawdza, że serwer z
+testowym PLC znajduje wszystkie zmienne z typem i wartością.
 
 Wynik z 2026-10-21 (świeży plik symboli projektu AI po #130): 87/87 zmiennych
 w symbol configu, typy zgodne; wszystkie zadeklarowane w GVL (`HMI`, `HMI2`,
