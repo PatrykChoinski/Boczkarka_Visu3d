@@ -138,7 +138,7 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 | niezalogowany | podgląd: widok 3D, „Bazowanie” tylko do odczytu, online automat z PLC; bez „Stołu i kamienia” |
 | Operator | praca: Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień |
 | Serwis | jak Operator + Serwis (ekrany serwisowe, bity `bService…`) i Parametry |
-| Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |
+| Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) i opisy zmiennych PLC: nazwy zmiennych przy polach i nagłówkach (np. „(fManualXZeroPosition)”, `aCuttingBoardX/Y/Z`), nazwy pod polami Serwisu, podpowiedzi z nazwami i działaniem w PLC, strona „Zmienne PLC” |
 
 - Hasła sprawdza serwer. W pliku `users.json` obok `config.json` są tylko
   skróty scrypt haseł (sól + hash). Pliku nie ma w repo (`.gitignore`, repo jest
@@ -148,10 +148,42 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 - Wylogowanie po bezczynności: `auth.timeoutMin` w `config.json` (domyślnie
   30 min, 0 – bez limitu). Sesja trwa do zamknięcia karty przeglądarki.
 - Bez `users.json` logowanie jest wyłączone i wszystko jest dostępne.
+- Opisy zmiennych PLC (`src/shared/plcnames.js`, `src/client/plcnamesdom.js`):
+  fragmenty tekstów z nazwami zmiennych (nawiasy, dopiski, `<code>`, szare
+  dopiski nagłówków) są oznaczane w całej aplikacji, też w elementach
+  dodawanych później, i widoczne tylko dla Admina; podpowiedzi dla innych są
+  bez nazw zmiennych i opisów działania w PLC.
 - Wersja na GitHub Pages (bez serwera): logowanie demonstracyjne – wybór
   użytkownika bez hasła, te same poziomy (pokazywanie / ukrywanie funkcji) co
   na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
   ani haseł, ani ich skrótów (dałyby się złamać).
+
+### Full HD na maszynie, tablet z adresem PLC (#148)
+
+- **Domyślnie (maszyna):** ekran Full HD (1920×1080), serwer VizuApp na
+  komputerze panelu, strona tylko lokalnie (`http://127.0.0.1:8128/`), PLC
+  przez OPC UA na `opc.tcp://localhost:4840`. Nic nie trzeba ustawiać.
+- **Okno „Połączenie z PLC”** (przycisk z błyskawicą w górnym pasku, Serwis
+  i Admin; bez `users.json` – każdy, ale zmiana tylko na komputerze z serwerem):
+  adres serwera OPC UA sterownika do wpisania, np. `opc.tcp://192.168.1.10:4840`.
+  „Połącz” – serwer VizuApp od razu łączy się z nowym adresem (bez restartu)
+  i zapamiętuje go w `connection.json` obok `config.json` (plik lokalny, poza
+  repo). „Domyślny” – wraca do adresu z `config.json` (albo `--endpoint`)
+  i usuwa `connection.json`. W oknie jest też stan połączenia i adresy strony
+  w sieci.
+- **Tablet z Windows:** paczka `dist\VizuApp\` jak na maszynie (`vizu.ps1`),
+  w oknie „Połączenie z PLC” adres sterownika w sieci.
+- **Tablet z przeglądarką (Android / iPad):** serwer VizuApp na komputerze
+  w sieci sterownika udostępniony w sieci: `"httpHost": "0.0.0.0"` w
+  `config.json` (albo `--host 0.0.0.0`), port 8128 otwarty w zaporze Windows.
+  Na tablecie `http://<IP komputera>:8128/` (adresy podaje okno „Połączenie
+  z PLC” i konsola serwera). Adres PLC – jak wyżej. Wtedy warto mieć
+  `users.json` (zmiana adresu i ekrany serwisowe tylko po zalogowaniu).
+- **Układ ekranu:** Full HD i tablet poziomo (1024×768, 1280×800) – menu po
+  lewej, widok 3D, panel po prawej; tablet pionowo (768×1024, 800×1280) – menu
+  u góry, widok 3D i panel jeden pod drugim, cała strona na ekranie (bez
+  przewijania), stopka zawsze widoczna. Przyciski ruchów ręcznych i widok 3D
+  obsługują dotyk.
 
 ## Ekran
 
@@ -567,7 +599,8 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | Klucz | Domyślnie | Opis |
 |---|---|---|
 | `httpPort` | 8128 | port strony |
-| `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika |
+| `httpHost` | `127.0.0.1` | adres nasłuchu strony: `127.0.0.1` – tylko ten komputer (maszyna), `0.0.0.0` – też tablet w sieci (#148) |
+| `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika (adres domyślny; adres wpisany w oknie „Połączenie z PLC” – `connection.json`) |
 | `username`, `password` | puste | logowanie do OPC UA; puste oznacza anonimowe |
 | `nodePrefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
 | `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |
@@ -621,6 +654,12 @@ Punkt styku z materiałem (czerwona kulka) to przy B 90° środek czoła, a przy
 wychyle najniższy punkt krawędzi czoła.
 
 ## Rozwój i testy
+
+**Film prezentacyjny (#149):** `npm run build:pages`, potem
+`node scripts/record-demo.mjs --out E:\VizuApp_film\VizuApp_prezentacja.mp4` – ok. 2:15, 1920×1080,
+30 kl./s, z wersji statycznej (logowanie demo Serwis): ustawienia / bazowanie / ruchy ręczne, piła (Manual,
+Automat), frez (automat, G-kod z Madonną – reszta frezowania wycięta, film wraca na gotowej płaskorzeźbie),
+polerowanie. Tor i punkty przed każdym programem (chowane po chwili), najazdy kamery na głowicę. Potrzebne Chrome / Edge i `ffmpeg` (libx264) w PATH (albo `--ffmpeg <ścieżka>`).
 
 Wymagany Node.js 20+ (sprawdzone na 24; `npm test` z wzorcem plików potrzebuje 21+, CI używa 22).
 

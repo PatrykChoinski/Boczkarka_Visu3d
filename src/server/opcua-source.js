@@ -42,8 +42,17 @@ export class OpcUaSource extends EventEmitter {
     await this.loop;
   }
 
+  // Nowy adres OPC UA (#148, z /api/connection): zerwanie biezacego polaczenia i laczenie od razu z nowym
+  reconnect(endpoint) {
+    this.cfg.endpoint = endpoint;
+    this.restart = true;
+    this.values = {};
+    this.client?.disconnect().catch(() => {});
+  }
+
   async run() {
     while (!this.stopped) {
+      this.restart = false;
       const client = OPCUAClient.create({
         applicationName: 'VizuApp',
         securityMode: MessageSecurityMode.None,
@@ -52,6 +61,7 @@ export class OpcUaSource extends EventEmitter {
         connectionStrategy: { maxRetry: 0, initialDelay: 500, maxDelay: 1000 },
         requestedSessionTimeout: 60000,
       });
+      this.client = client;
       let session = null;
       try {
         this.setStatus(`Łączenie z ${this.cfg.endpoint}...`, false);
@@ -67,12 +77,12 @@ export class OpcUaSource extends EventEmitter {
           + (miss.length ? `, brak: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}` : ''), true);
         await this.poll(session, nodes);
       } catch (err) {
-        this.setStatus(`Brak połączenia: ${err.message || err}`, false);
+        if (!this.restart) this.setStatus(`Brak połączenia: ${err.message || err}`, false);
       } finally {
         try { if (session) await session.close(); } catch { /* polaczenie juz zerwane */ }
         try { await client.disconnect(); } catch { /* jw. */ }
       }
-      for (let i = 0; i < 20 && !this.stopped; i++) await sleep(100);
+      for (let i = 0; i < 20 && !this.stopped && !this.restart; i++) await sleep(100);
     }
   }
 
@@ -88,7 +98,7 @@ export class OpcUaSource extends EventEmitter {
     const slowEvery = Math.max(1, Math.round(Number(this.cfg.slowEvery) || 20));
     let n = 0;
     let slowValues = {};
-    while (!this.stopped) {
+    while (!this.stopped && !this.restart) {
       const t0 = Date.now();
       if (this.active) {
         const withSlow = n % slowEvery === 0;

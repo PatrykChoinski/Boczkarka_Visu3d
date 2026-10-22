@@ -50,6 +50,31 @@ test('wyszukiwanie wezlow w drzewie OPC UA, odczyt wszystkich zmiennych', async 
   }
 });
 
+test('#148 zmiana adresu PLC w trakcie pracy: zly adres, potem sterownik - bez restartu serwera', async () => {
+  const source = new OpcUaSource(config({ endpoint: 'opc.tcp://localhost:48499' })).start();
+  try {
+    await new Promise((resolve) => {
+      const check = ({ status }) => { if (status.startsWith('Brak połączenia')) { source.off('status', check); resolve(); } };
+      source.on('status', check);
+    });
+    assert.ok(!source.connected);
+    source.reconnect(`opc.tcp://localhost:${PORT}`);
+    const { values } = await collect(source, 5);
+    assert.ok(source.connected);
+    assert.ok(source.status.startsWith(`Połączono (opc.tcp://localhost:${PORT})`), source.status);
+    assert.equal(typeof values.x, 'number');
+    // i z powrotem na zly adres - polaczenie zerwane od razu
+    source.reconnect('opc.tcp://localhost:48499');
+    await new Promise((resolve) => {
+      const check = ({ status }) => { if (status.includes('48499')) { source.off('status', check); resolve(); } };
+      source.on('status', check);
+    });
+    assert.ok(!source.connected);
+  } finally {
+    await source.stop();
+  }
+});
+
 test('nodePrefix z configu', async () => {
   const source = new OpcUaSource(config({ nodePrefix: `ns=${plc.nsIndex};s=|var|${DEVICE}.Application.` })).start();
   try {

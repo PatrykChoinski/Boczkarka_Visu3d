@@ -13,6 +13,7 @@
       <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span class="lbl">PLC</span></button>
       <button data-mode="offline" title="Offline – symulacja bez PLC"><svg class="ic" aria-hidden="true"><use href="#i-sim"/></svg><span class="lbl">SIM</span></button>
     </div>
+    <button id="connOpen" class="tool" title="Połączenie z PLC – adres OPC UA (np. tablet)" hidden><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
     <button id="manOpen" class="tool" title="Ruchy ręczne – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
     <div class="spacer"></div>
     <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
@@ -217,7 +218,7 @@
       </div>
 
       <div class="tab" data-tab="home" hidden>
-        <p class="hint">Jak BaseHomingST: Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
+        <p class="hint">Jak w PLC (BaseHomingST): Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
         <div class="row">
           <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
@@ -263,9 +264,9 @@
         <div class="grid2">
           <label data-modes="saw">Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
           <label data-modes="saw">Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
-          <label>CutTiltDiameter [mm] <input data-m="cutTiltDiameter" type="number" step="any"></label>
-          <label data-modes="saw">HeadRotationDiameter [mm] <input data-m="headRotationDiameter" type="number" step="any"></label>
-          <label data-modes="mill drill polishing">MillTiltDiameter [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
+          <label>Średnica wychyłu [mm] (fParameterCutTiltDiameter) <input data-m="cutTiltDiameter" type="number" step="any"></label>
+          <label data-modes="saw">Średnica obrotu głowicy [mm] (fParameterHeadRotationDiameter) <input data-m="headRotationDiameter" type="number" step="any"></label>
+          <label data-modes="mill drill polishing">Średnica wychyłu frezu [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
         </div>
         <h3 data-modes="mill">Frez <span class="muted">B 90°</span></h3>
         <h3 data-modes="drill">Wiertło <span class="muted">B 90°</span></h3>
@@ -298,7 +299,7 @@
           <button id="fromPlc" title="Pobierz parametry z PLC"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg></button>
           <button id="defaults" title="Wartości domyślne"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg></button>
         </div>
-        <p class="hint">Z PLC: fVelocitySawMode, Acc, Dec (cięcie), fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB (w PLC mm/s i mm/s² - przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia.</p>
+        <p class="hint">Z PLC: prędkości i przyspieszenia (w PLC mm/s i mm/s² – przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia (fVelocitySawMode, Acc, Dec – cięcie; fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB).</p>
       </div>
     </aside>
   </main>
@@ -337,6 +338,19 @@
       <p class="hint" id="loginErr"></p>
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
       <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
+    </form>
+  </div>
+
+  <!-- #148 polaczenie z PLC: adres serwera OPC UA (domyslnie localhost na maszynie; tablet - adres sterownika) -->
+  <div id="connWin" class="win modal" hidden role="dialog" aria-label="Połączenie z PLC">
+    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Połączenie z PLC</span><button id="connClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <form class="winBody" id="connForm">
+      <label title="Adres serwera OPC UA sterownika">Adres PLC (OPC UA)
+        <input type="text" id="connEndpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="opc.tcp://192.168.1.10:4840"></label>
+      <p class="hint" id="connStatus"></p>
+      <p class="hint" id="connErr"></p>
+      <div class="row"><button type="submit" class="primary" id="connSave" title="Połącz z tym adresem (zapisany na serwerze VizuApp)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Połącz</span></button><button type="button" id="connDefault" title="Adres domyślny"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Domyślny</span></button></div>
+      <p class="hint" id="connUrls"></p>
     </form>
   </div>
 

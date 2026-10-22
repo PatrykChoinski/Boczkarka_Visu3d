@@ -13,10 +13,11 @@ import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor 
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
+import { watchPlcNames, setPlcNamesAdmin } from './plcnamesdom.js';
 import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
@@ -422,6 +423,7 @@ function connectEvents() {
     const msg = JSON.parse(e.data);
     if ('status' in msg) { state.online.status = msg.status; state.online.connected = msg.connected; }
     if (msg.values) onlineValues(msg.values);
+    if ('status' in msg && state.conn && !$('#connWin').hidden) connInfo(state.conn);
     $('#fromPlc').disabled = !hasPlcDynamics();
     requestDraw();
   };
@@ -430,6 +432,56 @@ function connectEvents() {
     state.online.connected = false;
     requestDraw();
   };
+}
+
+// --- #148 polaczenie z PLC: adres OPC UA do wpisania (maszyna - localhost, tablet - adres sterownika) ---------
+// Serwer VizuApp zapisuje adres w connection.json i laczy sie od razu; zmiana - Serwis / Admin.
+
+const connAllowed = () => !state.cfg.static && accessLevel() >= 2;
+
+function connInfo(c) {
+  state.conn = c;
+  $('#connDefault').title = `Adres domyślny: ${c.defaultEndpoint}`;
+  $('#connStatus').textContent = c.plc
+    ? `Teraz: ${c.endpoint} – ${(state.mode === 'online' && state.online.status) || c.status}`
+    : 'Serwer VizuApp uruchomiony bez PLC (--no-plc) – adresu nie można zmienić.';
+  $('#connSave').disabled = $('#connDefault').disabled = !c.plc;
+  if (state.online.connected && $('#connErr').textContent.startsWith('Zapisane')) $('#connErr').textContent = '';
+  $('#connUrls').textContent = c.urls.length > 1
+    ? `Strona w sieci (tablet): ${c.urls.slice(1).join(', ')}`
+    : 'Strona tylko na tym komputerze – dla tabletu w sieci serwer VizuApp z --host 0.0.0.0 (README).';
+}
+
+async function showConn(open) {
+  $('#connWin').hidden = !open;
+  $('#connErr').textContent = '';
+  if (!open) return;
+  const r = await fetch('api/connection', { headers: authHeaders() }).catch(() => null);
+  if (!r?.ok) { $('#connErr').textContent = 'Brak połączenia z serwerem VizuApp'; return; }
+  const c = await r.json();
+  connInfo(c);
+  $('#connEndpoint').value = c.endpoint;
+  $('#connEndpoint').focus();
+}
+
+async function saveConn(endpoint) {
+  if (endpoint && !validEndpoint(endpoint)) { $('#connErr').textContent = 'Zły adres – np. opc.tcp://192.168.1.10:4840'; return; }
+  const r = await fetch('api/connection', {
+    method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ endpoint }),
+  }).catch(() => null);
+  const body = r ? await r.json().catch(() => ({})) : {};
+  if (!r?.ok) { $('#connErr').textContent = body.error || 'Brak połączenia z serwerem VizuApp'; return; }
+  connInfo(body);
+  $('#connEndpoint').value = body.endpoint;
+  $('#connErr').textContent = `Zapisane – łączenie z ${body.endpoint}…`;
+  if (state.mode !== 'online') setMode('online');
+}
+
+function bindConn() {
+  $('#connOpen').onclick = () => showConn($('#connWin').hidden);
+  $('#connClose').onclick = () => showConn(false);
+  $('#connForm').onsubmit = (e) => { e.preventDefault(); saveConn($('#connEndpoint').value.trim()); };
+  $('#connDefault').onclick = () => saveConn('');
 }
 
 // --- tryb offline: formularze ----------------------------------------------------
@@ -1222,8 +1274,10 @@ function showServicePage(id) {
 
 function renderService() {
   const ro = state.mode === 'online';
-  for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !ro;
-  if (state.servicePage === 'plcvars' && !ro) state.servicePage = 'main';
+  // Zmienne PLC (lista zmiennych i wezlow OPC UA) - tryb PLC, tylko Admin
+  const varsOk = ro && accessLevel() >= 3;
+  for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !varsOk;
+  if (state.servicePage === 'plcvars' && !varsOk) state.servicePage = 'main';
   for (const b of $$('#servicePages [data-spage]')) {
     b.classList.toggle('active', b.dataset.spage === state.servicePage);
     b.onclick = () => showServicePage(b.dataset.spage);
@@ -1246,7 +1300,7 @@ function renderService() {
   }
   const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
   $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. ${page.note ? `${page.note} ` : ''}`
-    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity bService… i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
+    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity serwisowe (HMI.bService…) i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
   const all = svcAll();
   const extra = page.id === 'settings' ? extraServiceGroup() : null;
   $('#servicePage').innerHTML = [...page.groups, ...(extra ? [{ ...extra, items: all.slice(all.length - extra.items.length) }] : [])]
@@ -1498,6 +1552,11 @@ const isServiceField = (f) => /\(serwis\)|bService/.test(f.label);
 
 function authChanged() {
   const a = state.auth;
+  // opisy zmiennych PLC (nazwy, podpowiedzi) tylko dla Admina
+  setPlcNamesAdmin(accessLevel() >= 3);
+  // polaczenie z PLC (#148): Serwis / Admin, nie w wersji statycznej
+  $('#connOpen').hidden = !connAllowed();
+  if (!connAllowed()) $('#connWin').hidden = true;
   $('#authBox').hidden = !a.enabled;
   $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
   $('#loginBtn').innerHTML = icon(a.user ? 'logout' : 'login');
@@ -1509,6 +1568,7 @@ function authChanged() {
     if (commonFields()) applyVisibility('common', commonFields());
   }
   toolModeChanged();
+  if (!$('.tab[data-tab="service"]').hidden) renderService();
 }
 
 function setSession(s) {
@@ -2565,6 +2625,7 @@ function bindUi() {
 
 async function init() {
   installIcons();
+  watchPlcNames();
   view = new View3D($('#view'));
   state.cfg = await (await fetch('api/config')).json();
   buildPointTables();
@@ -2577,6 +2638,7 @@ async function init() {
   bindUi();
   bindManual();
   bindManWin();
+  bindConn();
   await initAuth();
   showOp();
   showFig();
