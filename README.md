@@ -655,6 +655,12 @@ wychyle najniższy punkt krawędzi czoła.
 
 ## Rozwój i testy
 
+**Film prezentacyjny (#149):** `npm run build:pages`, potem
+`node scripts/record-demo.mjs --out E:\VizuApp_film\VizuApp_prezentacja.mp4` – ok. 2 min, 1920×1080,
+30 kl./s, z wersji statycznej (logowanie demo Serwis): ustawienia / bazowanie / ruchy ręczne, piła (Manual,
+Automat), frez (automat, G-kod z Madonną – reszta frezowania wycięta, film wraca na gotowej płaskorzeźbie),
+polerowanie. Potrzebne Chrome / Edge i `ffmpeg` (libx264) w PATH (albo `--ffmpeg <ścieżka>`).
+
 Wymagany Node.js 20+ (sprawdzone na 24; `npm test` z wzorcem plików potrzebuje 21+, CI używa 22).
 
 ```powershell

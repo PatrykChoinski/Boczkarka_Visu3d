@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Film prezentacyjny (#149)
+- `scripts/record-demo.mjs`: film ok. 2 min, Full HD, 30 kl./s z wersji statycznej (logowanie demo Serwis), Chrome bez okna z kartą graficzną, klatki z CDP (`Page.startScreencast`), MP4 przez ffmpeg (libx264). Podpisy części i kursor na filmie; tempo symulacji dobierane do czasu programu. Proporcje: ustawienia / bazowanie / ruchy ręczne 18 s (15 %), piła – Manual (cięcie proste, pasy, łuk, elipsa) i Automat (demo, figura Blat) 61 s (51 %), frez – Automat (Ociekacz) i G-kod z Madonną 31 s (26 %, reszta frezowania wycięta, film wraca na gotowej płaskorzeźbie w podglądzie z góry), polerowanie 9 s.
+- Film zapisany lokalnie: `E:\VizuApp_film\VizuApp_prezentacja_2026-10-22.mp4` (2:05, 9 MB) – nie w repo.
+
 ### Full HD na maszynie, tablet z adresem PLC (#148)
 - Okno „Połączenie z PLC” (przycisk z błyskawicą w górnym pasku, Serwis / Admin): adres serwera OPC UA do wpisania (np. `opc.tcp://192.168.1.10:4840`), „Połącz” – serwer łączy się od razu z nowym adresem bez restartu (`OpcUaSource.reconnect`), adres zapamiętany w `connection.json` obok `config.json` (lokalny, `.gitignore`); „Domyślny” – adres z `config.json` / `--endpoint`. Stan połączenia i adresy strony w sieci w oknie. `GET/POST /api/connection` – zmiana tylko Serwis / Admin, bez `users.json` tylko z komputera z serwerem; zły adres odrzucany.
 - Serwer: `httpHost` w `config.json` / `--host` – domyślnie `127.0.0.1` (maszyna, jak dotąd), `0.0.0.0` – strona dostępna dla tabletu w sieci (`http://<IP>:8128/`, adresy w konsoli i oknie).
