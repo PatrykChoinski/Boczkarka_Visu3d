@@ -137,7 +137,7 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 |---|---|
 | niezalogowany | podgląd: widok 3D, „Bazowanie” tylko do odczytu, online automat z PLC; bez „Stołu i kamienia” |
 | Operator | praca: Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień |
-| Serwis | jak Operator + Parametry i bity serwisowe (`bService…`, Ustawienia → Serwis) |
+| Serwis | jak Operator + Serwis (ekrany serwisowe, bity `bService…`) i Parametry |
 | Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |
 
 - Hasła sprawdza serwer. W pliku `users.json` obok `config.json` są tylko
@@ -161,20 +161,31 @@ manualny – programy piły / narzędzi), Bazowanie, Parametry (serwis), Ustawie
 na końcu Pozycja (w lewym menu HMI jej nie ma). Panel wybranego ekranu jest po
 prawej, z tytułem (ikona i nazwa ekranu).
 
-**Serwis** (#147, od poziomu Serwis): trzy strony jak ekrany serwisowe HMI –
-„Serwis” (`serwis`, 70: parametry maszyny piła / frez / wiertło, przejścia),
-„Obszar pracy” (`serwis_2`, 71: krańcówki elektroniczne z zapisem aktualnej
-pozycji, aktualne pozycje osi, wyprzedzanie, korekta wychyłu z JOG, korekcja
-obrotu z JOG, zerowanie ABS) i „Ustawienia” (`serwis_3`, 75: 42 bity serwisowe
-z napisami stanów jak w HMI i 6 wartości). Wszystkie zmienne i bity z tych
-ekranów (`src/shared/servicescreens.js`, wygenerowane z projektu HMI i GVL;
-opis działania w PLC w podpowiedzi) są czytane z PLC (OPC UA, tylko odczyt);
-offline parametry głowicy i narzędzi, bity `bService…` i prędkość jog A są
-wspólne z resztą aplikacji (Parametry, Ustawienia → Serwis), pozostałe
-wartości – jak w HMI (początkowe z GVL), zapamiętane w przeglądarce. Przyciski
-HMI bez działania (±1° / ±10° korekty wychyłu – bity wewnętrzne HMI) są
-nieaktywne; przejścia do ekranów, których nie ma w Visu3D (falowniki, wejścia /
-wyjścia, skalowanie …), też.
+**Serwis** (#147, od poziomu Serwis): ekran serwisowy HMI `serwis` (70) i
+wszystkie ekrany z niego otwierane – przyciski u góry: „Serwis” (70: parametry
+maszyny piła / frez / wiertło, przejścia), „Obszar pracy” (`serwis_2`, 71:
+krańcówki elektroniczne z zapisem, pozycje osi, wyprzedzanie, korekty wychyłu i
+obrotu z JOG, zerowanie ABS), „Ustawienia” (`serwis_3`, 75: 42 bity serwisowe z
+napisami stanów jak w HMI), „Zmienne PLC” (tryb PLC: węzeł OPC UA, typ, wartość);
+lista „Inne ekrany serwisowe”: ustawienia frez (`serwis_cd`, 90), polerowanie
+(91), parametry osi servo (79), receptury (126, 76, podgląd 127), falowniki (72,
+falownik wychyłu 77 – w HMI nieosiągalny), prędkości serwisowe (78), wejścia /
+wyjścia (73, polerowanie 69 – przypisania X / Y jako listy), skalowanie osi
+(74), pomiar narzędzia (66), obszar stołu frez / wiercenie / polerowanie (46).
+Przejścia między ekranami jak w HMI (obszar stołu / kamienia – Ustawienia).
+Razem 17 stron, 462 elementy (wszystkie z ekranów HMI), 370 zmiennych PLC (`src/shared/servicescreens.js`,
+wygenerowane z projektu HMI i GVL: grupy jak ramki, opisy, jednostki, zakresy,
+wartości początkowe, warunki widoczności, działanie w PLC w podpowiedzi).
+Online wszystko z PLC (OPC UA, tylko odczyt; tablice jak `aMillingBoardX` w
+całości). Offline parametry głowicy i narzędzi, bity `bService…`, prędkość jog A
+i pozycje są wspólne z resztą aplikacji, pozostałe wartości jak w HMI
+(zapamiętane w przeglądarce), odczyty sprzętu (falowniki, wejścia) tylko w
+trybie PLC; działają zapis krańcówek X / Y / Z, punktów stołu frezu (punkt
+narzędzia jak PLC), JOG obrotu i wychyłu, przyciski ustawiające wartość.
+Elementy samego HMI (menu systemowe, język, bity wewnętrzne `$…`, przyciski
+±1° / ±10° korekty wychyłu) są nieaktywne z opisem. Bity `bService…` używane
+przez programy Visu3D są tylko tutaj (jeden stan dla wszystkich programów;
+formularze programów ich nie pokazują).
 
 **Prędkość** (#146, jak ekran HMI `predkosc`): u góry pozycje jak na panelu
 (`fX/Y/ZActualPosition`, kąt obrotu, wychył) i głębokość (`fStatusActualCutDepth`
@@ -189,16 +200,8 @@ Parametry, maksima w `offline.speedMax`), online – odczyt z PLC; przy pulpicie
 rozszerzonym (`bServiceAdvancedDesktop`) informacja, że prędkości są z
 potencjometrów.
 
-**Ustawienia** mają dwa podekrany: „Stół i kamień” (punkty stołu i kamienia,
-grubość) i „Serwis” – bity serwisowe `HMI.bService…` w jednym miejscu, od
-poziomu Serwis (`src/shared/service.js`): piła (`bServiceBlocksReverse`,
-`bServiceLastCutSlower`, `bServiceBlockSwap`, `bServiceRectangleACBD`,
-`bServiceBookMinimalRadius`), automat (`bServiceCutProgramOuterInner`,
-`bServiceSmoothingArrays`), frez (`bServiceMillZFirst`,
-`bServiceMillCircleReverse`, `bServiceAllowSwap`,
-`bServiceMillProgramNewStartPoints`), ruchy ręczne
-(`bServiceManualRewriteJogSpeed`). Formularze programów nie pokazują tych pól –
-biorą wartość z ustawień (jeden bit dla wszystkich programów, jak w PLC).
+**Ustawienia**: stół i kamień (punkty stołu i kamienia, grubość) – jak
+ekrany obszaru stołu / kamienia w HMI.
 
 **Ikony zamiast napisów.** Przyciski mają piktogramy zamiast napisów (łatwiej
 przetłumaczyć aplikację na inne języki), opis jest w podpowiedzi po najechaniu
@@ -214,7 +217,7 @@ podpowiedzi i komunikaty.
 | prędkościomierz | tempo symulacji, prędkości jog |
 | sylwetka, strzałka do / z drzwi | użytkownik, zaloguj / wyloguj |
 | lista z ▶, `</>`, tarcza z rzazem, strzałki do punktu, suwaki, koło zębate, celownik | ekrany: Automat, G-kod, Manual, Bazowanie, Parametry, Ustawienia, Pozycja |
-| warstwy, klucz | Ustawienia: stół i kamień, serwis |
+| klucz | Serwis (ekrany serwisowe HMI) |
 | sześcian, kwadrat z krzyżem, przód, bok, ramka, lupy | widok: izometria, góra, przód, bok, dopasuj, przybliż / oddal |
 | tarcza, most, przerywany tor, celownik, linijka, laser, gumka | warstwy: głowica, suport, plan, XY, odległości, laser; wyczyść |
 | ▶ / ❚❚ / ośmiokąt | start, pauza / wznów, stop |

@@ -17,7 +17,7 @@ import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plc
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
-import { SERVICE_BITS, SERVICE_GROUPS, serviceDefaults } from '../shared/service.js';
+import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
@@ -1108,10 +1108,10 @@ function stopProgram() {
   requestDraw();
 }
 
-// --- ekran Serwis (#147, HMI serwis / serwis_2 / serwis_3) --------------------------------------
-// Offline wartosci wspolne z symulacja: parametry glowicy i narzedzi (pola Parametrow), bity bService... z Ustawien,
-// predkosc jog A, pozycje osi; pozostale zmienne - wartosci HMI (poczatkowe z GVL), zapamietane w przegladarce.
-// Online wszystko z PLC (OPC UA), tylko odczyt.
+// --- ekran Serwis (#147, HMI serwis i ekrany z niego otwierane) --------------------------------
+// Offline wartosci wspolne z symulacja: parametry glowicy i narzedzi (pola Parametrow), bity bService..., predkosc
+// jog A, pozycje osi; pozostale zmienne - wartosci HMI (poczatkowe z GVL), zapamietane w przegladarce.
+// Online wszystko z PLC (OPC UA), tylko odczyt. Zmienne z indeksem (aMillingBoardX[0]) - element tablicy.
 
 const SVC_MACHINE = {
   'HMI.fParameterHeadRotationDiameter': 'headRotationDiameter', 'HMI.fParameterCutTiltDiameter': 'cutTiltDiameter',
@@ -1121,13 +1121,22 @@ const SVC_MACHINE = {
 const SVC_DYN = { 'HMI.fJogAVelocity': 'jogAVel' };
 const SVC_POSE = { 'HMI2.fXRealPosition': 'x', 'HMI2.fYRealPosition': 'y', 'HMI2.fZRealPosition': 'z', 'HMI2.fAActualPosition': 'a', 'HMI2.fBActualPosition': 'b' };
 const svcBitKey = (v) => (v.startsWith('HMI.bService') && SERVICE_BITS.some((b) => b.k === v.slice(4)) ? v.slice(4) : null);
+const svcIndex = (v) => /^(.*)\[(\d+)\]$/.exec(v);
+// strony z przyciskami u gory (jak glowne ekrany serwisu), reszta z listy "Inne ekrany"
+const SVC_MAIN_PAGES = ['main', 'area', 'settings', 'plcvars'];
 
 // Wartosc zmiennej HMI (surowa, jak w PLC)
 function svcValue(it) {
   const v = it.v;
+  const ix = svcIndex(v);
   if (state.mode === 'online') {
-    const k = plcKey(v);
-    return k ? state.online.values[k] ?? null : null;
+    const k = plcKey(ix ? ix[1] : v);
+    const val = k ? state.online.values[k] ?? null : null;
+    return ix && Array.isArray(val) ? val[Number(ix[2])] ?? null : val;
+  }
+  if (ix) {
+    const arr = state.hmi[ix[1]];
+    return Array.isArray(arr) && arr[Number(ix[2])] !== undefined && arr[Number(ix[2])] !== null ? arr[Number(ix[2])] : it.init ?? 0;
   }
   if (SVC_POSE[v]) return state.pose?.[SVC_POSE[v]] ?? null;
   if (SVC_MACHINE[v]) return Number($(`[data-m="${SVC_MACHINE[v]}"]`)?.value);
@@ -1135,33 +1144,58 @@ function svcValue(it) {
   const bit = svcBitKey(v);
   if (bit) return Boolean(state.service[bit]);
   if (v in state.hmi) return state.hmi[v];
-  if (v.startsWith('IoConfig')) return null;
-  return it.init ?? (it.t === 'BOOL' ? false : null);
+  if (v.startsWith('IoConfig') || v.startsWith('Communication.') || v.startsWith('IOVars.')) return null;   // odczyty sprzetu - tylko online
+  return it.init ?? (it.t === 'BOOL' ? false : it.t === 'STRING' ? '' : null);
 }
 
 function setSvcValue(it, val) {
   if (state.mode !== 'offline') return;
   const v = it.v;
-  if (SVC_MACHINE[v]) { $(`[data-m="${SVC_MACHINE[v]}"]`).value = val; offlineFormsChanged(); }
+  const ix = svcIndex(v);
+  if (ix) {
+    const arr = Array.isArray(state.hmi[ix[1]]) ? [...state.hmi[ix[1]]] : [];
+    arr[Number(ix[2])] = val;
+    state.hmi[ix[1]] = arr;
+    saveForms();
+  } else if (SVC_MACHINE[v]) { $(`[data-m="${SVC_MACHINE[v]}"]`).value = val; offlineFormsChanged(); }
   else if (SVC_DYN[v]) { $(`[data-d="${SVC_DYN[v]}"]`).value = val; offlineFormsChanged(); }
-  else if (svcBitKey(v)) { state.service[svcBitKey(v)] = Boolean(val); renderServiceBits(); serviceChanged(); }
+  else if (svcBitKey(v)) { state.service[svcBitKey(v)] = Boolean(val); serviceChanged(); }
   else { state.hmi[v] = val; saveForms(); }
   syncService(true);
 }
 
-const svcAll = () => SERVICE_PAGES.flatMap((p) => p.groups.flatMap((g) => g.items));
+// Widocznosc elementu jak w HMI: "GVL.zmienna = TRUE / FALSE" (inne warunki - widoczny)
+function svcVisible(it) {
+  const m = /^\s*([\w.[\]]+)\s*=\s*(TRUE|FALSE)\s*$/.exec(it.vis || '');
+  if (!m) return true;
+  return Boolean(svcValue({ v: m[1], t: 'BOOL' })) === (m[2] === 'TRUE');
+}
+
+const svcAll = () => {
+  const all = SERVICE_PAGES.flatMap((p) => p.groups.flatMap((g) => g.items));
+  const extra = extraServiceGroup(all);
+  return extra ? [...all, ...extra.items] : all;
+};
 
 function svcItemHtml(it, i, ro) {
   const id = `data-svc-i="${i}"`;
-  const tip = `${it.v ? `HMI: ${it.v}` : ''}${it.use ? `\n${it.use}` : ''}${it.note ? `\n${it.note}` : ''}`.replace(/"/g, '&quot;');
+  const tip = `${it.v ? `HMI: ${it.v}` : ''}${it.use ? `\n${it.use}` : ''}${it.note ? `\n${it.note}` : ''}${it.vis ? `\nWidoczny: ${it.vis}` : ''}`.replace(/"/g, '&quot;');
   const code = it.v ? `<code>${it.v}</code>` : '';
+  const dis = ro ? ' disabled' : '';
   switch (it.k) {
     case 'num':
-      return `<label class="svcItem" title="${tip}">${it.label ?? it.v}<span class="row2"><input type="number" step="any" ${id}${ro ? ' disabled' : ''}>${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</span>${code}</label>`;
+      return `<label class="svcItem" title="${tip}">${it.label ?? it.v}<span class="row2"><input type="number" step="any" ${id}${dis}>${it.unit ? `<span class="unit">${it.unit}</span>` : ''}</span>${code}</label>`;
+    case 'sel':
+      return `<label class="svcItem" title="${tip}">${it.label ?? it.v}<select ${id}${dis}>${it.o.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>${code}</label>`;
+    case 'text':
+      return `<label class="svcItem wide" title="${tip}">${it.label ?? it.v}<input type="text" ${id}${dis}>${code}</label>`;
     case 'display':
-      return `<div class="svcItem" title="${tip}">${it.label ?? it.v}<output ${id}></output>${code}</div>`;
+    case 'textout':
+      return `<div class="svcItem${it.k === 'textout' ? ' wide' : ''}" title="${tip}">${it.label ?? it.v}<output ${id}></output>${code}</div>`;
+    case 'lamp':
+      return `<div class="svcItem lamp" title="${tip}"><span class="svcLamp" ${id}></span><span>${it.label ?? it.v}</span></div>`;
     case 'bit':
-      return `<div class="svcItem" title="${tip}">${it.label ? `<span>${it.label}</span>` : ''}<button type="button" class="svcBit" ${id}${ro ? ' disabled' : ''}></button>${code}</div>`;
+      return `<div class="svcItem" title="${tip}">${it.label ? `<span>${it.label}</span>` : ''}<button type="button" class="svcBit" ${id}${dis}></button>${code}</div>`;
     case 'button':
       return `<div class="svcItem" title="${tip}"><button type="button" class="svcBtn" ${id}${ro || !it.act ? ' disabled' : ''}>${it.label ?? it.v}</button>${code}</div>`;
     case 'goto':
@@ -1172,65 +1206,128 @@ function svcItemHtml(it, i, ro) {
   }
 }
 
+// Bity bService... uzywane przez Visu3D, ktorych nie ma na ekranach serwisowych HMI - dodatkowa grupa na stronie
+// ustawien serwisowych (jedno miejsce na wszystkie bity serwisowe)
+function extraServiceGroup(all = SERVICE_PAGES.flatMap((p) => p.groups.flatMap((g) => g.items))) {
+  const onScreens = new Set(all.map((it) => it.v));
+  const items = SERVICE_BITS.filter((b) => !onScreens.has(`HMI.${b.k}`))
+    .map((b) => ({ k: 'bit', v: `HMI.${b.k}`, t: 'BOOL', label: b.label, off: 'WYŁĄCZONE', on: 'ZAŁĄCZONE', use: 'Bit serwisowy używany przez programy w Visu3D (brak na ekranach serwisowych HMI)' }));
+  return items.length ? { title: 'Pozostałe bity serwisowe (programy w Visu3D)', items } : null;
+}
+
+function showServicePage(id) {
+  state.servicePage = id;
+  renderService();
+}
+
 function renderService() {
   const ro = state.mode === 'online';
-  const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
+  for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !ro;
+  if (state.servicePage === 'plcvars' && !ro) state.servicePage = 'main';
   for (const b of $$('#servicePages [data-spage]')) {
-    b.classList.toggle('active', b.dataset.spage === page.id);
-    b.onclick = () => { state.servicePage = b.dataset.spage; renderService(); };
+    b.classList.toggle('active', b.dataset.spage === state.servicePage);
+    b.onclick = () => showServicePage(b.dataset.spage);
   }
-  $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. `
-    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity bService… i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce.');
+  // pozostale ekrany serwisowe HMI - lista
+  const more = $('#serviceMore');
+  more.innerHTML = `<option value="">Inne ekrany serwisowe…</option>${SERVICE_PAGES.filter((p) => !SVC_MAIN_PAGES.includes(p.id))
+    .map((p) => `<option value="${p.id}">${p.title}</option>`).join('')}`;
+  more.value = SVC_MAIN_PAGES.includes(state.servicePage) ? '' : state.servicePage;
+  more.classList.toggle('active', Boolean(more.value));
+  more.onchange = () => { if (more.value) showServicePage(more.value); };
+  // strona Zmienne PLC (diagnostyka OPC UA)
+  const vars = state.servicePage === 'plcvars';
+  $('#plcVarsBox').hidden = !vars;
+  $('#servicePage').hidden = vars;
+  if (vars) {
+    $('#serviceHint').textContent = 'Zmienne PLC czytane przez Visu3D: węzeł OPC UA, typ danych, ostatnia wartość.';
+    refreshPlcVars();
+    return;
+  }
+  const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
+  $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. ${page.note ? `${page.note} ` : ''}`
+    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity bService… i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
   const all = svcAll();
-  $('#servicePage').innerHTML = page.groups.map((g) => `<div class="svcCard">${g.title ? `<h4>${g.title}</h4>` : ''}<div class="svcItems">${
-    g.items.map((it) => svcItemHtml(it, all.indexOf(it), ro)).join('')}</div></div>`).join('');
+  const extra = page.id === 'settings' ? extraServiceGroup() : null;
+  $('#servicePage').innerHTML = [...page.groups, ...(extra ? [{ ...extra, items: all.slice(all.length - extra.items.length) }] : [])]
+    .map((g) => `<div class="svcCard">${g.title ? `<h4>${g.title}</h4>` : ''}<div class="svcItems">${
+      g.items.map((it) => svcItemHtml(it, all.indexOf(it), ro)).join('')}</div></div>`).join('');
   for (const el of $$('#servicePage [data-svc-i]')) {
     const it = all[Number(el.dataset.svcI)];
-    if (el.tagName === 'INPUT') {
+    if (el.tagName === 'INPUT' && el.type === 'number') {
       el.addEventListener('change', () => {
         const n = Number(el.value);
         if (!Number.isFinite(n)) return;
         const raw = it.gain ? n / it.gain : n;
         setSvcValue(it, Math.min(it.max ?? Infinity, Math.max(it.min ?? -Infinity, raw)));
       });
+    } else if (el.tagName === 'INPUT') {
+      el.addEventListener('change', () => setSvcValue(it, el.value));
+    } else if (el.tagName === 'SELECT') {
+      el.addEventListener('change', () => setSvcValue(it, Number(el.value)));
     } else if (it.k === 'bit') {
       el.onclick = () => setSvcValue(it, !svcValue(it));
     } else if (it.k === 'goto') {
-      el.onclick = () => { if (it.page) { state.servicePage = it.page; renderService(); } else if (it.tab && !$(`.tabs [data-tab="${it.tab}"]`).hidden) showTab(it.tab); };
+      el.onclick = () => { if (it.page) showServicePage(it.page); else if (it.tab && !$(`.tabs [data-tab="${it.tab}"]`).hidden) showTab(it.tab); };
     } else if (it.k === 'button' && it.act) {
-      if (it.act.startsWith('jog:')) {
-        // JOG obrot / wychyl (bManualA/BJogLeft/Right) - trzymany
-        const [, ax, sign] = it.act.split(':');
-        el.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          const { vel, acc } = jogVelocity(ax, offlineDynamics(), false);
-          startJog({ [ax]: Number(sign) }, vel, acc);
-        });
-        for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, releaseJog);
-      } else if (it.act.startsWith('limit:')) {
-        // zapis krancowki (WorkArea: fServiceX/Y/ZLimit... := aktualna pozycja osi) - A w PLC nie obslugiwane
-        const [, ax, side] = it.act.split(':');
-        el.onclick = () => {
-          if (!state.pose || ax === 'a') return;
-          const target = all.find((x) => x.v === `HMI.fService${ax.toUpperCase()}Limit${side === 'min' ? 'Negative' : 'Positive'}`);
-          if (target) setSvcValue(target, savedPosition(state.pose[ax]));
-        };
-      }
+      bindServiceAction(el, it, all);
     }
   }
   syncService(true);
+}
+
+// Akcje przyciskow serwisu w symulacji
+function bindServiceAction(el, it, all) {
+  const [kind, a1, a2] = it.act.split(':');
+  if (kind === 'jog') {
+    // JOG obrot / wychyl (bManualA/BJogLeft/Right) - trzymany
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const { vel, acc } = jogVelocity(a1, offlineDynamics(), false);
+      startJog({ [a1]: Number(a2) }, vel, acc);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, releaseJog);
+  } else if (kind === 'limit') {
+    // zapis krancowki (WorkArea: fServiceX/Y/ZLimit... := aktualna pozycja osi) - A w PLC nie obslugiwane
+    el.onclick = () => {
+      if (!state.pose || a1 === 'a') return;
+      const target = all.find((x) => x.v === `HMI.fService${a1.toUpperCase()}Limit${a2 === 'min' ? 'Negative' : 'Positive'}`);
+      if (target) setSvcValue(target, savedPosition(state.pose[a1]));
+    };
+  } else if (kind === 'millpt') {
+    // WorkArea: iMillingBoardSave = n -> aMillingBoardX/Y/Z[n-1] := fX/Y/ZActualPosition (punkt narzedzia)
+    el.onclick = () => {
+      const p = actualPosition();
+      if (!p) return;
+      const i = Number(a1) - 1;
+      for (const ax of ['X', 'Y', 'Z']) setSvcValue({ v: `HMI.aMillingBoard${ax}[${i}]` }, savedPosition(p[ax.toLowerCase()]));
+    };
+  } else if (kind === 'set') {
+    el.onclick = () => setSvcValue(it, Number.isFinite(Number(a1)) ? Number(a1) : a1);
+  }
 }
 
 function syncService(force = false) {
   const all = svcAll();
   for (const el of $$('#servicePage [data-svc-i]')) {
     const it = all[Number(el.dataset.svcI)];
-    if (!it.v || it.k === 'button') continue;
+    el.closest('.svcItem')?.classList.toggle('noaccess', !svcVisible(it));
+    if (!it.v || it.k === 'button' || it.k === 'goto') continue;
     const raw = svcValue(it);
-    if (it.k === 'bit') {
+    if (it.k === 'bit' || it.k === 'lamp') {
       const on = Boolean(raw);
       el.classList.toggle('on', on);
-      el.textContent = (on ? it.on : it.off) ?? (on ? 'ZAŁĄCZONE' : 'WYŁĄCZONE');
+      if (it.k === 'bit') el.textContent = (on ? it.on : it.off) ?? (on ? 'ZAŁĄCZONE' : 'WYŁĄCZONE');
+      continue;
+    }
+    if (it.k === 'sel') {
+      if (force || el !== document.activeElement) el.value = raw ?? '';
+      continue;
+    }
+    if (it.k === 'text' || it.k === 'textout') {
+      const txt = Array.isArray(raw) ? raw.filter(Boolean).slice(0, 10).join(', ') : (raw ?? '');
+      if (el.tagName === 'OUTPUT') el.textContent = txt || '–';
+      else if (force || el !== document.activeElement) el.value = txt;
       continue;
     }
     const val = typeof raw === 'number' && Number.isFinite(raw) ? (it.gain ? raw * it.gain : raw) : null;
@@ -1353,21 +1450,12 @@ function syncSpeed(force = false) {
 // --- bity serwisowe (ekran Ustawienia) ----------------------------------------------------------
 // Jeden bit dla wszystkich programow (jak HMI.bService... w PLC); zmiana odswieza formularze, plan i informacje.
 
-const SERVICE_ICON = { saw: 'saw', auto: 'auto', mill: 'mill', man: 'hand' };
-
-// Podekrany Ustawien: Stol i kamien / Bity serwisowe (Serwis); zmienne PLC tylko w trybie PLC
-function showSetPage(name) {
-  for (const b of $$('#setPages [data-set]')) b.classList.toggle('active', b.dataset.set === name);
-  for (const p of $$('[data-setpage]')) p.hidden = p.dataset.setpage !== name || (p.id === 'plcVarsBox' && state.mode !== 'online');
-  if (!$('#plcVarsBox').hidden) refreshPlcVars();
-}
-
 // Diagnostyka podpiecia zmiennych PLC: kazda zmienna z konfiguracji - znaleziona w OPC UA, typ, ostatnia wartosc
 let plcVarsTimer = null;
 async function refreshPlcVars() {
   clearTimeout(plcVarsTimer);
   const box = $('#plcVarsBox');
-  if (box.hidden || $('.tab[data-tab="stone"]').hidden || state.mode !== 'online') return;
+  if (box.hidden || $('.tab[data-tab="service"]').hidden || state.mode !== 'online') return;
   try {
     const r = await (await fetch('api/variables')).json();
     const found = r.variables.filter((v) => v.found).length;
@@ -1380,20 +1468,6 @@ async function refreshPlcVars() {
     $('#plcVarsInfo').textContent = 'Brak diagnostyki zmiennych (serwer VizuApp bez /api/variables)';
   }
   plcVarsTimer = setTimeout(refreshPlcVars, 1000);
-}
-
-function renderServiceBits() {
-  for (const b of $$('#setPages [data-set]')) b.onclick = () => showSetPage(b.dataset.set);
-  $('#serviceBits').innerHTML = Object.entries(SERVICE_GROUPS).map(([g, name]) => `
-    <div class="svcGroup"><div class="svcHead" title="${name}">${icon(SERVICE_ICON[g])}<span>${name}</span></div>
-    ${SERVICE_BITS.filter((b) => b.group === g).map((b) => `<label class="cb svc" title="HMI.${b.k}">
-      <input type="checkbox" data-svc="${b.k}"${state.service[b.k] ? ' checked' : ''}><span>${b.label}<code>${b.k}</code></span></label>`).join('')}</div>`).join('');
-  for (const el of $$('[data-svc]')) {
-    el.addEventListener('input', () => {
-      state.service[el.dataset.svc] = el.checked;
-      serviceChanged();
-    });
-  }
 }
 
 function serviceChanged() {
@@ -1862,7 +1936,7 @@ function setMode(mode) {
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
   state.tool.key = '';
   toolModeChanged();
-  showSetPage($('#setPages .active')?.dataset.set || 'area');
+  if (!$('.tab[data-tab="service"]').hidden) renderService();
   $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
   $('#stonePlc').hidden = mode === 'offline';
@@ -1899,7 +1973,6 @@ function showTab(name) {
   for (const x of $$('.tabs button')) x.classList.toggle('active', x.dataset.tab === name);
   setPanelTitle(name);
   for (const p of $$('.tab')) p.hidden = p.dataset.tab !== name;
-  if (name === 'stone') showSetPage($('#setPages .active')?.dataset.set || 'area');
   if (name === 'speed') renderSpeed();
   if (name === 'service') renderService();
   if (name === 'cut') state.planSource = 'op';
@@ -2275,7 +2348,6 @@ function updateTabs() {
     el.classList.toggle('locked', locked);
   }
   for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
-  if (level < 2 && !$('#serviceBox').hidden) showSetPage('area');
   for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
   const active = $('.tabs button.active');
   if (active && !active.hidden) setPanelTitle(active.dataset.tab);
@@ -2505,7 +2577,6 @@ async function init() {
   bindUi();
   bindManual();
   bindManWin();
-  renderServiceBits();
   await initAuth();
   showOp();
   showFig();

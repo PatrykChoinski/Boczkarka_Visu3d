@@ -1,4 +1,5 @@
 import { SERVICE_SCREEN_VARS } from './servicescreens.js';
+import { SERVICE_BITS } from './service.js';
 
 // Zmienne PLC (symbol config, jak w HMI): klucz w aplikacji -> "GVL.zmienna".
 // Wymagane sa pozycje osi i parametry tarczy / materialu, reszta opcjonalna.
@@ -129,7 +130,7 @@ export const VARIABLES = {
 };
 
 // Ekrany serwisowe (#147, servicescreens.js): zmienne, ktorych nie ma wyzej - klucz "hmi:GVL.zmienna"
-for (const v of Object.keys(SERVICE_SCREEN_VARS)) {
+for (const v of [...Object.keys(SERVICE_SCREEN_VARS), ...SERVICE_BITS.map((b) => `HMI.${b.k}`)]) {
   if (!Object.values(VARIABLES).includes(v)) VARIABLES[`hmi:${v}`] = v;
 }
 // klucz odczytu zmiennej PLC (sciezka GVL.zmienna) w wartosciach z serwera
