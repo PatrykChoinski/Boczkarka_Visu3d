@@ -82,9 +82,16 @@
           <button type="button" data-spage="main" class="active" title="Serwis – ustawienia (HMI serwis)"><svg class="ic" aria-hidden="true"><use href="#i-wrench"/></svg><span>Serwis</span></button>
           <button type="button" data-spage="area" title="Obszar pracy maszyny (HMI serwis_2)"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span>Obszar pracy</span></button>
           <button type="button" data-spage="settings" title="Ustawienia serwisowe (HMI serwis_3)"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>Ustawienia</span></button>
+          <button type="button" data-spage="plcvars" data-online title="Zmienne PLC – węzeł OPC UA, typ, wartość (tryb PLC)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Zmienne PLC</span></button>
         </div>
+        <select id="serviceMore" class="serviceMore" title="Pozostałe ekrany serwisowe HMI"></select>
         <p class="hint" id="serviceHint"></p>
         <div id="servicePage" data-lock></div>
+        <!-- diagnostyka podpiecia zmiennych PLC (OPC UA, /api/variables) - strona Serwisu w trybie PLC -->
+        <div id="plcVarsBox" hidden>
+          <p class="hint" id="plcVarsInfo"></p>
+          <div class="tableWrap"><table class="plcVars" id="plcVars"></table></div>
+        </div>
       </div>
 
       <!-- #146 Predkosc jak ekran HMI predkosc: pozycje (jak HMI) i glowne predkosci z paskiem %, polem i +/- -->
@@ -95,12 +102,6 @@
       </div>
 
       <div class="tab" data-tab="stone">
-        <!-- Ustawienia: podekrany Stol i kamien, Bity serwisowe -->
-        <div class="seg sub" id="setPages">
-          <button type="button" data-set="area" class="active" title="Stół i kamień"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg><span>Stół i kamień</span></button>
-          <button type="button" data-set="svc" data-level="2" title="Bity serwisowe (HMI.bService…)"><svg class="ic" aria-hidden="true"><use href="#i-wrench"/></svg><span>Serwis</span></button>
-        </div>
-        <div data-setpage="area">
         <p class="hint">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. Przycisk z pinezką wpisuje aktualną pozycję osi.</p>
         <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
         <label class="inline" data-lock>Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
@@ -116,18 +117,6 @@
           <button id="stoneShow" title="Pokaż stół i kamień z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
         </div>
         <div id="stoneInfo" class="info"></div>
-        </div>
-        <!-- bity serwisowe HMI.bService... (service.js) - od poziomu Serwis -->
-        <div id="serviceBox" data-setpage="svc" data-level="2" data-lock hidden>
-          <h3>Bity serwisowe <span class="muted">HMI.bService…</span></h3>
-          <div id="serviceBits"></div>
-        </div>
-        <!-- diagnostyka podpiecia zmiennych PLC (OPC UA, /api/variables) - tryb PLC, od poziomu Serwis -->
-        <div id="plcVarsBox" data-setpage="svc" data-level="2" hidden>
-          <h3>Zmienne PLC <span class="muted">OPC UA – węzeł, typ, wartość</span></h3>
-          <p class="hint" id="plcVarsInfo"></p>
-          <div class="tableWrap"><table class="plcVars" id="plcVars"></table></div>
-        </div>
       </div>
 
       <div class="tab" data-tab="cut" hidden>
@@ -347,7 +336,7 @@
       <p class="hint" id="loginDemo" hidden>Wersja demonstracyjna (GitHub Pages): wybór użytkownika bez hasła – pokazuje i ukrywa funkcje jak na maszynie. Hasła sprawdza tylko serwer VizuApp na maszynie.</p>
       <p class="hint" id="loginErr"></p>
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-      <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo Parametry i bity serwisowe (Ustawienia → Serwis). Admin – dodatkowo parametry figur (zmienne PLC).</p>
+      <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
     </form>
   </div>
 

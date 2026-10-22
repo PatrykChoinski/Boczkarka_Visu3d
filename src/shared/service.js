@@ -1,4 +1,5 @@
-// Bity serwisowe (HMI.bService...) w jednym miejscu - ekran Ustawienia (jak USTAWIENIA / SERWIS w HMI), od poziomu Serwis.
+// Bity serwisowe (HMI.bService...) uzywane przez programy Visu3D - jeden stan dla wszystkich programow; na ekranie Serwis
+// (strona Ustawienia jak serwis_3 w HMI, bity bez ekranu HMI w grupie dodatkowej), od poziomu Serwis.
 // Pola formularzy z svc (ops.js, common.js, millops.js, figury) nie sa pokazywane w formularzach - ich wartosc
 // czytana jest z ustawien (ten sam bit w kilku programach, np. bServiceRectangleACBD - krawedzie i figury).
 // group - grupa na ekranie, modes - tryby, ktorych bit dotyczy (ikona grupy).

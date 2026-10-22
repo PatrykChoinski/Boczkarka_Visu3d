@@ -18,8 +18,26 @@ import { SERVICE_PAGES, SERVICE_SCREEN_VARS } from '../src/shared/servicescreens
 
 // ekrany serwisowe (#147): wartosci poczatkowe zmiennych z GVL (init), bity - FALSE
 const SERVICE_INIT = {};
-for (const p of SERVICE_PAGES) for (const g of p.groups) for (const it of g.items) if (it.v && !(it.v in SERVICE_INIT)) SERVICE_INIT[it.v] = it.init ?? (it.t === 'BOOL' ? false : 0);
-const hmiValues = () => Object.fromEntries(Object.entries(VARIABLES).filter(([k]) => k.startsWith('hmi:')).map(([k, v]) => [k, SERVICE_INIT[v] ?? 0]));
+const HMI_ARRAY_LEN = { ARRAY: 8, ARRAY_STRING: 500 };
+const svcDefault = (t) => (t === 'BOOL' ? false : t === 'STRING' ? '' : 0);
+for (const p of SERVICE_PAGES) {
+  for (const g of p.groups) {
+    for (const it of g.items) {
+      if (!it.v) continue;
+      const m = /^(.*)\[(\d+)\]$/.exec(it.v);
+      if (m) {
+        const t = SERVICE_SCREEN_VARS[m[1]];
+        SERVICE_INIT[m[1]] ??= Array(HMI_ARRAY_LEN[t]).fill(t === 'ARRAY_STRING' ? '' : 0);
+        SERVICE_INIT[m[1]][Number(m[2])] = it.init ?? SERVICE_INIT[m[1]][Number(m[2])];
+      } else if (!(it.v in SERVICE_INIT)) SERVICE_INIT[it.v] = it.init ?? svcDefault(it.t);
+    }
+  }
+}
+const hmiValues = () => Object.fromEntries(Object.entries(VARIABLES).filter(([k]) => k.startsWith('hmi:'))
+  .map(([k, v]) => [k, SERVICE_INIT[v] ?? svcDefault(SERVICE_SCREEN_VARS[v] ?? (/^HMI\.bService/.test(v) ? 'BOOL' : null))]));
+// typy OPC UA zmiennych ekranow serwisowych (jak typy IEC w PLC)
+const SVC_TYPES = { BOOL: 'Boolean', STRING: 'String', ARRAY_STRING: 'String', ARRAY: 'Double', INT: 'Int16', Inputs: 'Int16', Outputs: 'Int16',
+  ServoType: 'Int16', WORD: 'UInt16', UINT: 'UInt16', DINT: 'Int32', DWORD: 'UInt32' };
 import { machine, plcToolAxisZ, plcActualPosition } from '../src/shared/geometry.js';
 import { parseGcode } from '../src/shared/gcode.js';
 import { cncProgram } from '../src/shared/cnc.js';
@@ -172,12 +190,15 @@ export async function startFakePlc(port, mode = 'saw') {
       gvls[key2] ??= obj(parent, parts[i]);
       parent = gvls[key2];
     }
-    const svcType = key.startsWith('hmi:') ? SERVICE_SCREEN_VARS[varPath] : null;
-    const type = BOOLS.has(key) || svcType === 'BOOL' ? DataType.Boolean
-      : INTS.has(key) || svcType === 'INT' ? DataType.Int16 : svcType === 'WORD' ? DataType.UInt16 : svcType === 'DINT' ? DataType.Int32 : DataType.Double;
-    const array = ARRAYS[key];
+    const svcType = key.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[varPath] ?? (/^HMI\.bService/.test(varPath) ? 'BOOL' : null)) : null;
+    const type = svcType ? DataType[SVC_TYPES[svcType] ?? 'Double']
+      : BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
+    const array = ARRAYS[key] ?? HMI_ARRAY_LEN[svcType];
     const value = () => {
       const v = values()[key];
+      if (type === DataType.String) {
+        return array ? new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: v.map(String) }) : new Variant({ dataType: type, value: String(v ?? '') });
+      }
       if (array) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: (type === DataType.Int16 ? Int16Array : Float64Array).from(v) });
       return new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(v) : Number(v) });
     };
