@@ -7,6 +7,10 @@ export const VARIABLES = {
   y: 'HMI2.fYRealPosition',
   z: 'HMI2.fZRealPosition',
   a: 'HMI2.fAActualPosition',       // MCActualPositionA.Position (os)
+  // punkt narzedzia jak na ekranach HMI (POZYCJE OSI w sterowaniu recznym, predkosc): okno ruchow recznych
+  toolX: 'HMI2.fXActualPosition',
+  toolY: 'HMI2.fYActualPosition',
+  toolZ: 'HMI2.fZActualPosition',
   b: 'HMI2.fBActualPosition',       // MCActualPositionB.Position albo enkoder (Encoders)
   // aktualne predkosci osi (Settings/VelocityAcceleration): MCActualVelocity*.Velocity * 60 / 1000 - X / Y / Z w m/min,
   // A w °/s * 0.06. fBActualVelocity w PLC liczona z osi A (blad) - predkosc B z roznicy pozycji
@@ -61,14 +65,21 @@ export const VARIABLES = {
   cutAcc: 'HMI.Acc',
   cutDec: 'HMI.Dec',
   fastVel: 'HMI.fVelocityFast',
-  fastAcc: 'HMI.DecX',
   zVel: 'HMI.fVelocityAxisZWork',
-  zAcc: 'HMI.DecZ',
   zUpVel: 'HMI.fVelocityAxisZApproach',
   aVel: 'HMI.VelA',
-  aAcc: 'HMI.DecA',
   bVel: 'HMI.VelB',
-  bAcc: 'HMI.DecB',
+  // przyspieszenia osi jak VelocityAcceleration w PLC (AccX / AccZ / AccA / AccB sa w GVL bez symbol configu):
+  //   AccX = fMaxVelocityJogX / fAutoTaccX, AccZ = fMaxVelocityJogZ / fAutoTaccZ, AccA = fMaxVelocityJogA / MAX(TaccA, 5),
+  //   AccB = fMaxVelocityJogB / TaccB  (mm/s / s, °/s / s) - plcDynamics()
+  maxJogX: 'HMI2.fMaxVelocityJogX',
+  maxJogZ: 'HMI2.fMaxVelocityJogZ',
+  maxJogA: 'HMI2.fMaxVelocityJogA',
+  maxJogB: 'HMI2.fMaxVelocityJogB',
+  autoTaccX: 'HMI.fAutoTaccX',
+  autoTaccZ: 'HMI.fAutoTaccZ',
+  taccA: 'HMI.TaccA',
+  taccB: 'HMI.TaccB',
   // ruchy reczne (Manual): predkosci jog
   jogXVel: 'HMI.fJogXVelocity',
   jogYVel: 'HMI.fJogYVelocity',
@@ -105,7 +116,8 @@ export const VARIABLES = {
 // Zmienne czytane rzadziej (co slowEvery odczytow) - duze tablice i ustawienia programu
 export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
   'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progMillCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
-  'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount'];
+  'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount',
+  'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB'];
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
@@ -126,6 +138,23 @@ const DYNAMICS_UNITS = {
 // ekran (m/min, m/s2) -> obliczenia (mm/s, mm/s2); tylko klucze obecne w d
 export function dynamicsToInternal(d) {
   return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v * (DISPLAY_FACTOR[DYNAMICS_UNITS[k]] ?? 1)]));
+}
+
+// Dynamika z wartosci PLC (mm/s, mm/s2, °/s, °/s2): predkosci wprost, przyspieszenia X / Z / A / B wzorami PLC
+// (VelocityAcceleration); tylko pozycje obecne w odczycie
+export function plcDynamics(v) {
+  const num = (k) => (typeof v[k] === 'number' && Number.isFinite(v[k]) ? v[k] : null);
+  const out = {};
+  for (const k of DYNAMICS_KEYS) if (num(k) !== null) out[k] = num(k);
+  const ratio = (a, b) => (num(a) !== null && num(b) > 0 ? num(a) / num(b) : null);
+  const acc = {
+    fastAcc: ratio('maxJogX', 'autoTaccX'),
+    zAcc: ratio('maxJogZ', 'autoTaccZ'),
+    aAcc: num('maxJogA') !== null && num('taccA') !== null ? num('maxJogA') / Math.max(num('taccA'), 5) : null,
+    bAcc: ratio('maxJogB', 'taccB'),
+  };
+  for (const [k, x] of Object.entries(acc)) if (x !== null && x > 0) out[k] = x;
+  return out;
 }
 
 // obliczenia / PLC (mm/s, mm/s2) -> ekran (m/min, m/s2)

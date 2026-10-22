@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
 import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
-import { machine, plcToolAxisZ } from '../src/shared/geometry.js';
+import { machine, plcToolAxisZ, plcActualPosition } from '../src/shared/geometry.js';
 import { parseGcode } from '../src/shared/gcode.js';
 import { cncProgram } from '../src/shared/cnc.js';
 import { cutProgram, depthTable, ProgramBuilder } from '../src/shared/motion.js';
@@ -109,8 +109,13 @@ export function plcTimeline(mode = 'saw') {
     const h = 0.02;
     const r0 = at(Math.max(0, t - h)).pose;
     const actVel = Object.fromEntries(['x', 'y', 'z', 'a'].map((ax) => [`${ax}ActVel`, t >= h ? (r.pose[ax] - r0[ax]) / h * 0.06 : 0]));
+    // przyspieszenia jak w PLC: fMaxVelocityJog* / czasy Tacc (dynamika testowa)
+    const accVars = { maxJogX: 500, autoTaccX: 500 / dyn.fastAcc, maxJogZ: 200, autoTaccZ: 200 / dyn.zAcc,
+      maxJogA: 600, taccA: Math.max(5, 600 / dyn.aAcc), maxJogB: 600, taccB: 600 / dyn.bAcc };
+    // HMI2.fX/Y/ZActualPosition - punkt narzedzia jak Settings/ActualPosition w PLC
+    const ap = plcActualPosition(r.pose, m);
     return {
-      ...r.pose, ...actVel, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
+      ...r.pose, toolX: ap.x, toolY: ap.y, toolZ: ap.z, ...actVel, ...accVars, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu

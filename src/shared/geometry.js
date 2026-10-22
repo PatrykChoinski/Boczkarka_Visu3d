@@ -160,3 +160,39 @@ export const workAxisXY = (px, py, aDeg, bDeg, m) => (isToolMode(m) ? plcToolAxi
 
 // GetAngleFun: kat linii ciecia z dwoch punktow (stopnie, -180..180)
 export const lineAngle = (x0, y0, x1, y1) => Math.atan2(y1 - y0, x1 - x0) / DEG;
+
+// Settings/ActualPosition w PLC: HMI2.fX/Y/ZActualPosition - punkt narzedzia z pozycji osi (to zapisuja przyciski
+// "Zapisz", punkty stolu i kamienia, punkty reczne A / B / C, Z polerowania). Bez fStatusAxisTiltCorrection
+// i bServiceBladeWidthTilt (w modelu 0). Os: {x, y, z, a, b} jak MCActualPosition*.Position.
+function actualOffsets(pose, m) {
+  const a = pose.a * DEG;
+  const b = pose.b * DEG;
+  const corr = m.millCorrection || 0;
+  let k;
+  let dz;
+  if (m.mode === 'drill') {
+    k = m.millTiltDiameter / 2;
+    dz = Math.sin(b) * (m.drillLength + corr + m.cutTiltDiameter / 2);
+  } else if (m.mode === 'polishing') {
+    k = m.millTiltDiameter / 2;
+    dz = Math.sin(b) * (corr + m.cutTiltDiameter / 2);
+  } else if (m.mode === 'mill') {
+    k = m.millTiltDiameter / 2 - Math.cos(b) * (m.millLength + corr + m.cutTiltDiameter / 2);
+    dz = Math.sin(b) * (m.millLength + corr + m.cutTiltDiameter / 2);
+  } else {
+    k = m.cutTiltDiameter / 2 - m.headRotationDiameter / 2 - Math.cos(b) * m.cutTiltDiameter / 2 + Math.sin(b) * m.discDiameter / 2;
+    dz = Math.sin(b) * m.cutTiltDiameter / 2 + Math.cos(b) * m.discDiameter / 2;
+  }
+  return { dx: -Math.sin(a) * k, dy: Math.cos(a) * k, dz };
+}
+
+export function plcActualPosition(pose, m) {
+  const o = actualOffsets(pose, m);
+  return { x: pose.x + o.dx, y: pose.y + o.dy, z: pose.z + o.dz, a: pose.a, b: pose.b };
+}
+
+// Odwrotnie: pozycja osi dla zapisanego punktu narzedzia (przy tych samych A / B)
+export function axisFromActual(point, m) {
+  const o = actualOffsets(point, m);
+  return { x: point.x - o.dx, y: point.y - o.dy, z: point.z - o.dz, a: point.a, b: point.b };
+}

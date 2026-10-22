@@ -5,7 +5,7 @@
 import { View3D } from './view3d.js';
 import { tableExtent } from './machine3d.js';
 import { MAX_APEX, apexPoints, boardZMin, bounds, isArea, pointInPolygon } from '../shared/area.js';
-import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, workAxisZ, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
+import { machine as makeMachine, headFrame, toolFrame, plcToolAxisZ, workAxisZ, plcActualPosition, axisFromActual, isToolMode, toolSize, penetration, topZ, radius, lineAngle } from '../shared/geometry.js';
 import { waterLayout, laserMount } from '../shared/water.js';
 import { CutRecorder } from '../shared/cuts.js';
 import { ToolRecorder } from '../shared/toolcuts.js';
@@ -13,7 +13,7 @@ import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor 
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays } from '../shared/automat.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
@@ -524,9 +524,14 @@ function saveHtml(group, sv) {
   return `<div class="saveRow wide" data-save-group="${group}" data-save-of="${sv.y}"><button data-save-x="${sv.x}" data-save-y="${sv.y}" title="Zapisz ${sv.name}: ${title}">${icon('save')}${icon('here')}</button></div>`;
 }
 
-// "Zapisz": aktualna pozycja osi X / Y (albo Z) do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
+// Aktualna pozycja jak HMI2.fX/Y/ZActualPosition w PLC (punkt narzedzia z pozycji osi, Settings/ActualPosition) -
+// to zapisuja przyciski "Zapisz" w PLC (TO_REAL(TO_DINT(fXActualPosition*100))/100.0), punkty stolu i kamienia,
+// punkty reczne A / B / C, Z polerowania. Online - wartosci z PLC nie sa potrzebne (zapis tylko offline).
+const actualPosition = () => (state.pose ? plcActualPosition(state.pose, offlineMachine()) : null);
+
+// "Zapisz": aktualna pozycja X / Y (albo Z) do pol punktu (zaokraglenie do 0,01 mm jak w PLC)
 function savePoint(group, fields, kx, ky, kz = null) {
-  const p = state.pose;
+  const p = actualPosition();
   if (!p) return;
   if (kx) fieldEl(group, kx).value = savedPosition(p.x);
   if (ky) fieldEl(group, ky).value = savedPosition(p.y);
@@ -992,14 +997,15 @@ function updateCutInfo() {
 
 function hasPlcDynamics() {
   const v = state.online.values;
-  return DYNAMICS_KEYS.some((k) => typeof v[k] === 'number') || MACHINE_KEYS.some((k) => typeof v[k] === 'number');
+  return Object.keys(plcDynamics(v)).length > 0 || MACHINE_KEYS.some((k) => typeof v[k] === 'number');
 }
 
 function fromPlc() {
   const v = state.online.values;
   const pick = (keys) => Object.fromEntries(keys.filter((k) => typeof v[k] === 'number').map((k) => [k, v[k]]));
   writeFields('m', pick(MACHINE_KEYS));
-  writeFields('d', dynamicsToDisplay(pick(DYNAMICS_KEYS)));
+  // przyspieszenia X / Z / A / B wzorami PLC (VelocityAcceleration) z fMaxVelocityJog* i czasow Tacc
+  writeFields('d', dynamicsToDisplay(plcDynamics(v)));
   saveForms();
   offlineFormsChanged();
 }
@@ -1358,9 +1364,12 @@ function updateManInfo() {
 function syncManualWin() {
   const p = state.pose;
   if (!p || $('#manWin').hidden) return;
+  // X / Y / Z jak w HMI: fX/Y/ZActualPosition (punkt narzedzia) - online z PLC, offline tym samym wzorem; A / B - osie
+  const v = state.online.values;
+  const tool = state.mode === 'online' && typeof v.toolX === 'number' ? { x: v.toolX, y: v.toolY, z: v.toolZ } : plcActualPosition(p, state.machine);
   for (const ax of ['x', 'y', 'z', 'a', 'b']) {
     const el = $(`#manPos_${ax}`);
-    if (el) el.value = fmtAxis(p[ax]);
+    if (el) el.value = fmtAxis(ax === 'a' || ax === 'b' ? p[ax] : tool[ax]);
   }
   for (const b of $$('#manWin [data-hmi="laser"]')) b.classList.toggle('on', $('#showLaser').checked);
   if (state.manToggle && !state.jog) state.manToggle = null;
@@ -1468,7 +1477,8 @@ function manualAction(act) {
         const z = workAxisZ(-(commonValues().above ?? 20), p.b, offlineMachine());
         manualProgram((dd) => gotoProgram(p, { ...p, z: Math.max(0, z) }, dd));
       } else if (state.points[arg]) {
-        manualProgram((dd) => gotoProgram(p, { ...state.points[arg] }, dd));
+        // punkt zapisany jako punkt narzedzia - dojazd osi do tego punktu przy zapisanych A / B
+        manualProgram((dd) => gotoProgram(p, axisFromActual(state.points[arg], offlineMachine()), dd));
       } else {
         $('#manInfo').innerHTML = `<span style="color:var(--bad)">Punkt ${arg} nie jest zapisany – zapisz go w zakładce Pozycja (USTAWIENIA POZYCJI)</span>`;
       }
@@ -1553,7 +1563,8 @@ function bindManual() {
   for (const b of $$('[data-savepoint]')) {
     b.onclick = () => {
       if (!state.pose) return;
-      const p = state.pose;
+      // SaveManualPoint: aManualX/Y/ZSavedPositions := fX/Y/ZActualPosition (punkt narzedzia) + A / B
+      const p = actualPosition();
       state.points[b.dataset.savepoint] = Object.fromEntries(AXES.map((ax) => [ax, savedPosition(p[ax])]));
       savePoints();
       updateManInfo();
@@ -2145,7 +2156,9 @@ function bindUi() {
       const name = b.dataset.save;
       const i = Number(b.dataset.i);
       const cols = [0, 1, 2].map((c) => $$(`[data-pt="${name}"][data-c="${c}"]`).map((el) => Number(el.value) || 0));
-      [state.pose.x, state.pose.y, state.pose.z].forEach((v, c) => { cols[c][i] = v; });
+      // WorkArea: aCuttingBoardX/Y/Z[i] := fX/Y/ZActualPosition (punkt narzedzia, np. spod tarczy w Z)
+      const ap = actualPosition();
+      [ap.x, ap.y, ap.z].forEach((v, c) => { cols[c][i] = savedPosition(v); });
       const points = cols[0].map((x, k) => [x, cols[1][k], cols[2][k]]);
       writeArea(name, { count: Math.max(readArea(name).count, i + 1), points });
       stoneChanged();
@@ -2194,8 +2207,9 @@ function bindUi() {
   // automat: punkt startowy z aktualnej pozycji (bProgramSaveStartPosition / bProgramMillStartPointSave)
   $('#autoSaveStart').onclick = () => {
     if (!state.pose || state.mode !== 'offline') return;
-    $('#autoOX').value = savedPosition(state.pose.x);
-    $('#autoOY').value = savedPosition(state.pose.y);
+    const p = actualPosition();
+    $('#autoOX').value = savedPosition(p.x);
+    $('#autoOY').value = savedPosition(p.y);
     autoChanged();
   };
   $('#fromPlc').onclick = fromPlc;
