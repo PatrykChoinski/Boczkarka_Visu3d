@@ -121,6 +121,29 @@ export function cutPlan(c, m) {
   return { a, b, tilt, passes, table, primary, length: L };
 }
 
+// Zasieg rzazu na powierzchni materialu (plan ciecia): przejscia z cutPlan (srodek tarczy) wydluzone o polowe cieciwy
+// tarczy na glebokosci przejscia (jak sawOffset bez korekty). Zewnetrzne - rzaz wychodzi za punkty linii (tarcza
+// wychodzi poza material), wewnetrzne - konczy sie na punktach (linie sie nie przecinaja). Zwraca [[x, y], [x, y]].
+export function cutSurfaceSpan(c, m) {
+  const plan = cutPlan(c, m);
+  const L = plan.length;
+  const u = L > 0 ? [(c.x1 - c.x0) / L, (c.y1 - c.y0) / L] : [1, 0];
+  // przy skosie tarcza tnie w plaszczyznie pochylonej - glebokosc w plaszczyznie tarczy z / cos B
+  const slant = plan.tilt ? Math.cos(plan.b * DEG) : 1;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of plan.passes) {
+    const h = sawOffset(p.depth / slant, Infinity, m.discDiameter, 0);
+    for (const pt of [p.from, p.to]) {
+      const s = (pt[0] - c.x0) * u[0] + (pt[1] - c.y0) * u[1];
+      lo = Math.min(lo, s - h);
+      hi = Math.max(hi, s + h);
+    }
+  }
+  if (!Number.isFinite(lo)) { lo = 0; hi = L; }
+  return [[c.x0 + u[0] * lo, c.y0 + u[1] * lo], [c.x0 + u[0] * hi, c.y0 + u[1] * hi]];
+}
+
 // Pozycja osi dla punktu linii na glebokosci depth (GetPositions + fBX/YOffset przy skosie)
 export function axisPoint(pt, depth, plan, m) {
   const [x, y] = plcAxisXY(pt[0], pt[1], plan.a, plan.b, m);

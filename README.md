@@ -265,7 +265,13 @@ podpowiedzi i komunikaty.
   przyciskiem, kółko przybliża, dwuklik dopasowuje.
 - **Wyczyść**: usuwa narysowane cięcia. **Głowica** (tarcza, słup Z, silnik,
   osłona) i **Suport** (ściany, most, wózek, stół): pokaż / ukryj.
-- **Plan**: podgląd toru operacji / automatu. **XY** (#137): na materiale
+- **Plan**: podgląd toru operacji / automatu. Linie cięć piłą (cięcie proste, pasy, bloki, krawędzie,
+  kroki cięcia automatu) pokazują, gdzie tarcza naprawdę przetnie powierzchnię materiału: przy cięciu
+  **zewnętrznym** linia wychodzi za punkty o połowę cięciwy tarczy na pełnej głębokości (√(D·g − g²), np.
+  134 mm przy Ø625 i 30 mm) – tarcza wychodzi poza materiał, a krawędzie prostokąta krzyżują się za
+  narożami; przy **wewnętrznym** linia kończy się na punktach (odsunięcie tarczy jak `GetSawOffset`), więc
+  linie się nie przecinają; „wewn. początek / koniec” – tylko jeden koniec za punktem. Znaczniki XY
+  i odległości są na zadanych punktach. **XY** (#137): na materiale
   znaczniki punktów początkowych i końcowych kolejnych akcji z wartościami
   X / Y (początek – zielona kropka i etykieta po lewej, koniec – czerwona po
   prawej, punkt wspólny dwóch akcji – pomarańczowy). Etykiety mają stałą

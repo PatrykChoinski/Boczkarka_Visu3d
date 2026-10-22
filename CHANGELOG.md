@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Plan cięcia: zewnętrzne poza materiał, wewnętrzne bez przecięć
+- Plan linii cięcia piłą (Manual: cięcie proste, pasy, bloki, krawędzie; kroki cięcia automatu offline i online) rysowany jako rzeczywisty zasięg rzazu na powierzchni (`cutSurfaceSpan` w `cutst.js` – przejścia z `cutPlan` + połowa cięciwy tarczy na głębokości przejścia, przy skosie w płaszczyźnie tarczy). Zewnętrzne – linia wychodzi za punkty (tarcza poza materiałem, krawędzie prostokąta krzyżują się za narożami), wewnętrzne – kończy się na punktach, linie się nie przecinają; wewn. początek / koniec – za punkt wychodzi tylko drugi koniec. Znaczniki XY i odległości zostają na zadanych punktach (`ends`).
+- Sprawdzone: `npm test` 164/164 (`test/plancut.test.js`: ciecie proste zewn. / wewn. / wewn. początek, krawędzie – wewn. bez przecięć, zewn. przecięte za narożami, automat), smoke test; zrzuty planu z góry (krawędzie zewn. / wewn., cięcie proste).
+
 ### Film prezentacyjny – druga wersja (#149)
 - Tor, punkty X / Y i wymiary pokazywane przed każdym programem i chowane po ok. 2,5 s; najazdy kamery blisko głowicy (płynne podążanie za tarczą / frezem) i powrót do widoku głównego – pasy, Automat piły, prostokąt frezu, G-kod.
 - Frez: prostokąt z zaokrąglonymi narożami zamiast ociekacza; G-kod Madonny pokazywany ok. 15 s dłużej; Blat z A = 1500 (C = 500, E = 700 – figura się domyka, tor na kamieniu).

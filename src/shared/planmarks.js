@@ -9,13 +9,14 @@ export const markLabel = (x, y) => `X ${fmtXY(x)}  Y ${fmtXY(y)}`;
 
 // Odleglosci miedzy punktami: dla kazdej akcji odleglosc od punktu poczatkowego do koncowego (w linii prostej),
 // etykieta w polowie toru akcji (luk - na luku). Bez etykiety: akcja zamknieta (okrag), wlasne punkty (wiercenie),
-// odleglosc < 1 mm. -> [{x, y, d, active, label}]
+// odleglosc < 1 mm. ends - zadane punkty linii ciecia (sciezka to zasieg rzazu): odleglosc miedzy nimi.
+// -> [{x, y, d, active, label}]
 export function planDistances(items, max = 120) {
   const out = [];
   for (const it of items || []) {
     if (out.length >= max) break;
     if (it.marks?.length) continue;
-    const pts = (it.path || []).filter(Boolean);
+    const pts = it.ends || (it.path || []).filter(Boolean);
     if (pts.length < 2) continue;
     const a = pts[0];
     const b = pts[pts.length - 1];
@@ -48,7 +49,8 @@ export function pathMiddle(pts) {
 }
 
 // items: [{path: [[x, y] | null, ...], marks?: [[x, y], ...], active}] -> [{x, y, start, end, active, order, label}]
-// marks - wlasne punkty akcji (np. wiercenie: punkt otworu), inaczej pierwszy i ostatni punkt sciezki;
+// marks - wlasne punkty akcji (np. wiercenie: punkt otworu), ends - zadane poczatek i koniec linii ciecia (sciezka
+// to zasieg rzazu - wychodzi za punkty albo konczy sie przed nimi), inaczej pierwszy i ostatni punkt sciezki;
 // order - numer akcji (od 1), w ktorej punkt pojawia sie pierwszy raz; max - limit znacznikow
 export function planMarks(items, max = 120) {
   const out = [];
@@ -62,7 +64,7 @@ export function planMarks(items, max = 120) {
     if (out.length < max) out.push({ x: p[0], y: p[1], start: kind === 'start', end: kind === 'end', active, order, label: markLabel(p[0], p[1]) });
   };
   (items || []).forEach((it, k) => {
-    const pts = (it.path || []).filter(Boolean);
+    const pts = it.ends || (it.path || []).filter(Boolean);
     const active = Boolean(it.active);
     if (it.marks?.length) {
       for (const p of it.marks) add(p, 'start', active, k + 1);
