@@ -161,6 +161,34 @@ manualny – programy piły / narzędzi), Bazowanie, Parametry (serwis), Ustawie
 na końcu Pozycja (w lewym menu HMI jej nie ma). Panel wybranego ekranu jest po
 prawej, z tytułem (ikona i nazwa ekranu).
 
+**Serwis** (#147, od poziomu Serwis): trzy strony jak ekrany serwisowe HMI –
+„Serwis” (`serwis`, 70: parametry maszyny piła / frez / wiertło, przejścia),
+„Obszar pracy” (`serwis_2`, 71: krańcówki elektroniczne z zapisem aktualnej
+pozycji, aktualne pozycje osi, wyprzedzanie, korekta wychyłu z JOG, korekcja
+obrotu z JOG, zerowanie ABS) i „Ustawienia” (`serwis_3`, 75: 42 bity serwisowe
+z napisami stanów jak w HMI i 6 wartości). Wszystkie zmienne i bity z tych
+ekranów (`src/shared/servicescreens.js`, wygenerowane z projektu HMI i GVL;
+opis działania w PLC w podpowiedzi) są czytane z PLC (OPC UA, tylko odczyt);
+offline parametry głowicy i narzędzi, bity `bService…` i prędkość jog A są
+wspólne z resztą aplikacji (Parametry, Ustawienia → Serwis), pozostałe
+wartości – jak w HMI (początkowe z GVL), zapamiętane w przeglądarce. Przyciski
+HMI bez działania (±1° / ±10° korekty wychyłu – bity wewnętrzne HMI) są
+nieaktywne; przejścia do ekranów, których nie ma w Visu3D (falowniki, wejścia /
+wyjścia, skalowanie …), też.
+
+**Prędkość** (#146, jak ekran HMI `predkosc`): u góry pozycje jak na panelu
+(`fX/Y/ZActualPosition`, kąt obrotu, wychył) i głębokość (`fStatusActualCutDepth`
+– nad materiałem ujemna); pod nimi grupy: przesuw szybki (`fVelocityFast`),
+przesuw roboczy – piła (`fVelocitySawMode`) albo frez (`fVelocityMillMode`), oś Z
+dojazd (`fVelocityAxisZApproach`) i praca (`fVelocityAxisZWork`), silnik główny
+(`fVelocityMainDrive` w Hz i rpm = Hz × 30). Każda grupa ma pasek % maksimum
+(`HMI2.fMaxVelocity…`, jak `iVelocity…Precent`), pole i −/+ (krok 1 % maksimum,
+silnik 0,1 Hz; przytrzymanie powtarza, wartość w granicach 0…maksimum jak
+`LIMIT` w PLC). Offline zmiany działają od razu w symulacji (te same wartości co
+Parametry, maksima w `offline.speedMax`), online – odczyt z PLC; przy pulpicie
+rozszerzonym (`bServiceAdvancedDesktop`) informacja, że prędkości są z
+potencjometrów.
+
 **Ustawienia** mają dwa podekrany: „Stół i kamień” (punkty stołu i kamienia,
 grubość) i „Serwis” – bity serwisowe `HMI.bService…` w jednym miejscu, od
 poziomu Serwis (`src/shared/service.js`): piła (`bServiceBlocksReverse`,

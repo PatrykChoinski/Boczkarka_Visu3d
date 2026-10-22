@@ -8,11 +8,13 @@
 
 import fs from 'node:fs';
 import { VARIABLES } from '../src/shared/config.js';
+import { SERVICE_SCREEN_VARS } from '../src/shared/servicescreens.js';
 
 // Oczekiwany rodzaj wartosci w aplikacji: bool, array albo liczba (num, w tym enumy i WORD)
-const BOOL_KEYS = /^(mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays)/;
+const BOOL_KEYS = /^(mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays|advancedDesktop)/;
 const ARRAY_KEYS = /^(board[XYZ]|rock[XYZ]|prog(X|Y|Step|Radius|Angle|Depth|DepthEnd|Length|OutIn))$/;
-const expected = (k) => (ARRAY_KEYS.test(k) ? 'array' : BOOL_KEYS.test(k) ? 'bool' : 'num');
+const expected = (k) => (k.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[VARIABLES[k]] === 'BOOL' ? 'bool' : 'num')
+  : ARRAY_KEYS.test(k) ? 'array' : BOOL_KEYS.test(k) ? 'bool' : 'num');
 
 function parse(xml) {
   const types = {};

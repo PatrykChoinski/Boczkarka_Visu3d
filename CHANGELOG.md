@@ -6,6 +6,13 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Ekran Prędkość (#146), ekran Serwis (#147), głębokość ze znakiem
+- #146 Prędkość jak ekran HMI `predkosc`: pozycje jak na panelu (`fX/Y/ZActualPosition`, kąt obrotu, wychył) i głębokość; grupy przesuw szybki, przesuw roboczy (piła / frez wg trybu), oś Z dojazd i praca, silnik główny (Hz i rpm = Hz × 30) – pasek % maksimum (`HMI2.fMaxVelocity…`), pole i −/+ (1 % maksimum, silnik 0,1 Hz, przytrzymanie powtarza, granice 0…maksimum jak `LIMIT` w PLC). Offline zmienia dynamikę symulacji (maksima w `offline.speedMax`), online odczyt z PLC; informacja o pulpicie rozszerzonym (`bServiceAdvancedDesktop`).
+- #147 Serwis: trzy strony jak ekrany HMI `serwis` (70), `serwis_2` (71 – obszar pracy maszyny), `serwis_3` (75 – ustawienia serwisowe); 118 elementów, 100 zmiennych PLC (42 bity ustawień serwisowych z napisami stanów jak w HMI). Dane wygenerowane z projektu HMI i GVL (`src/shared/servicescreens.js`: grupy, opisy, jednostki, zakresy, wartości początkowe, działanie w PLC). Online wszystkie zmienne z PLC (84 nowe w `VARIABLES` jako `hmi:GVL.zmienna`, czytane rzadziej), offline wspólne z symulacją tam, gdzie Visu3D ma odpowiednik (parametry głowicy / narzędzi, bity `bService…`, jog A, pozycje), zapis krańcówek X / Y / Z z aktualnej pozycji, JOG obrotu i wychyłu. Opisy HMI poprawione tam, gdzie były błędne (maks. prędkości w m/min, średnica wychyłu frezu, pozycja obrotu w °).
+- Głębokość nad materiałem ujemna (stopka, Prędkość) – jak `HMI2.fStatusActualCutDepth = fZActualPosition − fCutMaterialHeight`; online wartość z PLC.
+- Lewe menu: Automat, G-kod, Manual, Bazowanie, Serwis, Parametry, Prędkość, Ustawienia, Pozycja.
+- Sprawdzone: `npm test` 155/155 (`test/servicescreens.test.js`), smoke test 189/189 zmiennych z testowym PLC, oba pliki symboli PLC 189/189; w przeglądarce Prędkość i Serwis offline (zmiany w symulacji, bit wspólny z Ustawieniami) i online (odczyt z PLC).
+
 ### Logowanie na GitHub Pages (demo)
 - Wersja statyczna (GitHub Pages) ma logowanie demonstracyjne: wybór Operator / Serwis / Admin bez hasła, te same poziomy co na maszynie (niezalogowany – tylko Bazowanie, Operator – praca, Serwis – Parametry i bity serwisowe, Admin – parametry figur), sesja do zamknięcia karty. Hasła sprawdza tylko serwer VizuApp na maszynie – skróty haseł w publicznej stronie dałyby się złamać (np. 11111111). Smoke test wersji statycznej: bez logowania brak ekranu Manual, po zalogowaniu demo (Operator) cięcie działa.
 - Poprawione opisy po zmianie nazw (Manual, Ustawienia → Serwis).

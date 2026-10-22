@@ -14,6 +14,12 @@ import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
 import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
+import { SERVICE_PAGES, SERVICE_SCREEN_VARS } from '../src/shared/servicescreens.js';
+
+// ekrany serwisowe (#147): wartosci poczatkowe zmiennych z GVL (init), bity - FALSE
+const SERVICE_INIT = {};
+for (const p of SERVICE_PAGES) for (const g of p.groups) for (const it of g.items) if (it.v && !(it.v in SERVICE_INIT)) SERVICE_INIT[it.v] = it.init ?? (it.t === 'BOOL' ? false : 0);
+const hmiValues = () => Object.fromEntries(Object.entries(VARIABLES).filter(([k]) => k.startsWith('hmi:')).map(([k, v]) => [k, SERVICE_INIT[v] ?? 0]));
 import { machine, plcToolAxisZ, plcActualPosition } from '../src/shared/geometry.js';
 import { parseGcode } from '../src/shared/gcode.js';
 import { cncProgram } from '../src/shared/cnc.js';
@@ -24,7 +30,7 @@ import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
+const BOOLS = new Set(['advancedDesktop', 'cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
   'progMillStart', 'systemBased', 'modeSaw', 'modeMill', 'modeDrill', 'modePolishing']);
 const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn',
   'progMillCount', 'progMillIndex']);
@@ -114,8 +120,12 @@ export function plcTimeline(mode = 'saw') {
       maxJogA: 600, taccA: Math.max(5, 600 / dyn.aAcc), maxJogB: 600, taccB: 600 / dyn.bAcc };
     // HMI2.fX/Y/ZActualPosition - punkt narzedzia jak Settings/ActualPosition w PLC
     const ap = plcActualPosition(r.pose, m);
+    // ekran Predkosc: maksima (mm/s, Hz), predkosc frezu, silnik glowny, glebokosc ciecia
+    const speedVars = { millVel: dyn.cutVel, mainDriveHz: 50, maxMainDriveHz: 200, maxFastVel: 333.3, maxSawVel: 166.6, maxMillVel: 33.3,
+      maxZUpVel: 50, maxZVel: 50, advancedDesktop: false, cutDepth: ap.z - m.materialHeight, aFixed: r.pose.a };
     return {
-      ...r.pose, toolX: ap.x, toolY: ap.y, toolZ: ap.z, ...actVel, ...accVars, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
+      ...hmiValues(),
+      ...r.pose, toolX: ap.x, toolY: ap.y, toolZ: ap.z, ...actVel, ...accVars, ...speedVars, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
       // laser przy cieciu, naped tarczy 50 Hz (0.01 Hz jak falownik) FWD w trakcie programu
@@ -162,7 +172,9 @@ export async function startFakePlc(port, mode = 'saw') {
       gvls[key2] ??= obj(parent, parts[i]);
       parent = gvls[key2];
     }
-    const type = BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
+    const svcType = key.startsWith('hmi:') ? SERVICE_SCREEN_VARS[varPath] : null;
+    const type = BOOLS.has(key) || svcType === 'BOOL' ? DataType.Boolean
+      : INTS.has(key) || svcType === 'INT' ? DataType.Int16 : svcType === 'WORD' ? DataType.UInt16 : svcType === 'DINT' ? DataType.Int32 : DataType.Double;
     const array = ARRAYS[key];
     const value = () => {
       const v = values()[key];

@@ -46,6 +46,7 @@ export function loadConfig(file) {
     rock: { ...DEFAULTS.offline.rock, ...(user.offline?.rock || {}) },
     saw: { ...DEFAULTS.offline.saw, ...(user.offline?.saw || {}) },
     mode: user.offline?.mode || DEFAULTS.offline.mode,
+    speedMax: { ...DEFAULTS.offline.speedMax, ...(user.offline?.speedMax || {}) },
   };
   return cfg;
 }
