@@ -2033,6 +2033,13 @@ export const SERVICE_PAGES = [
       "t": "BOOL",
       "label": "WYCHYŁ W RUCHU/ZATRZYMANA",
       "use": "written in: Manual/Inverters; never read by PLC (Modbus/ECAT inverter data)"
+     },
+     {
+      "k": "lamp",
+      "v": "Communication.bMainDriveRunFWD",
+      "t": "BOOL",
+      "label": "WYCHYŁ KIERUNEK FWD/REV",
+      "use": "written in: Manual/Inverters; never read by PLC (Modbus/ECAT inverter data)"
      }
     ]
    },
@@ -3006,6 +3013,13 @@ export const SERVICE_PAGES = [
       ],
       "label": "Alarm Reset - adres wejścia (kombo)",
       "use": "never written by PLC; read in: IO/IO"
+     },
+     {
+      "k": "lamp",
+      "v": "IOVars.xSafetyReady",
+      "t": "BOOL",
+      "label": "Alarm Reset - stan wejścia",
+      "use": "written in: IO/IO; read in: Alarms/Alarms, Alarms/Stop, CyclicTasks/CutST, GoToPosition/GoToPositionST"
      },
      {
       "k": "sel",
