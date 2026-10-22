@@ -17,6 +17,7 @@ import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plc
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
+import { watchPlcNames, setPlcNamesAdmin } from './plcnamesdom.js';
 import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
@@ -1222,8 +1223,10 @@ function showServicePage(id) {
 
 function renderService() {
   const ro = state.mode === 'online';
-  for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !ro;
-  if (state.servicePage === 'plcvars' && !ro) state.servicePage = 'main';
+  // Zmienne PLC (lista zmiennych i wezlow OPC UA) - tryb PLC, tylko Admin
+  const varsOk = ro && accessLevel() >= 3;
+  for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !varsOk;
+  if (state.servicePage === 'plcvars' && !varsOk) state.servicePage = 'main';
   for (const b of $$('#servicePages [data-spage]')) {
     b.classList.toggle('active', b.dataset.spage === state.servicePage);
     b.onclick = () => showServicePage(b.dataset.spage);
@@ -1498,6 +1501,8 @@ const isServiceField = (f) => /\(serwis\)|bService/.test(f.label);
 
 function authChanged() {
   const a = state.auth;
+  // opisy zmiennych PLC (nazwy, podpowiedzi) tylko dla Admina
+  setPlcNamesAdmin(accessLevel() >= 3);
   $('#authBox').hidden = !a.enabled;
   $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
   $('#loginBtn').innerHTML = icon(a.user ? 'logout' : 'login');
@@ -1509,6 +1514,7 @@ function authChanged() {
     if (commonFields()) applyVisibility('common', commonFields());
   }
   toolModeChanged();
+  if (!$('.tab[data-tab="service"]').hidden) renderService();
 }
 
 function setSession(s) {
@@ -2565,6 +2571,7 @@ function bindUi() {
 
 async function init() {
   installIcons();
+  watchPlcNames();
   view = new View3D($('#view'));
   state.cfg = await (await fetch('api/config')).json();
   buildPointTables();

@@ -363,3 +363,6 @@ table.plcVars td { padding: 3px 4px; border-top: 1px solid var(--border); font-f
 table.plcVars td:first-child { width: 22px; color: var(--ok); }
 table.plcVars td .ic { width: 16px; height: 16px; }
 table.plcVars tr.bad td { color: var(--bad); background: #fdecea; }
+
+/* opisy zmiennych PLC (nazwy w nawiasach, <code>, dopiski naglowkow) - tylko dla Admina (body.admin) */
+body:not(.admin) .plcName { display: none !important; }

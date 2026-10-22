@@ -6,6 +6,11 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Opisy zmiennych PLC tylko dla Admina
+- Nazwy zmiennych PLC w interfejsie (np. „(fManualXZeroPosition)”, „– bManualTwoPoint”, `aCuttingBoardX/Y/Z`, nazwy pod polami Serwisu) i podpowiedzi z nazwami zmiennych / działaniem w PLC widoczne tylko po zalogowaniu jako Admin; dla innych użytkowników ukryte (podpowiedzi bez nazw). Działa w całej aplikacji, także dla elementów dodawanych później (MutationObserver). Strona Serwis → „Zmienne PLC” tylko dla Admina. Bez logowania (brak `users.json`) – pełny dostęp jak dotąd.
+- Etykiety „CutTiltDiameter”, „HeadRotationDiameter”, „MillTiltDiameter” w Parametrach po polsku (średnica wychyłu / obrotu głowicy / wychyłu frezu), nazwa zmiennej w nawiasie (Admin).
+- Sprawdzone: `npm test` 156/156 (`test/plcnames.test.js`), smoke test; w przeglądarce Serwis (nazwy ukryte, podpowiedzi bez nazw), Admin (wszystko widoczne), wylogowanie (znowu ukryte).
+
 ### Brakujące ekrany serwisowe, bez dublującego się Ustawienia → Serwis
 - Serwis: wszystkie ekrany otwierane z ekranu serwisowego HMI – ustawienia frez (`serwis_cd`, 90), polerowanie (91), parametry osi servo (79), receptury (126, 76, 127), falowniki (72, 77), prędkości serwisowe (78), wejścia / wyjścia (73, 69), skalowanie osi (74), pomiar narzędzia (66), obszar stołu frez / wiercenie / polerowanie (46). Razem 17 stron, wszystkie 462 elementy HMI, 370 zmiennych PLC – wszystkie 391 zmiennych i bitów z ekranów HMI (w symbol configu, czytane online; 437 zmiennych Visu3D). Nowe elementy: listy (przypisania wejść / wyjść X / Y, wybór osi), teksty (receptury), lampki, tablice (punkty stołu frezu – zapis punktu narzędzia jak w PLC), przyciski ustawiające wartość, warunki widoczności jak w HMI; elementy samego HMI (menu systemowe, język, bity `$…`) nieaktywne z opisem. Pozostałe ekrany w liście „Inne ekrany serwisowe”, przejścia jak w HMI.
 - Usunięta podstrona Ustawienia → Serwis (dublowała się z Serwis → Ustawienia): bity `bService…` tylko na ekranie Serwis (bity frezu `bServiceMillZFirst`, `bServiceMillCircleReverse`, `bServiceMillProgramNewStartPoints` na stronie Ustawienia frez (CD) jak w HMI); tabela „Zmienne PLC” przeniesiona do Serwisu (strona w trybie PLC). Ustawienia – tylko stół i kamień.

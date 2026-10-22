@@ -138,7 +138,7 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 | niezalogowany | podgląd: widok 3D, „Bazowanie” tylko do odczytu, online automat z PLC; bez „Stołu i kamienia” |
 | Operator | praca: Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień |
 | Serwis | jak Operator + Serwis (ekrany serwisowe, bity `bService…`) i Parametry |
-| Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) |
+| Admin | jak Serwis + „Parametry figury” (zmienne PLC podawane figurom) i opisy zmiennych PLC: nazwy zmiennych przy polach i nagłówkach (np. „(fManualXZeroPosition)”, `aCuttingBoardX/Y/Z`), nazwy pod polami Serwisu, podpowiedzi z nazwami i działaniem w PLC, strona „Zmienne PLC” |
 
 - Hasła sprawdza serwer. W pliku `users.json` obok `config.json` są tylko
   skróty scrypt haseł (sól + hash). Pliku nie ma w repo (`.gitignore`, repo jest
@@ -148,6 +148,11 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
 - Wylogowanie po bezczynności: `auth.timeoutMin` w `config.json` (domyślnie
   30 min, 0 – bez limitu). Sesja trwa do zamknięcia karty przeglądarki.
 - Bez `users.json` logowanie jest wyłączone i wszystko jest dostępne.
+- Opisy zmiennych PLC (`src/shared/plcnames.js`, `src/client/plcnamesdom.js`):
+  fragmenty tekstów z nazwami zmiennych (nawiasy, dopiski, `<code>`, szare
+  dopiski nagłówków) są oznaczane w całej aplikacji, też w elementach
+  dodawanych później, i widoczne tylko dla Admina; podpowiedzi dla innych są
+  bez nazw zmiennych i opisów działania w PLC.
 - Wersja na GitHub Pages (bez serwera): logowanie demonstracyjne – wybór
   użytkownika bez hasła, te same poziomy (pokazywanie / ukrywanie funkcji) co
   na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
