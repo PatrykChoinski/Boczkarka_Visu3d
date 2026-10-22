@@ -1161,6 +1161,9 @@ function serviceChanged() {
 // (auth.timeoutMin z konfiguracji): ruch myszy / klawisz odswieza sesje na serwerze najwyzej co 30 s.
 
 const TOKEN_KEY = 'vizuapp.token';
+// wersja statyczna (GitHub Pages): logowanie demonstracyjne - uzytkownik bez hasla, te same poziomy co na maszynie
+const DEMO_LEVELS = { Operator: 1, Serwis: 2, Admin: 3 };
+const DEMO_PREFIX = 'demo:';
 const LEVEL_NAMES = ['Niezalogowany', 'Operator', 'Serwis', 'Admin'];
 
 const accessLevel = () => (state.auth.enabled ? state.auth.level : 3);
@@ -1201,13 +1204,20 @@ const authHeaders = () => (state.auth.token ? { authorization: `Bearer ${state.a
 
 async function initAuth() {
   const a = state.auth;
-  a.enabled = Boolean(state.cfg.auth?.enabled) && !state.cfg.static;
+  a.enabled = Boolean(state.cfg.auth?.enabled);
+  a.demo = Boolean(state.cfg.auth?.demo);
+  // demo: bez pola hasla, z opisem
+  $('#loginPassRow').hidden = a.demo;
+  $('#loginDemo').hidden = !a.demo;
   a.users = state.cfg.auth?.users || [];
   a.timeoutMin = state.cfg.auth?.timeoutMin ?? 30;
   $('#loginUser').innerHTML = a.users.map((u) => `<option value="${u}">${u}</option>`).join('');
   if (a.enabled) {
     try { a.token = sessionStorage.getItem(TOKEN_KEY); } catch { a.token = null; }
-    if (a.token) {
+    if (a.token && a.demo) {
+      const user = a.token.startsWith(DEMO_PREFIX) ? a.token.slice(DEMO_PREFIX.length) : null;
+      setSession(DEMO_LEVELS[user] ? { user, level: DEMO_LEVELS[user], token: a.token } : null);
+    } else if (a.token) {
       const r = await fetch('api/session', { headers: authHeaders() }).catch(() => null);
       setSession(r?.ok ? { ...(await r.json()), token: a.token } : null);
     } else setSession(null);
@@ -1219,10 +1229,16 @@ function showLogin(open) {
   $('#loginWin').hidden = !open;
   $('#loginErr').textContent = '';
   $('#loginPass').value = '';
-  if (open) $('#loginPass').focus();
+  if (open) (state.auth.demo ? $('#loginUser') : $('#loginPass')).focus();
 }
 
 async function login(user, password) {
+  if (state.auth.demo) {
+    if (!DEMO_LEVELS[user]) return;
+    setSession({ user, level: DEMO_LEVELS[user], token: DEMO_PREFIX + user });
+    showLogin(false);
+    return;
+  }
   const r = await fetch('api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user, password }) })
     .catch(() => null);
   if (!r?.ok) {
@@ -1235,7 +1251,7 @@ async function login(user, password) {
 }
 
 function logout() {
-  if (state.auth.token) fetch('api/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
+  if (state.auth.token && !state.auth.demo) fetch('api/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
   setSession(null);
 }
 
@@ -1249,7 +1265,7 @@ function bindAuth() {
     const a = state.auth;
     if (!a.user) return;
     a.lastActivity = Date.now();
-    if (a.lastActivity - a.lastPing < 30000) return;
+    if (a.demo || a.lastActivity - a.lastPing < 30000) return;
     a.lastPing = a.lastActivity;
     fetch('api/session', { headers: authHeaders() }).then((r) => { if (r.status === 401) setSession(null); }).catch(() => {});
   };

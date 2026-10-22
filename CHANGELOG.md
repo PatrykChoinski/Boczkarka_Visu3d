@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-22
 
+### Logowanie na GitHub Pages (demo)
+- Wersja statyczna (GitHub Pages) ma logowanie demonstracyjne: wybór Operator / Serwis / Admin bez hasła, te same poziomy co na maszynie (niezalogowany – tylko Bazowanie, Operator – praca, Serwis – Parametry i bity serwisowe, Admin – parametry figur), sesja do zamknięcia karty. Hasła sprawdza tylko serwer VizuApp na maszynie – skróty haseł w publicznej stronie dałyby się złamać (np. 11111111). Smoke test wersji statycznej: bez logowania brak ekranu Manual, po zalogowaniu demo (Operator) cięcie działa.
+- Poprawione opisy po zmianie nazw (Manual, Ustawienia → Serwis).
+
 ### Zmienne PLC (OPC UA): pozycje osi, punkt narzędzia, przyspieszenia, sprawdzenie na sterowniku
 - Pozycje X / Y / Z z `HMI2.fX/Y/ZRealPosition` (rzeczywiste osie) zamiast `fX/Y/ZActualPosition` – to w PLC punkt narzędzia (oś − przesunięcie głowicy wg A / B, w Z + średnica tarczy / 2), a wizualizacja liczy z osi; na maszynie głowica byłaby przesunięta (Y ok. 50 mm, Z ok. 312 mm przy tarczy Ø625). Testowe PLC podawało osie pod starą nazwą, więc tego nie wykrywało.
 - Punkt narzędzia `HMI2.fX/Y/ZActualPosition` podpięty osobno – okno Ruchy ręczne pokazuje te same pozycje co ekrany HMI; offline ten sam wzór (`plcActualPosition` z `Settings/ActualPosition` dla piły, frezu, wiertła, polerki).

@@ -147,8 +147,11 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
   `node scripts/users.mjs list` – lista.
 - Wylogowanie po bezczynności: `auth.timeoutMin` w `config.json` (domyślnie
   30 min, 0 – bez limitu). Sesja trwa do zamknięcia karty przeglądarki.
-- Bez `users.json` (i w wersji na GitHub Pages) logowanie jest wyłączone i
-  wszystko jest dostępne.
+- Bez `users.json` logowanie jest wyłączone i wszystko jest dostępne.
+- Wersja na GitHub Pages (bez serwera): logowanie demonstracyjne – wybór
+  użytkownika bez hasła, te same poziomy (pokazywanie / ukrywanie funkcji) co
+  na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
+  ani haseł, ani ich skrótów (dałyby się złamać).
 
 ## Ekran
 
