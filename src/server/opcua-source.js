@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 import {
   OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType,
 } from 'node-opcua-client';
-import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
+import { REQUIRED, SLOW_KEYS, isOptionalKey } from '../shared/config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -71,9 +71,14 @@ export class OpcUaSource extends EventEmitter {
           : undefined);
         const nodes = await this.resolve(session);
         await this.readDataTypes(session, nodes);
-        const total = Object.keys(this.cfg.variables).length;
-        const miss = this.missing.map((k) => this.cfg.variables[k]);
+        // #155 zmienne opcjonalne (bity alarmow) liczone osobno - ich brak w symbol configu to nie blad polaczenia
+        const keys = Object.keys(this.cfg.variables);
+        const total = keys.filter((k) => !isOptionalKey(k)).length;
+        const opt = keys.length - total;
+        const miss = this.missing.filter((k) => !isOptionalKey(k)).map((k) => this.cfg.variables[k]);
+        const optMiss = this.missing.filter(isOptionalKey).length;
         this.setStatus(`Połączono (${this.cfg.endpoint}), zmienne ${total - miss.length}/${total}`
+          + (opt ? `, alarmy ${opt - optMiss}/${opt}` : '')
           + (miss.length ? `, brak: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}` : ''), true);
         await this.poll(session, nodes);
       } catch (err) {

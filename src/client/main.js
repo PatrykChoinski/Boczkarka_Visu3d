@@ -20,12 +20,14 @@ import { installIcons, icon } from './icons.js';
 import { watchPlcNames, setPlcNamesAdmin } from './plcnamesdom.js';
 import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
+import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmByNumber } from '../shared/alarms.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
 import { parseGcode, gcodeSummary } from '../shared/gcode.js';
 import { cncProgram, cncTipPath } from '../shared/cnc.js';
 import { HeightMap, shadeHeightMap } from '../shared/heightmap.js';
+import { cutoutShapes } from '../shared/cutout.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -182,6 +184,80 @@ function limitHit(pose, lim) {
   return null;
 }
 
+// --- #155 alarmy (przepisane z HMI, src/shared/alarms.js) ---------------------------------------------------
+// Online - bity HMI2.bAlarm... z PLC (OPC UA; gdy bitow nie ma w symbol configu - lista bez stanu), offline - alarmy
+// wykrywane w symulacji (start bez bazowania, krancowka elektroniczna, skok o zero); "Kwituj" offline kasuje alarmy
+// symulacji (jak bAlarmReset), online tylko potwierdza wpisy historii (Visu3D nie pisze do PLC).
+const alarmLog = new AlarmLog(500);
+const simAlarms = new Set();
+let alarmPage = 'active';
+
+function raiseSimAlarm(v) {
+  if (state.mode !== 'offline' || simAlarms.has(v)) return;
+  simAlarms.add(v);
+  alarmsUpdate(simActiveAlarms());
+}
+
+// Aktywne alarmy symulacji: bity podniesione + "Aktywny Alarm" (24), gdy jest jakikolwiek
+function simActiveAlarms() {
+  const ns = [...simAlarms].map((v) => alarmByVar(v)?.n).filter(Boolean);
+  const active = alarmByVar(SIM_ALARMS.active)?.n;
+  return ns.length && active && !ns.includes(active) ? [...ns, active] : ns;
+}
+
+function alarmsUpdate(active) {
+  if (!alarmLog.update(active)) return;
+  alarmsChanged();
+}
+
+function alarmsChanged() {
+  const act = alarmLog.active;
+  const btn = $('#alarmOpen');
+  btn.classList.toggle('on', act.length > 0);
+  $('#alarmCount').hidden = !act.length;
+  $('#alarmCount').textContent = String(act.length);
+  btn.title = act.length ? `Alarmy: ${act.map((n) => alarmByNumber(n)?.pl).join(', ')}` : 'Alarmy';
+  if (!$('#alarmWin').hidden) renderAlarms();
+}
+
+const fmtTime = (ms) => new Date(ms).toLocaleTimeString('pl-PL');
+
+function renderAlarms() {
+  for (const b of $$('#alarmPages [data-apage]')) b.classList.toggle('active', b.dataset.apage === alarmPage);
+  const online = state.mode === 'online';
+  const optKeys = Object.keys(state.cfg.variables || {}).filter((k) => k.startsWith('alarm:'));
+  const readable = online ? optKeys.filter((k) => k in (state.online.values || {})).length : 0;
+  $('#alarmHint').textContent = online
+    ? `Alarmy z PLC: ${readable} z ${optKeys.length} bitów HMI2.bAlarm… dostępnych przez OPC UA${readable < optKeys.length ? ' – brakujące trzeba dodać w konfiguracji symboli PLC' : ''}.`
+    : 'Symulacja: alarmy wykrywane w symulacji (start bez bazowania, krańcówka elektroniczna, skok o zero). Lista alarmów jak w HMI.';
+  const row = (a, cls, cells) => `<tr class="${cls}"><td class="n">${a.n}</td>${cells}</tr>`;
+  let html = '';
+  if (alarmPage === 'all') {
+    html = '<tr><th>Nr</th><th>Alarm</th><th>Bit PLC</th></tr>' + ALARMS.map((a) => row(a, alarmLog.active.includes(a.n) ? 'on' : a.off ? 'off' : '',
+      `<td>${a.pl || `<span class="muted">${a.en}</span>`}${a.off ? ' <span class="muted">(wyłączony w HMI)</span>' : ''}</td><td><code>${a.v ?? '–'}</code></td>`)).join('');
+  } else {
+    const list = alarmPage === 'active' ? alarmLog.entries.filter((e) => e.off === null) : alarmLog.entries;
+    html = '<tr><th>Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th></tr>' + (list.length ? list.map((e) => {
+      const a = alarmByNumber(e.n) || { n: e.n, pl: `Alarm ${e.n}` };
+      return row(a, e.off === null ? 'on' : 'off', `<td>${a.pl || a.en}${e.ack ? '' : ' <span class="muted">(niepotwierdzony)</span>'}</td><td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : '–'}</td>`);
+    }).join('') : '<tr><td colspan="4" class="muted">Brak alarmów</td></tr>');
+  }
+  $('#alarmTable').innerHTML = html;
+}
+
+function bindAlarms() {
+  $('#alarmOpen').onclick = () => { $('#alarmWin').hidden = !$('#alarmWin').hidden; if (!$('#alarmWin').hidden) renderAlarms(); };
+  $('#alarmClose').onclick = () => { $('#alarmWin').hidden = true; };
+  for (const b of $$('#alarmPages [data-apage]')) b.onclick = () => { alarmPage = b.dataset.apage; renderAlarms(); };
+  $('#alarmAck').onclick = () => {
+    alarmLog.ack();
+    // offline: kasowanie alarmow symulacji (bAlarmReset)
+    if (state.mode === 'offline') { simAlarms.clear(); alarmLog.update([]); }
+    alarmsChanged();
+    renderAlarms();
+  };
+}
+
 // Rekorder biezacego trybu (podsumowanie na pasku, zakres materialu)
 const activeRecorder = (m = state.machine) => (isToolMode(m) ? state.toolRecorder : state.recorder);
 
@@ -276,10 +352,27 @@ function fit() {
 const fmt = (v, w, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-').padStart(w);
 const fmtAxis = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
 
+// #156 kamien bez wycietych elementow (przelacznik): przeliczany po zmianie ciec, w trakcie programu najwyzej co 1 s
+const cutoutState = { key: '', at: 0, value: null };
+function cutoutForView(rock) {
+  if (!$('#hideCutout').checked) return null;
+  const pts = rock || (state.extent ? [[state.extent[0], state.extent[1]], [state.extent[2], state.extent[1]], [state.extent[2], state.extent[3]], [state.extent[0], state.extent[3]]] : null);
+  if (!pts) return null;
+  const key = JSON.stringify([pts, state.recorder.version, state.machine.materialThickness]);
+  const now = performance.now();
+  if (key !== cutoutState.key && (!(state.sim.running || state.jog) || now - cutoutState.at > 1000)) {
+    cutoutState.key = key;
+    cutoutState.at = now;
+    cutoutState.value = cutoutShapes(pts, state.recorder.cuts);
+  }
+  return cutoutState.value;
+}
+
 function redraw() {
   const m = state.machine;
   const rock = rockPolygon();
-  view.setMaterial(state.extent, m, rock);
+  const cut = cutoutForView(rock);
+  view.setMaterial(state.extent, m, rock, cut?.shapes ?? null);
   view.setCuts(state.recorder, 'stone');
   view.setCuts(state.tableRecorder, 'table');
   view.setToolCuts(state.toolRecorder, 'stone');
@@ -480,6 +573,7 @@ function onlineAxisVelocity(v) {
 function onlineValues(v) {
   state.online.values = v;
   if (state.mode !== 'online') return;
+  alarmsUpdate(activeFromValues(v));
   const m = { ...state.machine };
   for (const k of MACHINE_KEYS) if (typeof v[k] === 'number') m[k] = v[k];
   // tryb z PLC (bez flag - pila); srednica polerki tylko z Parametrow wizualizacji
@@ -1196,6 +1290,7 @@ function cancelHoming() {
 
 // homing - tryb bazowania, gdy program to bazowanie; bez bazowania (#144) tylko bazowanie; ruchy od Operatora (#145)
 function startProgram(program, homing = null) {
+  if (!homing && !isBased() && accessLevel() >= 1) raiseSimAlarm(SIM_ALARMS.notBased);
   if ((!homing && !isBased()) || accessLevel() < 1) return;
   if (!homing) cancelHoming();
   cncState.active = Boolean(program.cnc);
@@ -1267,6 +1362,7 @@ function simFrame(now) {
 function stopAtLimit(prev, over, m) {
   const sim = state.sim;
   sim.limitHit = limitHit(over, sim.limits);
+  raiseSimAlarm(SIM_ALARMS.offLimits);
   sim.running = false;
   sim.velocity = 0;
   if (Number.isFinite(prev.t)) sim.t = prev.t;
@@ -1942,6 +2038,8 @@ function manualProgram(build) {
 
 // Skok (tryb SKOK, MCRelative / mLinearXYZRelative): o wektor delta, predkosc vel / rampa acc
 function stepProgram(delta, vel, acc, step) {
+  // #155 skok o zero (bAlarmJogDistanceZero)
+  if (!Object.values(delta).some((v) => Math.abs(Number(v) || 0) > 1e-9)) { raiseSimAlarm(SIM_ALARMS.jogZero); return; }
   manualProgram((d) => {
     const pb = new ProgramBuilder(state.pose, offlineMachine(), d);
     const to = Object.fromEntries(Object.entries(delta).map(([ax, v]) => [ax, state.pose[ax] + v]));
@@ -2116,6 +2214,9 @@ function setMode(mode) {
   if (state.tool.homing) { state.tool.homing = null; state.tool.based = false; }
   state.mode = mode;
   state.jog = null;
+  // #155 alarmy trybu: online z PLC, offline z symulacji (alarmy drugiego trybu ustepuja)
+  simAlarms.clear();
+  alarmsUpdate(mode === 'online' ? activeFromValues(state.online.values || {}) : []);
   stopProgram();
   state.sim.program = null;
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
@@ -2647,8 +2748,8 @@ function bindUi() {
   for (const t of $$('.tabs button')) t.onclick = () => showTab(t.dataset.tab);
   for (const el of $$('[data-m], [data-d]')) el.addEventListener('input', offlineFormsChanged);
   $('#showPlan').onchange = requestDraw;
-  // przelaczniki XY, Odleglosci i przezroczysty kamien #150 (zapamietywane w przegladarce)
-  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist'], ['#showGlass', 'vizuapp.glass']]) {
+  // przelaczniki XY, Odleglosci, przezroczysty kamien #150, ukrywanie wycietych elementow #156 (zapamietywane w przegladarce)
+  for (const [id, store] of [['#showMarks', 'vizuapp.marks'], ['#showDist', 'vizuapp.dist'], ['#showGlass', 'vizuapp.glass'], ['#hideCutout', 'vizuapp.cutout']]) {
     $(id).onchange = () => { try { localStorage.setItem(store, $(id).checked ? '1' : '0'); } catch { /* jw. */ } requestDraw(); };
     try { const v = localStorage.getItem(store); if (v !== null) $(id).checked = v === '1'; } catch { /* jw. */ }
   }
@@ -2767,6 +2868,7 @@ async function init() {
   bindManual();
   bindManWin();
   bindConn();
+  bindAlarms();
   await initAuth();
   showOp();
   showFig();

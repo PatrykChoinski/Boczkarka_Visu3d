@@ -14,6 +14,8 @@
       <button data-mode="offline" title="Offline – symulacja bez PLC"><svg class="ic" aria-hidden="true"><use href="#i-sim"/></svg><span class="lbl">SIM</span></button>
     </div>
     <button id="connOpen" class="tool" title="Połączenie z PLC – adres OPC UA (np. tablet)" hidden><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
+    <!-- #155 alarmy jak w HMI: liczba aktywnych, okno z lista -->
+    <button id="alarmOpen" class="tool" title="Alarmy"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span class="alarmCount" id="alarmCount" hidden></span></button>
     <button id="manOpen" class="tool" title="Ruchy ręczne – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
     <div class="spacer"></div>
     <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
@@ -70,6 +72,8 @@
         <label class="tog" title="Laser (offline: włączony; online: z PLC – yLaser)"><input type="checkbox" id="showLaser" checked><svg class="ic" aria-hidden="true"><use href="#i-laser"/></svg></label>
         <!-- #150 przezroczysty kamien: ciecia wewnatrz materialu widoczne -->
         <label class="tog" title="Przezroczysty kamień – widać cięcia wewnątrz materiału"><input type="checkbox" id="showGlass"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg></label>
+        <!-- #156 ukrywanie wycietych elementow (kawalki oddzielone cieciami przez cala grubosc) -->
+        <label class="tog" title="Ukryj wycięte elementy – kamień bez kawałków oddzielonych cięciami przez całą grubość"><input type="checkbox" id="hideCutout"><svg class="ic" aria-hidden="true"><use href="#i-fill"/></svg></label>
         <span class="sep"></span>
         <button id="clear" title="Wyczyść ślady cięcia"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
       </div>
@@ -341,6 +345,21 @@
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
       <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
     </form>
+  </div>
+
+  <!-- #155 alarmy (przepisane z HMI): aktywne, historia, lista wszystkich -->
+  <div id="alarmWin" class="win alarmWin" hidden role="dialog" aria-label="Alarmy">
+    <div class="winHead" id="alarmHead"><span><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>Alarmy</span><button id="alarmClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="winBody">
+      <div class="seg sub" id="alarmPages">
+        <button type="button" data-apage="active" class="active">Aktywne</button>
+        <button type="button" data-apage="log">Historia</button>
+        <button type="button" data-apage="all">Wszystkie</button>
+      </div>
+      <p class="hint" id="alarmHint"></p>
+      <div class="tableWrap"><table class="alarmTable" id="alarmTable"></table></div>
+      <div class="row"><button type="button" id="alarmAck" title="Kwituj alarmy (offline: kasuje alarmy symulacji jak bAlarmReset)"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Kwituj</span></button></div>
+    </div>
   </div>
 
   <!-- #148 polaczenie z PLC: adres serwera OPC UA (domyslnie localhost na maszynie; tablet - adres sterownika) -->

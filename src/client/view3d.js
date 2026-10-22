@@ -135,8 +135,9 @@ export class View3D {
   // --- material ---------------------------------------------------------------
 
   // Kamien: wielokat z punktow (aCuttingRock) wyciagniety na grubosc, albo prostokat extent (bez punktow)
-  setMaterial(extent, m, polygon = null) {
-    const key = JSON.stringify([extent, polygon, m.materialHeight, m.materialThickness]);
+  // shapes (#156) - kamien bez wycietych elementow: [{outer, holes}] zamiast wielokata
+  setMaterial(extent, m, polygon = null, shapes = null) {
+    const key = JSON.stringify([extent, polygon, m.materialHeight, m.materialThickness, shapes]);
     if (key === this.extentKey) return;
     this.extentKey = key;
     disposeGroup(this.materialGroup);
@@ -145,7 +146,7 @@ export class View3D {
     const top = topZ(m);
     const thick = Math.max(m.materialThickness, 1);
     const pts = polygon || [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-    const geo = prismGeometry(pts, top - thick, thick);
+    const geo = shapes ? shapesGeometry(shapes, top - thick, thick) : prismGeometry(pts, top - thick, thick);
     const box = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
       color: COLORS.material, roughness: 0.9, transparent: true, opacity: 0.72, depthWrite: false,
     }));
@@ -643,6 +644,19 @@ export class View3D {
 export function prismGeometry(points, z0, h) {
   const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
   const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+  geo.translate(0, 0, z0);
+  return geo;
+}
+
+// #156 ksztalty z otworami [{outer, holes}] wyciagniete na wysokosc h od z0
+export function shapesGeometry(shapes, z0, h) {
+  const toShape = (pts) => pts.map(([x, y]) => new THREE.Vector2(x, y));
+  const list = shapes.map(({ outer, holes }) => {
+    const s = new THREE.Shape(toShape(outer));
+    for (const hole of holes) s.holes.push(new THREE.Path(toShape(hole)));
+    return s;
+  });
+  const geo = new THREE.ExtrudeGeometry(list, { depth: h, bevelEnabled: false });
   geo.translate(0, 0, z0);
   return geo;
 }

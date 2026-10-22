@@ -143,6 +143,8 @@ export function plcTimeline(mode = 'saw') {
       maxZUpVel: 50, maxZVel: 50, advancedDesktop: false, cutDepth: ap.z - m.materialHeight, aFixed: r.pose.a };
     return {
       ...hmiValues(),
+      // #155 alarm testowy: cisnienie powietrza (alarm 8) przez pierwsze 10 s kazdych 20 s, Aktywny Alarm (24) razem z nim
+      'alarm:HMI2.bAlarmAirPressure': t % 20 < 10, 'alarm:HMI2.bAlarmActive': t % 20 < 10,
       ...r.pose, toolX: ap.x, toolY: ap.y, toolZ: ap.z, ...actVel, ...accVars, ...speedVars, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
@@ -190,7 +192,8 @@ export async function startFakePlc(port, mode = 'saw') {
       gvls[key2] ??= obj(parent, parts[i]);
       parent = gvls[key2];
     }
-    const svcType = key.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[varPath] ?? (/^HMI\.bService/.test(varPath) ? 'BOOL' : null)) : null;
+    const svcType = key.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[varPath] ?? (/^HMI\.bService/.test(varPath) ? 'BOOL' : null))
+      : key.startsWith('alarm:') ? 'BOOL' : null;
     const type = svcType ? DataType[SVC_TYPES[svcType] ?? 'Double']
       : BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
     const array = ARRAYS[key] ?? HMI_ARRAY_LEN[svcType];

@@ -284,6 +284,20 @@ podpowiedzi i komunikaty.
   **Laser**: offline laser włączony; online pokazywany, gdy w PLC świeci
   (`IOVars.yLaser`). **Przezroczysty kamień** (#150): kamień prawie
   przezroczysty – widać cięcia wewnątrz materiału (zapamiętywane w przeglądarce).
+  **Ukryj wycięte elementy** (#156): kawałki kamienia oddzielone cięciami przez
+  całą grubość (prostokąt, okrąg, blat, odcięty narożnik) – kamień rysowany bez
+  nich, z otworem; zostaje największy kawałek (płyta). Liczone na siatce nad
+  kamieniem (`src/shared/cutout.js`).
+- **Alarmy** (#155, przycisk z trójkątem w górnym pasku – czerwony z liczbą
+  aktywnych): 81 alarmów przepisanych z HMI (`src/shared/alarms.js`, numery,
+  bity `HMI2.bAlarm…`, teksty PL / EN; `HMI/scripts/dpa.py alarms`). Okno:
+  aktywne, historia (wystąpił / ustąpił, do 500 wpisów), lista wszystkich,
+  „Kwituj”. Online bity z PLC przez OPC UA – zmienne opcjonalne (stan połączenia
+  pokazuje „alarmy N/78”; bitów nie ma jeszcze w konfiguracji symboli PLC poza
+  `bAlarmStopMachine` – trzeba je tam dodać). Offline symulacja zgłasza: 21
+  „Maszyna nie zbazowana” (start bez bazowania), 58 „Zadana pozycja poza
+  limitami” (krańcówka elektroniczna #154), 45 „Skok wynosi zero” i 24 „Aktywny
+  Alarm”; „Kwituj” je kasuje (jak `bAlarmReset`). Online Visu3D nie pisze do PLC.
 - **Profile i wygładzanie** (#152, kroki automatu 8–11 i 15–18, Manual „Profil
   krawędzi”): tarcza obniża mapę wysokości kamienia (jak frez w G-kodzie), więc
   kształt profilu w płaszczyźnie XZ / YZ widać jako powierzchnię – także ruch
