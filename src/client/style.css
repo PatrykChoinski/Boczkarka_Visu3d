@@ -396,3 +396,6 @@ table.depthTable { width: 100%; border-collapse: collapse; font-size: 13px; marg
 table.depthTable th, table.depthTable td { border: 1px solid var(--border, #ddd); padding: 2px 6px; text-align: right; }
 table.depthTable td.n { color: var(--muted); text-align: center; width: 2em; }
 table.depthTable input { width: 100%; box-sizing: border-box; text-align: right; }
+
+/* bez opisow "jak to dziala" na ekranach (stany i bledy zostaja) */
+.howto { display: none !important; }

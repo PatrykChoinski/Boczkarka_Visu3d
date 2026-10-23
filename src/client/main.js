@@ -641,7 +641,6 @@ function onlineValues(v) {
   applyPose({ x: v.x, y: v.y, z: v.z, a: v.a, b: v.b }, m);
   onlineAxisVelocity(v);
   refreshOnlineAuto();
-  $('#stonePlc').textContent = `Z PLC: grubość ${fmt(m.materialThickness, 0)} mm (fParameterMaterialThickness), góra materiału Z ${fmt(m.materialHeight, 0)} mm (fCutMaterialHeight)`;
   requestDraw();
 }
 
@@ -897,7 +896,6 @@ function fillOpSelect() {
 
 function showOp() {
   const op = currentOp();
-  $('#opHint').textContent = `Jak w PLC: ${op.plc}`;
   // wspolne pola: pila - glebokosc / wychyl / wyjazd, frez - tablica glebokosci frezu (Depths), wiercenie / polerowanie - brak
   renderCommon();
   renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields), op.saves);
@@ -932,8 +930,6 @@ function fillAutoKinds() {
 
 function showFig() {
   const fig = currentFig();
-  const kinds = { cut: 'piła – ProgramAutoCutST', profile: 'profile – ProgramAutoProfileST', mill: 'frez – ProgramAutoMillST' };
-  $('#figHint').textContent = `Jak w PLC: FigureType.${fig.id} (${fig.v}), ${fig.plc}; program: ${kinds[fig.kind] || fig.kind}`;
   renderGroup($('#figFields'), 'fig', fig.fields, state.forms.figs?.[fig.id] || defaults(fig.fields));
   // litery wymiarow przy polach (jak tekst obok pola na ekranie figury w HMI)
   for (const f of fig.fields) {
@@ -980,7 +976,7 @@ function showFigPicture() {
       }).join('')
       + pic.labels.map((l) => `<b style="left:${l.x * k}px;top:${l.y * k}px">${l.t}</b>`).join('') + '</div>';
   }
-  box.innerHTML = `${html}<div class="src">Rysunek poglądowy – ekran HMI ${pic.screen}</div>`;
+  box.innerHTML = html;
 }
 
 // "Wypelnij bufor": figura jak FiguresGeometricSt, bufor jak GetDemoProgram (aProgram* := aFigure*)
@@ -1707,13 +1703,10 @@ function renderService() {
   $('#plcVarsBox').hidden = !vars;
   $('#servicePage').hidden = vars;
   if (vars) {
-    $('#serviceHint').textContent = 'Zmienne PLC czytane przez Visu3D: węzeł OPC UA, typ danych, ostatnia wartość.';
     refreshPlcVars();
     return;
   }
   const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
-  $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. ${page.note ? `${page.note} ` : ''}`
-    + (state.mode === 'online' ? (ro ? 'Wartości z PLC (tylko odczyt – zaloguj się, żeby zmieniać).' : 'Wartości z PLC – zmiana zapisuje do PLC jak ekran HMI.') : 'Symulacja: parametry głowicy i narzędzi, bity serwisowe (HMI.bService…) i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
   const all = svcAll();
   const extra = page.id === 'settings' ? extraServiceGroup() : null;
   $('#servicePage').innerHTML = [...page.groups, ...(extra ? [{ ...extra, items: all.slice(all.length - extra.items.length) }] : [])]
@@ -1847,9 +1840,6 @@ function renderSpeed() {
   // PLC: zapis po zalogowaniu (pole - HMI.fVelocity..., +/- - HMI2.bVelocity...Inc / Dec jak w HMI); bez - tylko odczyt
   const online = state.mode === 'online' && !plcCanControl();
   const groups = speedGroups();
-  $('#speedHint').innerHTML = state.mode === 'online'
-    ? `Jak ekran HMI „predkosc”: wartości z PLC${online ? ' (tylko odczyt – zaloguj się, żeby zmieniać)' : '; wpisana wartość i +/- (trzymane) zapisują do PLC'}.${state.online.values.advancedDesktop ? ' <b>Pulpit rozszerzony</b> (bServiceAdvancedDesktop) – prędkości z potencjometrów pulpitu.' : ''}`
-    : 'Jak ekran HMI „predkosc”: wpisz wartość albo +/- (przytrzymaj – szybciej). Zmiana działa od razu w symulacji (te same wartości co w Parametrach).';
   $('#speedGroups').innerHTML = groups.map((g) => `
     <div class="speedGroup" data-speed="${g.k}" title="HMI.${g.plc}">
       <h4>${icon(g.icon)}<span>${g.title}</span></h4>

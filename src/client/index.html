@@ -96,7 +96,7 @@
           <button type="button" data-spage="plcvars" data-online title="Zmienne PLC – węzeł OPC UA, typ, wartość (tryb PLC)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Zmienne PLC</span></button>
         </div>
         <select id="serviceMore" class="serviceMore" title="Pozostałe ekrany serwisowe HMI"></select>
-        <p class="hint" id="serviceHint"></p>
+        <p class="hint howto" id="serviceHint"></p>
         <div id="servicePage" data-lock></div>
         <!-- diagnostyka podpiecia zmiennych PLC (OPC UA, /api/variables) - strona Serwisu w trybie PLC -->
         <div id="plcVarsBox" hidden>
@@ -107,13 +107,13 @@
 
       <!-- #146 Predkosc jak ekran HMI predkosc: pozycje (jak HMI) i glowne predkosci z paskiem %, polem i +/- -->
       <div class="tab" data-tab="speed" hidden>
-        <p class="hint" id="speedHint"></p>
+        <p class="hint howto" id="speedHint"></p>
         <div class="speedPos" id="speedPos"></div>
         <div id="speedGroups" data-lock></div>
       </div>
 
       <div class="tab" data-tab="stone">
-        <p class="hint">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. Przycisk z pinezką wpisuje aktualną pozycję osi.</p>
+        <p class="hint howto">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. Przycisk z pinezką wpisuje aktualną pozycję osi.</p>
         <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
         <label class="inline" data-lock>Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
         <table class="pts" data-pts="board" data-lock></table>
@@ -123,7 +123,7 @@
         <div class="grid2" id="stoneOffline" data-lock>
           <label>Grubość kamienia [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
         </div>
-        <p class="hint" id="stonePlc" hidden></p>
+        <p class="hint howto" id="stonePlc" hidden></p>
         <div class="row">
           <button id="stoneShow" title="Pokaż stół i kamień z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
         </div>
@@ -132,7 +132,7 @@
 
       <div class="tab" data-tab="cut" hidden>
         <label>Program <select id="op"></select></label>
-        <p class="hint" id="opHint"></p>
+        <p class="hint howto" id="opHint"></p>
         <div class="grid2" id="opFields"></div>
         <details id="commonBox">
           <summary>Głębokość, wyjazd</summary>
@@ -155,7 +155,7 @@
       </div>
 
       <div class="tab" data-tab="auto" hidden>
-        <p class="hint" id="autoHint">Bufor kroków jak lista programu w HMI: krok wiersza i działa od punktu i do punktu i+1 (łuk – promień R, okrąg – punkt i to góra albo środek, skos – kąt B). Punkty względem punktu startowego.</p>
+        <p class="hint howto" id="autoHint">Bufor kroków jak lista programu w HMI: krok wiersza i działa od punktu i do punktu i+1 (łuk – promień R, okrąg – punkt i to góra albo środek, skos – kąt B). Punkty względem punktu startowego.</p>
         <div class="grid2">
           <label>Program <select id="autoKind">
             <option value="cut">Piła (ProgramAutoCutST)</option>
@@ -171,9 +171,9 @@
           <label class="cb wide" data-modes="mill"><input type="checkbox" id="autoRepeatOver"> Zamknięte kształty w całości na każdej głębokości (bProgramReapitingOver)</label>
         </div>
         <details id="figBox" open>
-          <summary>Figura – wypełnij bufor jak PLC (FiguresGeometricSt)</summary>
+          <summary>Figura</summary>
           <label>Figura <select id="fig"></select></label>
-          <p class="hint" id="figHint"></p>
+          <p class="hint howto" id="figHint"></p>
           <div id="figPic" class="figPic"></div>
           <div class="grid2" id="figFields"></div>
           <details id="figCtxBox" data-level="3">
@@ -198,7 +198,7 @@
       </div>
 
       <div class="tab" data-tab="cnc" hidden>
-        <p class="hint">Jak moduł CNC w PLC (tylko tryb frezu): plik G-kodu, punkt początkowy G54 = pozycja osi X / Y / Z
+        <p class="hint howto">Jak moduł CNC w PLC (tylko tryb frezu): plik G-kodu, punkt początkowy G54 = pozycja osi X / Y / Z
           (X osi = G54_X + X, Y osi = G54_Y − Y, Z osi = G54_Z + Z, Z w głąb). A i B bez zmian.</p>
         <div class="row">
           <label class="filebtn">Wczytaj plik .nc<input type="file" id="cncFile" accept=".nc,.gcode,.ngc,.tap,.cnc,.txt"></label>
@@ -222,7 +222,7 @@
         <div id="cncInfo" class="info"></div>
         <h3>Podgląd z góry <span class="muted">cieniowanie jak płaskorzeźba, czerwona kropka – frez</span></h3>
         <canvas id="cncPreview" class="cncPreview" hidden></canvas>
-        <p class="hint" id="cncPreviewHint">Podgląd pojawi się po „Wynik od razu” albo w trakcie animacji.</p>
+        <p class="hint howto" id="cncPreviewHint">Podgląd pojawi się po „Wynik od razu” albo w trakcie animacji.</p>
         <div class="row" id="cncRun">
           <button id="cncStart" class="primary" title="Start"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
           <button class="pauseBtn" title="Pauza"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
@@ -244,7 +244,7 @@
       </div>
 
       <div class="tab" data-tab="pos" data-lock hidden>
-        <p class="hint">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
+        <p class="hint howto">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
         <h3>Aktualne</h3>
         <div class="grid2 actual">
           <label>X [mm] <output data-act="x"></output></label>
@@ -315,7 +315,7 @@
           <button id="fromPlc" title="Pobierz parametry z PLC"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg></button>
           <button id="defaults" title="Wartości domyślne"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg></button>
         </div>
-        <p class="hint">Z PLC: prędkości i przyspieszenia (w PLC mm/s i mm/s² – przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia (fVelocitySawMode, Acc, Dec – cięcie; fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB).</p>
+        <p class="hint howto">Z PLC: prędkości i przyspieszenia (w PLC mm/s i mm/s² – przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia (fVelocitySawMode, Acc, Dec – cięcie; fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB).</p>
       </div>
     </aside>
   </main>
@@ -350,10 +350,10 @@
     <form class="winBody" id="loginForm">
       <label class="inline" title="Użytkownik"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><select id="loginUser"></select></label>
       <label class="inline" id="loginPassRow" title="Hasło"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><input type="password" id="loginPass" autocomplete="current-password"></label>
-      <p class="hint" id="loginDemo" hidden>Wersja demonstracyjna (GitHub Pages): wybór użytkownika bez hasła – pokazuje i ukrywa funkcje jak na maszynie. Hasła sprawdza tylko serwer VizuApp na maszynie.</p>
+      <p class="hint howto" id="loginDemo" hidden>Wersja demonstracyjna (GitHub Pages): wybór użytkownika bez hasła – pokazuje i ukrywa funkcje jak na maszynie. Hasła sprawdza tylko serwer VizuApp na maszynie.</p>
       <p class="hint" id="loginErr"></p>
       <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-      <p class="hint">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
+      <p class="hint howto">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
     </form>
   </div>
 
