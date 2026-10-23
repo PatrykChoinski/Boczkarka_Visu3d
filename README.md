@@ -196,6 +196,17 @@ serwer VizuApp przez OPC UA (`src/server/plcwrite.js`).
 - Wartości pól spoza konfiguracji serwer czyta na żądanie strony
   (`POST /api/plc/watch`, strumień SSE `{hmi}`).
 
+### Historia alarmów (SQLite)
+
+Serwer VizuApp zapisuje historię alarmów PLC w bazie SQLite `alarms.db` obok
+`config.json` (wbudowany `node:sqlite`, bez dodatkowych bibliotek; plik poza repo).
+Każda zmiana tablicy `HMI2.aAlarms` (subskrypcja w tle) – wystąpienie albo
+ustąpienie alarmu – to wpis z datą i godziną, także gdy żadna strona nie jest
+otwarta. Okno Alarmy w trybie PLC pokazuje historię z bazy (data i godzina,
+niepotwierdzone); Kwituj zapisuje potwierdzenie w bazie (po zalogowaniu).
+`GET /api/alarms?limit=&offset=&active=1`, `POST /api/alarms/ack`. Tabela
+`alarm_history`: `n`, `name`, `on_ms`, `off_ms` (NULL – aktywny), `ack`, `endpoint`.
+
 ### Full HD na maszynie, tablet z adresem PLC (#148)
 
 - **Domyślnie (maszyna):** ekran Full HD (1920×1080), serwer VizuApp na

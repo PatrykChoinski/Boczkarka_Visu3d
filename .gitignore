@@ -163,3 +163,6 @@ users.json
 
 # Adres PLC wpisany na stronie (#148, okno Polaczenie z PLC) - lokalnie na maszynie / tablecie
 connection.json
+# historia alarmow PLC (SQLite) - lokalna baza maszyny
+alarms.db
+alarms.db-*

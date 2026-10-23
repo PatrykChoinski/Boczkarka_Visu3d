@@ -8,6 +8,9 @@ import { OpcUaSource } from '../src/server/opcua-source.js';
 import { loadConfig, createServer } from '../src/server/main.js';
 import { Auth, hashPassword } from '../src/server/auth.js';
 import { hmiAccess, HOLD_MS } from '../src/server/plcwrite.js';
+import { AlarmDb } from '../src/server/alarmdb.js';
+import os from 'node:os';
+import path from 'node:path';
 
 const PORT = 48471;
 const HTTP = 48472;
@@ -28,7 +31,9 @@ before(async () => {
   const cfg = { ...loadConfig('nie-ma-takiego-pliku.json'), endpoint: `opc.tcp://localhost:${PORT}` };
   source = new OpcUaSource(cfg).start();
   const users = { Operator: { level: 1, ...hashPassword('op') }, Serwis: { level: 2, ...hashPassword('sv') } };
-  server = createServer(cfg, source, new Auth(users), HMI);
+  alarmDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vizu-alarms-'));
+  alarmDb = new AlarmDb(path.join(alarmDir, 'alarms.db'));
+  server = createServer(cfg, source, new Auth(users), HMI, alarmDb);
   await new Promise((r) => server.listen(HTTP, '127.0.0.1', r));
   assert.ok(await until(() => source.connected && source.session), `PLC: ${source.status}`);
   // wymiana danych tylko przez subskrypcje: kazdy Read po polaczeniu liczony (na koncu musi byc 0)
@@ -36,8 +41,12 @@ before(async () => {
   source.session.read = (...a) => { reads.push(JSON.stringify(a[0]).slice(0, 120)); return read(...a); };
 });
 const reads = [];
+let alarmDb;
+let alarmDir;
 
 after(async () => {
+  alarmDb?.close();
+  fs.rmSync(alarmDir, { recursive: true, force: true });
   server.close();
   await source.stop();
   await plc.stop();
@@ -134,6 +143,21 @@ test('odczyt zmiennych formularza (watch) - wartosci w strumieniu SSE {hmi}', as
   assert.ok(hmi, 'brak {hmi} w SSE');
   assert.equal(hmi['HMI.fManualXEndPosition'], 777);
   assert.equal(hmi['HMI2.bManualXJogRight'], false);
+});
+
+test('historia alarmow z PLC zapisywana w SQLite (subskrypcja w tle), /api/alarms, kwitowanie po zalogowaniu', async () => {
+  const arr = Array(200).fill(false);
+  arr[0] = true;    // alarm 1
+  plc.overrides.alarms = arr;
+  const get = async () => (await fetch(`${base}/api/alarms`)).json();
+  assert.ok(await until(async () => (await get()).entries.some((e) => e.n === 1 && e.off === null), 10000), 'alarm 1 w bazie');
+  plc.overrides.alarms = Array(200).fill(false);
+  assert.ok(await until(async () => (await get()).entries.some((e) => e.n === 1 && e.off !== null), 10000), 'ustapienie zapisane');
+  let r = await post('/api/alarms/ack', {});
+  assert.equal(r.status, 403, 'kwitowanie tylko po zalogowaniu');
+  r = await post('/api/alarms/ack', {}, await login('Operator', 'op'));
+  assert.equal(r.status, 200);
+  assert.equal((await get()).unacked, 0);
 });
 
 test('po polaczeniu zadnego odczytu (Read) - wartosci i typy do zapisu tylko z subskrypcji', () => {

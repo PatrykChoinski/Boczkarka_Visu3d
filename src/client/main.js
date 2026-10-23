@@ -196,6 +196,19 @@ function limitHit(pose, lim) {
 const alarmLog = new AlarmLog(500);
 const simAlarms = new Set();
 let alarmPage = 'active';
+// tryb PLC: historia alarmow z bazy SQLite serwera (/api/alarms) - zapisywana przez serwer, takze bez otwartej strony
+const alarmDb = { entries: null, unacked: 0, total: 0, error: '' };
+const alarmDbOn = () => state.mode === 'online' && Boolean(state.cfg?.plc) && !state.cfg.static;
+
+async function fetchAlarmHistory() {
+  if (!alarmDbOn()) return;
+  try {
+    const r = await fetch('api/alarms?limit=500');
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    Object.assign(alarmDb, await r.json(), { error: '' });
+  } catch (err) { alarmDb.error = err.message; }
+  if (!$('#alarmWin').hidden) renderAlarms();
+}
 
 function raiseSimAlarm(v) {
   if (state.mode !== 'offline' || simAlarms.has(v)) return;
@@ -225,7 +238,8 @@ function alarmsChanged() {
   if (!$('#alarmWin').hidden) renderAlarms();
 }
 
-const fmtTime = (ms) => new Date(ms).toLocaleTimeString('pl-PL');
+// historia z bazy - data i godzina (wpisy z wielu dni)
+const fmtTime = (ms) => (alarmDbOn() ? new Date(ms).toLocaleString('pl-PL') : new Date(ms).toLocaleTimeString('pl-PL'));
 
 function renderAlarms() {
   for (const b of $$('#alarmPages [data-apage]')) b.classList.toggle('active', b.dataset.apage === alarmPage);
@@ -242,7 +256,13 @@ function renderAlarms() {
       `<td>${a.pl || `<span class="muted">${a.en}</span>`}${a.off ? ' <span class="muted">(wyłączony w HMI)</span>' : ''}</td>`
       + `<td><code>HMI2.aAlarms[${alarmIndex(a.n)}]${a.v ? ` – ${a.v}` : ''}</code></td>`)).join('');
   } else {
-    const list = alarmPage === 'active' ? alarmLog.entries.filter((e) => e.off === null) : alarmLog.entries;
+    // PLC: historia z bazy serwera (SQLite); symulacja - lista w pamieci strony
+    const src = alarmDbOn() && alarmDb.entries ? alarmDb.entries : alarmLog.entries;
+    const list = alarmPage === 'active' ? src.filter((e) => e.off === null) : src;
+    if (alarmDbOn()) {
+      $('#alarmHint').textContent += alarmDb.error ? ` Historia: błąd bazy (${alarmDb.error}).`
+        : ` Historia z bazy SQLite serwera (alarms.db): ${alarmDb.total} wpisów, niepotwierdzonych ${alarmDb.unacked}.`;
+    }
     html = '<tr><th>Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th></tr>' + (list.length ? list.map((e) => {
       const a = alarmByNumber(e.n) || { n: e.n, pl: `Alarm ${e.n}` };
       return row(a, e.off === null ? 'on' : 'off', `<td>${a.pl || a.en}${e.ack ? '' : ' <span class="muted">(niepotwierdzony)</span>'}</td><td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : '–'}</td>`);
@@ -252,10 +272,19 @@ function renderAlarms() {
 }
 
 function bindAlarms() {
-  $('#alarmOpen').onclick = () => { $('#alarmWin').hidden = !$('#alarmWin').hidden; if (!$('#alarmWin').hidden) renderAlarms(); };
+  $('#alarmOpen').onclick = () => {
+    $('#alarmWin').hidden = !$('#alarmWin').hidden;
+    if (!$('#alarmWin').hidden) { renderAlarms(); fetchAlarmHistory(); }
+  };
   $('#alarmClose').onclick = () => { $('#alarmWin').hidden = true; };
   for (const b of $$('#alarmPages [data-apage]')) b.onclick = () => { alarmPage = b.dataset.apage; renderAlarms(); };
-  $('#alarmAck').onclick = () => {
+  $('#alarmAck').onclick = async () => {
+    // PLC: kwitowanie w bazie serwera
+    if (alarmDbOn()) {
+      const r = await fetch('api/alarms/ack', { method: 'POST', headers: authHeaders() }).catch(() => null);
+      if (!r?.ok) plcError(`Nie pokwitowano: ${r ? (await r.json().catch(() => ({}))).error || r.status : 'brak połączenia z serwerem'}`);
+      fetchAlarmHistory();
+    }
     alarmLog.ack();
     // offline: kasowanie alarmow symulacji (bAlarmReset)
     if (state.mode === 'offline') { simAlarms.clear(); alarmLog.update([]); }
@@ -614,6 +643,8 @@ function connectEvents() {
     if (msg.values) onlineValues(msg.full ? msg.values : { ...state.online.values, ...msg.values });
     if (msg.hmi) plcFormValues(msg.full ? msg.hmi : { ...state.plcVals, ...msg.hmi });
     if (msg.full || 'status' in msg) updatePlcWatch();
+    // nowy wpis / ustapienie / kwitowanie alarmu w bazie serwera
+    if ('alarmsVersion' in msg && !$('#alarmWin').hidden) fetchAlarmHistory();
     if ('status' in msg || msg.values) updatePlcControls();
     if ('status' in msg && state.conn && !$('#connWin').hidden) connInfo(state.conn);
     $('#fromPlc').disabled = !hasPlcDynamics();

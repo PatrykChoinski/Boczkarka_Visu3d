@@ -16,6 +16,7 @@
 // GET /api/connection  adres PLC (OPC UA), domyslny adres, adresy strony w sieci (#148)
 // POST /api/connection {endpoint} - nowy adres PLC: zapis w connection.json i laczenie od razu (Serwis / Admin;
 //                    bez logowania - tylko z tego komputera)
+// GET /api/alarms, POST /api/alarms/ack - historia alarmow PLC w SQLite (alarms.db obok config.json, alarmdb.js)
 // GET /api/plc       poziom dostepu do sterowania (panel HMI w trybie PLC)
 // POST /api/plc/write, /api/plc/hold, /api/plc/watch - sterowanie maszyna z ekranow Visu3D (zmienne jak w HMI, plcwrite.js)
 
@@ -29,6 +30,8 @@ import { VARIABLES, CUT_STEPS, DEFAULTS, validEndpoint } from '../shared/config.
 import { OpcUaSource } from './opcua-source.js';
 import { Auth, USERS_FILE, loadUsers, bearer } from './auth.js';
 import { PlcControl, loadHmiWrites } from './plcwrite.js';
+import { AlarmDb, ALARMS_DB } from './alarmdb.js';
+import { activeFromValues } from '../shared/alarms.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
@@ -45,6 +48,8 @@ export function loadConfig(file) {
   const cfg = { ...DEFAULTS, ...user };
   // uzytkownicy (#145): users.json obok config.json; auth.timeoutMin - wylogowanie po bezczynnosci
   cfg.usersFile = path.join(dir, USERS_FILE);
+  // historia alarmow PLC (SQLite) obok config.json
+  cfg.alarmsDbFile = path.join(dir, ALARMS_DB);
   // adres PLC wpisany na stronie (#148): connection.json obok config.json (lokalny, poza repo)
   cfg.defaultEndpoint = cfg.endpoint;
   cfg.connectionFile = path.join(dir, CONNECTION_FILE);
@@ -100,6 +105,18 @@ function controlAccess(auth, req) {
     return { level: s?.level ?? 0, who: s?.user ?? `niezalogowany ${req.socket.remoteAddress}` };
   }
   return isLocal(req) ? { level: 3, who: 'panel (lokalnie)' } : { level: 0, who: req.socket.remoteAddress };
+}
+
+function handleAlarms(alarmDb, auth, req, res, url) {
+  if (!alarmDb) return json(res, 404, { error: 'Historia alarmów tylko z PLC (serwer bez --no-plc)' });
+  if (url.pathname === '/api/alarms') {
+    const n = (k, d) => (Number.isFinite(Number(url.searchParams.get(k))) && url.searchParams.get(k) !== null ? Number(url.searchParams.get(k)) : d);
+    return json(res, 200, alarmDb.list({ limit: n('limit', 200), offset: n('offset', 0), active: url.searchParams.get('active') === '1' }));
+  }
+  if (req.method !== 'POST') return json(res, 405, { error: 'Metoda niedozwolona' });
+  // kwitowanie: zalogowany (Operator+); bez users.json - komputer z VizuApp
+  if (controlAccess(auth, req).level < 1) return json(res, 403, { error: 'Zaloguj się, żeby kwitować alarmy' });
+  return json(res, 200, { acked: alarmDb.ack() });
 }
 
 async function handlePlc(control, source, auth, req, res, pathname) {
@@ -181,7 +198,7 @@ async function handleAuth(auth, req, res, pathname) {
   return json(res, 405, { error: 'Metoda niedozwolona' });
 }
 
-export function createServer(cfg, source, auth = null, hmiWrites = null) {
+export function createServer(cfg, source, auth = null, hmiWrites = null, alarmDb = null) {
   const clients = new Set();
   const control = source ? new PlcControl(source, hmiWrites ?? loadHmiWrites(path.join(APP_DIR, 'src', 'server', 'hmiwrites.json'))) : null;
   const send = (obj) => {
@@ -192,6 +209,15 @@ export function createServer(cfg, source, auth = null, hmiWrites = null) {
     // zmiany z subskrypcji OPC UA (tylko zmienione wartosci; strona je laczy)
     source.on('status', send);
     source.on('delta', send);
+    // historia alarmow: kazda zmiana tablicy HMI2.aAlarms (subskrypcja w tle) - zapis w SQLite, strony odswiezaja liste
+    if (alarmDb) {
+      source.on('delta', (d) => {
+        if (!d.values || !('alarms' in d.values)) return;
+        try {
+          if (alarmDb.update(activeFromValues(d.values), Date.now(), cfg.endpoint)) send({ alarmsVersion: alarmDb.version });
+        } catch (err) { console.log(`[alarmy] zapis do bazy: ${err.message}`); }
+      });
+    }
   }
 
   const server = http.createServer((req, res) => {
@@ -208,6 +234,8 @@ export function createServer(cfg, source, auth = null, hmiWrites = null) {
       handleConnection(cfg, source, auth, req, res);
     } else if (url.pathname === '/api/plc' || url.pathname.startsWith('/api/plc/')) {
       handlePlc(control, source, auth, req, res, url.pathname);
+    } else if (url.pathname === '/api/alarms' || url.pathname === '/api/alarms/ack') {
+      handleAlarms(alarmDb, auth, req, res, url);
     } else if (['/api/login', '/api/logout', '/api/session'].includes(url.pathname)) {
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
@@ -257,7 +285,11 @@ async function main() {
   if (args.host) cfg.httpHost = args.host;
   const source = args['no-plc'] ? null : new OpcUaSource(cfg);
   const auth = new Auth(loadUsers(args.users || cfg.usersFile), cfg.auth);
-  const server = createServer(cfg, source, auth);
+  let alarmDb = null;
+  if (source) {
+    try { alarmDb = new AlarmDb(cfg.alarmsDbFile); } catch (err) { console.log(`Historia alarmów wyłączona (${cfg.alarmsDbFile}): ${err.message}`); }
+  }
+  const server = createServer(cfg, source, auth, null, alarmDb);
   server.on('error', (err) => {
     // drugie uruchomienie (vizu.ps1) - serwer juz dziala
     if (err.code === 'EADDRINUSE') { console.log(`Port ${cfg.httpPort} zajety - VizuApp juz dziala`); process.exit(0); }
