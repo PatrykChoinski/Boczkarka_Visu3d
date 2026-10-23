@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -136,7 +137,9 @@ async function main() {
 
     // 2. serwer z testowym PLC (OPC UA)
     run(['test/fake-plc-server.js', '--port', String(PORT_PLC)], 'fake-plc');
-    run(['src/server/main.js', '--users', 'brak-users.json', '--port', String(PORT_ONLINE), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`], 'serwer-online');
+    // osobna baza historii alarmow (nie alarms.db maszyny obok config.json)
+    run(['src/server/main.js', '--users', 'brak-users.json', '--port', String(PORT_ONLINE), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`,
+      '--alarms-db', path.join(os.tmpdir(), `vizu-smoke-alarms-${process.pid}.db`)], 'serwer-online');
     await waitHttp(`http://127.0.0.1:${PORT_ONLINE}/api/health`);
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_ONLINE}/`);

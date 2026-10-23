@@ -1,7 +1,7 @@
 // VizuApp - serwer: czyta zmienne PLC przez OPC UA i podaje je stronie (http://localhost:8128).
 //
 //   node src/server/main.js [--config plik.json] [--users users.json] [--port 8128] [--host 127.0.0.1]
-//                           [--endpoint opc.tcp://...] [--no-plc]
+//                           [--endpoint opc.tcp://...] [--no-plc] [--alarms-db alarms.db]
 //
 // Domyslnie (maszyna, ekran Full HD): strona tylko na tym komputerze (127.0.0.1), PLC opc.tcp://localhost:4840.
 // Tablet (#148): --host 0.0.0.0 (albo "httpHost" w config.json) - strona dostepna w sieci (http://<IP komputera>:8128);
@@ -276,7 +276,7 @@ async function main() {
   const { values: args } = parseArgs({
     options: {
       config: { type: 'string' }, users: { type: 'string' }, port: { type: 'string' }, host: { type: 'string' },
-      endpoint: { type: 'string' }, 'no-plc': { type: 'boolean' },
+      endpoint: { type: 'string' }, 'no-plc': { type: 'boolean' }, 'alarms-db': { type: 'string' },
     },
   });
   const cfg = loadConfig(args.config);
@@ -287,7 +287,7 @@ async function main() {
   const auth = new Auth(loadUsers(args.users || cfg.usersFile), cfg.auth);
   let alarmDb = null;
   if (source) {
-    try { alarmDb = new AlarmDb(cfg.alarmsDbFile); } catch (err) { console.log(`Historia alarmów wyłączona (${cfg.alarmsDbFile}): ${err.message}`); }
+    try { alarmDb = new AlarmDb(args['alarms-db'] || cfg.alarmsDbFile); } catch (err) { console.log(`Historia alarmów wyłączona (${cfg.alarmsDbFile}): ${err.message}`); }
   }
   const server = createServer(cfg, source, auth, null, alarmDb);
   server.on('error', (err) => {
