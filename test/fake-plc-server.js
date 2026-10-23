@@ -48,7 +48,7 @@ import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['advancedDesktop', 'cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
+const BOOLS = new Set(['alarms', 'advancedDesktop', 'cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
   'progMillStart', 'systemBased', 'modeSaw', 'modeMill', 'modeDrill', 'modePolishing']);
 const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn',
   'progMillCount', 'progMillIndex']);
@@ -56,6 +56,7 @@ const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutC
 const ARRAYS = {
   boardX: MAX_APEX, boardY: MAX_APEX, boardZ: MAX_APEX, rockX: MAX_APEX, rockY: MAX_APEX, rockZ: MAX_APEX,
   progX: 250, progY: 250, progStep: 250, progRadius: 250, progAngle: 250, progDepth: 250, progDepthEnd: 250, progLength: 250, progOutIn: 250,
+  alarms: 200,
 };
 
 // Stol 3500 x 3000 (Z 490 - gora materialu 450 przy grubosci 40, jak fCutMaterialHeight w WorkArea)
@@ -143,8 +144,8 @@ export function plcTimeline(mode = 'saw') {
       maxZUpVel: 50, maxZVel: 50, advancedDesktop: false, cutDepth: ap.z - m.materialHeight, aFixed: r.pose.a };
     return {
       ...hmiValues(),
-      // #155 alarm testowy: cisnienie powietrza (alarm 8) przez pierwsze 10 s kazdych 20 s, Aktywny Alarm (24) razem z nim
-      'alarm:HMI2.bAlarmAirPressure': t % 20 < 10, 'alarm:HMI2.bAlarmActive': t % 20 < 10,
+      // #155 HMI2.aAlarms (alarm n = [n - 1]): cisnienie powietrza (8) przez pierwsze 10 s kazdych 20 s, Aktywny Alarm (24) z nim
+      alarms: Array.from({ length: 200 }, (_, i) => (i === 7 || i === 23) && t % 20 < 10),
       ...r.pose, toolX: ap.x, toolY: ap.y, toolZ: ap.z, ...actVel, ...accVars, ...speedVars, ...m, ...dyn, ...AREA, ...PROGRAM, ...flags, ...g54Values(m), systemBased: true, progCutIndex: Math.floor(t / 6) % (PROG_ROWS.length - 1),
       cutStep: step, cutStart: step !== 100, sawRunning: step !== 100, waterCut: mode === 'saw' && (step === 20 || step === 50 || step === 60),
       waterMill: mode !== 'saw' && step !== 100,      // yWaterMill - frez, wiercenie, polerowanie
@@ -192,8 +193,7 @@ export async function startFakePlc(port, mode = 'saw') {
       gvls[key2] ??= obj(parent, parts[i]);
       parent = gvls[key2];
     }
-    const svcType = key.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[varPath] ?? (/^HMI\.bService/.test(varPath) ? 'BOOL' : null))
-      : key.startsWith('alarm:') ? 'BOOL' : null;
+    const svcType = key.startsWith('hmi:') ? (SERVICE_SCREEN_VARS[varPath] ?? (/^HMI\.bService/.test(varPath) ? 'BOOL' : null)) : null;
     const type = svcType ? DataType[SVC_TYPES[svcType] ?? 'Double']
       : BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
     const array = ARRAYS[key] ?? HMI_ARRAY_LEN[svcType];
@@ -202,6 +202,7 @@ export async function startFakePlc(port, mode = 'saw') {
       if (type === DataType.String) {
         return array ? new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: v.map(String) }) : new Variant({ dataType: type, value: String(v ?? '') });
       }
+      if (array && type === DataType.Boolean) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: v.map(Boolean) });
       if (array) return new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: (type === DataType.Int16 ? Int16Array : Float64Array).from(v) });
       return new Variant({ dataType: type, value: type === DataType.Boolean ? Boolean(v) : Number(v) });
     };

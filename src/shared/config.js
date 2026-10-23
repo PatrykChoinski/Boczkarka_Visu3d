@@ -1,6 +1,5 @@
 import { SERVICE_SCREEN_VARS } from './servicescreens.js';
 import { SERVICE_BITS } from './service.js';
-import { ALARMS, alarmKey } from './alarms.js';
 
 // Zmienne PLC (symbol config, jak w HMI): klucz w aplikacji -> "GVL.zmienna".
 // Wymagane sa pozycje osi i parametry tarczy / materialu, reszta opcjonalna.
@@ -128,16 +127,14 @@ export const VARIABLES = {
   profileJump: 'HMI.fProfileJump',
   smoothingJump: 'HMI.fSmoothingJump',
   smoothingArrays: 'HMI.bServiceSmoothingArrays',
+  // #155 alarmy jak w HMI: tablica bitow, alarm n = aAlarms[n - 1] (alarms.js)
+  alarms: 'HMI2.aAlarms',
 };
 
 // Ekrany serwisowe (#147, servicescreens.js): zmienne, ktorych nie ma wyzej - klucz "hmi:GVL.zmienna"
 for (const v of [...Object.keys(SERVICE_SCREEN_VARS), ...SERVICE_BITS.map((b) => `HMI.${b.k}`)]) {
   if (!Object.values(VARIABLES).includes(v)) VARIABLES[`hmi:${v}`] = v;
 }
-// #155 alarmy z HMI: bity HMI2.bAlarm... - zmienne opcjonalne "alarm:GVL.zmienna" (brak w konfiguracji symboli PLC
-// nie psuje polaczenia - stan pokazuje alarmy osobno)
-for (const a of ALARMS) if (a.v) VARIABLES[alarmKey(a.v)] = a.v;
-export const isOptionalKey = (k) => k.startsWith('alarm:');
 // klucz odczytu zmiennej PLC (sciezka GVL.zmienna) w wartosciach z serwera
 export const plcKey = (v) => Object.keys(VARIABLES).find((k) => VARIABLES[k] === v) ?? null;
 
@@ -147,7 +144,7 @@ export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle
   'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount',
   'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB',
   'maxMainDriveHz', 'maxFastVel', 'maxSawVel', 'maxMillVel', 'maxZUpVel', 'maxZVel', 'advancedDesktop',
-  ...Object.keys(VARIABLES).filter((k) => k.startsWith('hmi:') || isOptionalKey(k))];
+  'alarms', ...Object.keys(VARIABLES).filter((k) => k.startsWith('hmi:'))];
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
