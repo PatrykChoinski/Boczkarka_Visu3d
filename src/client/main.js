@@ -20,7 +20,7 @@ import { installIcons, icon } from './icons.js';
 import { watchPlcNames, setPlcNamesAdmin } from './plcnamesdom.js';
 import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
-import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmByNumber, alarmIndex } from '../shared/alarms.js';
+import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmByNumber, alarmIndex, ADVANCED_AXES, ADVANCED_GROUPS, ADVANCED_TEXTS, ADVANCED_VARS } from '../shared/alarms.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -193,6 +193,8 @@ function limitHit(pose, lim) {
 // Online - tablica HMI2.aAlarms z PLC (alarm n = aAlarms[n - 1] jak w HMI), offline - alarmy
 // wykrywane w symulacji (start bez bazowania, krancowka elektroniczna, skok o zero); "Kwituj" offline kasuje alarmy
 // symulacji (jak bAlarmReset), online tylko potwierdza wpisy historii (Visu3D nie pisze do PLC).
+// tekst z PLC do HTML (np. opis bledu SoftMotion)
+const escHtml = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const alarmLog = new AlarmLog(500);
 const simAlarms = new Set();
 let alarmPage = 'active';
@@ -247,7 +249,20 @@ function renderAlarms() {
   const table = state.online.values?.alarms;
   const row = (a, cls, cells) => `<tr class="${cls}"><td class="n">${a.n}</td>${cells}</tr>`;
   let html = '';
-  if (alarmPage === 'all') {
+  if (alarmPage === 'adv') {
+    // Zaawansowane (ekran HMI 81): kody bledow osi / napedu, napiecia enkoderow, bledy grup SoftMotion CNC z tekstem
+    const pv = state.plcVals;
+    const val = (v) => (v && v in pv ? escHtml(String(pv[v])) : '–');
+    const bad = (v) => (v && Number(pv[v]) ? 'on' : '');
+    if (state.mode !== 'online') html = '<tr><td class="muted">Tylko w trybie PLC</td></tr>';
+    else {
+      html = '<tr><th>Oś / napęd</th><th>ID alarmu</th><th>Błąd napędu</th><th>Napięcie enkodera</th></tr>'
+        + ADVANCED_AXES.map(([n, id, err, enc]) => `<tr class="${bad(id) || bad(err)}"><td>${n}</td><td>${val(id)}</td><td>${err ? val(err) : ''}</td><td>${enc ? val(enc) : ''}</td></tr>`).join('')
+        + '<tr><th>Grupa interpolacji</th><th>ID błędu</th><th colspan="2">Opis (SoftMotion CNC)</th></tr>'
+        + ADVANCED_GROUPS.map(([n, id, txt]) => `<tr class="${bad(id)}"><td>${n}</td><td>${val(id)}</td><td colspan="2">${val(txt)}</td></tr>`).join('')
+        + ADVANCED_TEXTS.map(([n, v]) => `<tr class="${pv[v] ? 'on' : ''}"><th>${n}</th><td colspan="3">${val(v)}</td></tr>`).join('');
+    }
+  } else if (alarmPage === 'all') {
     html = '<tr><th>Nr</th><th>Alarm</th><th>Bit PLC</th></tr>' + ALARMS.map((a) => row(a, alarmLog.active.includes(a.n) ? 'on' : a.off ? 'off' : '',
       `<td>${a.pl || `<span class="muted">${a.en}</span>`}${a.off ? ' <span class="muted">(wyłączony w HMI)</span>' : ''}</td>`
       + `<td><code>HMI2.aAlarms[${alarmIndex(a.n)}]${a.v ? ` – ${a.v}` : ''}</code></td>`)).join('');
@@ -267,9 +282,10 @@ function bindAlarms() {
   $('#alarmOpen').onclick = () => {
     $('#alarmWin').hidden = !$('#alarmWin').hidden;
     if (!$('#alarmWin').hidden) { renderAlarms(); fetchAlarmHistory(); }
+    updatePlcWatch();
   };
-  $('#alarmClose').onclick = () => { $('#alarmWin').hidden = true; };
-  for (const b of $$('#alarmPages [data-apage]')) b.onclick = () => { alarmPage = b.dataset.apage; renderAlarms(); };
+  $('#alarmClose').onclick = () => { $('#alarmWin').hidden = true; updatePlcWatch(); };
+  for (const b of $$('#alarmPages [data-apage]')) b.onclick = () => { alarmPage = b.dataset.apage; renderAlarms(); updatePlcWatch(); };
   $('#alarmAck').onclick = async () => {
     // PLC: reset alarmow jak przycisk HMI (HMI2.bAlarmReset - PLC kasuje bit po resecie), wpisy w bazie potwierdzone
     if (alarmDbOn()) {
@@ -2851,6 +2867,8 @@ function updatePlcWatch() {
   if (SCREEN_KEYS[tab]) keys.push(...SCREEN_KEYS[tab]);
   if (tab === 'service') keys.push(...serviceScreenKeys());
   if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars());
+  // okno Alarmy, zakladka Zaawansowane (ekran HMI 81)
+  if (!$('#alarmWin').hidden && alarmPage === 'adv' && state.mode === 'online') paths.push(...ADVANCED_VARS);
   if (!$('#manWin').hidden) {
     keys.push(...SCREEN_KEYS.man);
     if (state.mode === 'online') paths.push(...MAN_WATCH);
@@ -2889,6 +2907,7 @@ function plcFormValues(vals) {
   syncManualWin();
   updateManInfo();
   syncOpFromPlc();
+  if (!$('#alarmWin').hidden && alarmPage === 'adv') renderAlarms();
 }
 
 // --- Manual w trybie PLC: pola operacji = zmienne PLC (plcforms.js), START - bit startu operacji -----------------

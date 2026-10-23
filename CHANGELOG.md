@@ -6,6 +6,9 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Alarmy – zakładka Zaawansowane
+- Jak ekran HMI 81 „alarmy opis”: ID alarmów osi X / Y / Z / A / B i napędu głównego, błędy napędów, napięcia enkoderów, błędy grup interpolacji XYZAB / XYZ z tekstem SoftMotion CNC, CNC ERROR i FILE PROCESSOR ERROR. Subskrypcja tylko przy otwartej zakładce. Generator listy HMI zbiera też wyświetlacze tekstu (Character Display). Sprawdzone na PLC maszyny: 22/22 wartości.
+
 ### Mniej opisów na ekranach
 - Bazowanie, okno Alarmy, okno Ruchy ręczne – bez opisów i linii informacyjnych (zostały komunikaty błędów). Pod przyciskami piły bez wyboru FWD / REV i częstotliwości: kierunek z Serwisu (`HMI.bServiceSawFWD`, w symulacji tak samo), częstotliwość – ekran Prędkość.
 

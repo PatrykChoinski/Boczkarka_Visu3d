@@ -555,3 +555,24 @@ export class AlarmLog {
 
   clear() { this.entries = []; this.version++; }
 }
+
+// Alarmy zaawansowane (ekran HMI 81 "alarmy opis"): kody bledow osi i napedu (SoftMotion), napiecia enkoderow,
+// bledy grup interpolacji z tekstem SoftMotion CNC, bledy CNC i preprocesora plikow G-kodu
+export const ADVANCED_AXES = [
+  // [nazwa, ID alarmu osi, blad napedu (AxisError), napiecie enkodera]
+  ['Oś X', 'HMI2.iActualErrorX', 'HMI2.AxisXError', 'HMI2.EncoderVoltageX'],
+  ['Oś Y', 'HMI2.iActualErrorY', 'HMI2.AxisYError', 'HMI2.EncoderVoltageY'],
+  ['Oś Z', 'HMI2.iActualErrorZ', 'HMI2.AxisZError', 'HMI2.EncoderVoltageZ'],
+  ['Obrót (A)', 'HMI2.iActualErrorA', 'HMI2.AxisAError', 'HMI2.EncoderVoltageA'],
+  ['Wychył (B)', 'HMI2.iActualErrorAxisB', 'HMI2.AxisBError', 'HMI2.EncoderVoltageB'],
+  ['Napęd główny', 'HMI2.iActualErrorMainDrive', null, null],
+];
+export const ADVANCED_GROUPS = [
+  // [nazwa, ID bledu grupy, tekst bledu SoftMotion CNC]
+  ['Grupa XYZAB', 'HMI2.iActualXYZABError', 'HMI2.sActualXYZABError'],
+  ['Grupa XYZ', 'HMI2.iActualXYZError', 'HMI2.sActualXYZError'],
+];
+export const ADVANCED_TEXTS = [['CNC ERROR', 'VisuVars.errorMessage'], ['FILE PROCESSOR ERROR', 'VisuVars.filePrerocessorErrorId']];
+export const ADVANCED_VARS = [
+  ...ADVANCED_AXES.flatMap((r) => r.slice(1)), ...ADVANCED_GROUPS.flatMap((r) => r.slice(1)), ...ADVANCED_TEXTS.map((r) => r[1]),
+].filter(Boolean);

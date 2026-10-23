@@ -26,7 +26,7 @@ SKIP = {2, 209, 210, 211, 502, 503, 999, 1100}
 SERVICE = {46, 66, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 90, 91, 126, 127}
 
 KIND = {
-    "10.6": "text", "10.2": "rect", "5.1": "disp", "6.1": "entry", "2.1": "multi", "3.1": "bar", "19.1": "combo",
+    "10.6": "text", "10.2": "rect", "5.1": "disp", "5.2": "disp", "6.1": "entry", "2.1": "multi", "3.1": "bar", "19.1": "combo",
     "1.10": "goto",
 }
 # Przyciski (Type 1): rodzaj wg SubType (nazwy elementow bywaja zmienione - "Set_000" moze byc przelacznikiem)
