@@ -245,10 +245,6 @@ function renderAlarms() {
   for (const b of $$('#alarmPages [data-apage]')) b.classList.toggle('active', b.dataset.apage === alarmPage);
   const online = state.mode === 'online';
   const table = state.online.values?.alarms;
-  $('#alarmHint').textContent = online
-    ? (Array.isArray(table) ? `Alarmy z PLC: tablica HMI2.aAlarms (${table.length} bitów, alarm n = aAlarms[n-1] jak w HMI).`
-      : 'Alarmy z PLC: brak tablicy HMI2.aAlarms w odczycie z PLC (konfiguracja symboli / OPC UA).')
-    : 'Symulacja: alarmy wykrywane w symulacji (start bez bazowania, krańcówka elektroniczna, skok o zero). Lista alarmów jak w HMI.';
   const row = (a, cls, cells) => `<tr class="${cls}"><td class="n">${a.n}</td>${cells}</tr>`;
   let html = '';
   if (alarmPage === 'all') {
@@ -259,10 +255,6 @@ function renderAlarms() {
     // PLC: historia z bazy serwera (SQLite); symulacja - lista w pamieci strony
     const src = alarmDbOn() && alarmDb.entries ? alarmDb.entries : alarmLog.entries;
     const list = alarmPage === 'active' ? src.filter((e) => e.off === null) : src;
-    if (alarmDbOn()) {
-      $('#alarmHint').textContent += alarmDb.error ? ` Historia: błąd bazy (${alarmDb.error}).`
-        : ` Historia z bazy SQLite serwera (alarms.db): ${alarmDb.total} wpisów, niepotwierdzonych ${alarmDb.unacked}.`;
-    }
     html = '<tr><th>Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th></tr>' + (list.length ? list.map((e) => {
       const a = alarmByNumber(e.n) || { n: e.n, pl: `Alarm ${e.n}` };
       return row(a, e.off === null ? 'on' : 'off', `<td>${a.pl || a.en}${e.ack ? '' : ' <span class="muted">(niepotwierdzony)</span>'}</td><td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : '–'}</td>`);
@@ -529,7 +521,9 @@ function sawState() {
     return { running: Boolean(v.sawRunning), freq: (Number(v.sawFreq) || 0) * scale, dir: v.sawRev && !v.sawFwd ? -1 : 1 };
   }
   const running = state.saw.manual || Boolean(state.sim.running);
-  return { running, freq: Number($('#sawFreq').value) || 0, dir: $('#sawDir').value === 'REV' ? -1 : 1 };
+  // kierunek jak w PLC: bit serwisowy HMI.bServiceSawFWD (Serwis), czestotliwosc - ekran Predkosc
+  const fwd = svcAll().find((it) => it.v === 'HMI.bServiceSawFWD');
+  return { running, freq: Number($('#sawFreq').value) || 0, dir: fwd && !svcValue(fwd) ? -1 : 1 };
 }
 
 function sawText() {
@@ -2051,17 +2045,9 @@ function jogFrame(now) {
 function updateManInfo() {
   const p = state.pose;
   if (!p || $('#manWin').hidden) return;
-  const d = offlineDynamics();
   syncManualSpeeds();
-  if (state.mode === 'online') {
-    $('#manInfo').innerHTML = `PLC: ${state.manContinuous ? 'tryb ciągły – ruch, dopóki przycisk jest wciśnięty' : `tryb skok – ruch o ${Number($('#manJump').value) || 0} mm`}`
-      + '; przyciski zapisują do PLC jak ekrany MPG / MANUAL INTERPOLATION (punkty A, B, C – zapisane w PLC).';
-    return;
-  }
-  const pts = ['A', 'B', 'C'].filter((k) => state.points[k]).join(', ') || 'brak';
-  $('#manInfo').innerHTML = `${state.manContinuous ? 'Tryb ciągły – ruch, dopóki przycisk jest wciśnięty' : `Tryb skok – ruch o ${Number($('#manJump').value) || 0} mm`}; `
-    + `ruchy po skosie i interpolowane: ${((state.saw.manual ? d.cutVel : d.fastVel) * 0.06).toFixed(2)} m/min `
-    + `(${state.saw.manual ? 'prędkość cięcia – piła ON' : 'prędkość dojazdu'}). Punkty A, B, C (Pozycja): ${pts}.`;
+  // bez opisu pod przyciskami - tylko komunikaty bledow (manualAction)
+  $('#manInfo').innerHTML = '';
 }
 
 // Odczyty i stany przyciskow okna ruchow recznych (pozycje osi, laser, przelaczniki ruchu interpolowanego)
@@ -2800,32 +2786,9 @@ function renderHoming() {
   }
   $('#homeStart').hidden = !offline;
   $('#homeStop').hidden = !offline;
-  const v = state.online.values;
-  const lines = [];
-  if (offline) {
-    const h = state.tool.homing && modeById(state.tool.homing);
-    if (h) lines.push(`Bazowanie w toku: ${h.name} (Z do 0, A na 0 najkrótszą drogą, B na ${h.homeB}°)`);
-    else lines.push(isBased() ? `Zbazowana w trybie: <b>${mode.name}</b> (B ${mode.homeB}°)` : '<span style="color:var(--bad)">Maszyna niezbazowana</span> – wybierz tryb i bazuj');
-  } else {
-    lines.push(`PLC: bSystemBased ${v.systemBased === undefined ? '– (brak zmiennej)' : v.systemBased ? 'TRUE' : '<span style="color:var(--bad)">FALSE</span>'}`);
-    lines.push(`Tryb: ${MODES.map((x) => `${x.plc} ${v[x.flag] ? '<b>TRUE</b>' : 'FALSE'}`).join(', ')}`);
-  }
-  const m = state.mode === 'online' ? state.machine : offlineMachine();
-  if (mode.id === 'saw') {
-    lines.push(`Narzędzie: tarcza Ø${m.discDiameter} × ${m.bladeWidth} mm (fParameterDiscDiameter, fParameterBladeWidth)`);
-  } else {
-    const t = toolSize({ ...m, mode: mode.id });
-    const src = {
-      mill: 'fParameterMillWidth, fParameterMillLength + fParameterMillCorrection',
-      drill: 'fParameterMillWidth, fParameterDrillLength + fParameterMillCorrection',
-      polishing: 'średnica z Parametrów, fParameterMillCorrection − ActiveTool.Height',
-    }[mode.id];
-    lines.push(`Narzędzie: ${mode.tool} Ø${t.diameter.toFixed(1)} mm, długość ${t.length.toFixed(1)} mm (${src}); `
-      + `oś narzędzia ${(m.millTiltDiameter / 2).toFixed(1)} mm od osi A (fParameterMillTiltDiameter/2)`);
-  }
-  const names = { cut: 'Manual', auto: 'Automat', man: 'Ruchy ręczne', cnc: 'G-kod' };
-  lines.push(`Ekrany trybu: ${mode.tabs.map((t) => names[t]).join(', ')}${isBased() ? '' : ' – po bazowaniu'}`);
-  $('#homeInfo').innerHTML = lines.join('<br>');
+  // bez opisow pod przyciskami (tryb i bazowanie widac po zaznaczonym przycisku)
+  $('#homeInfo').innerHTML = '';
+  $('#homeInfo').hidden = true;
 }
 
 function startHoming(modeId) {

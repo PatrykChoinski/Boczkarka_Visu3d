@@ -228,7 +228,6 @@
       </div>
 
       <div class="tab" data-tab="home" hidden>
-        <p class="hint">Jak w PLC (BaseHomingST): Z do 0, A na 0 najkrótszą drogą, B na 0° (piła) albo 90° (frez, wiercenie, polerowanie); po bazowaniu narzędzie zamienia się na narzędzie trybu, a ekrany Manual / Automat i Ruchy ręczne pokazują tylko to, co dotyczy trybu. Online – tryb i bazowanie z PLC (bMode*, bSystemBased).</p>
         <div class="row presets" id="homeModes"></div>
         <div class="row">
           <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
@@ -331,8 +330,8 @@
         <span class="hmiSawTitle" id="sawTitle" title="Piła"><svg class="ic big" aria-hidden="true"><use href="#i-saw"/></svg></span>
         <button type="button" id="sawStart" class="sawStart" title="Start piły (bManualMainDriveOn)"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
         <button type="button" id="sawStop" class="sawStop" title="Stop piły (bManualMainDriveOff)"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
-        <label class="inline" title="Kierunek obrotów"><svg class="ic" aria-hidden="true"><use href="#i-fwd"/></svg><select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
-        <label class="inline" title="Częstotliwość [Hz]"><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><input id="sawFreq" type="number" step="any" min="0" max="120"></label>
+        <label class="inline" title="Kierunek obrotów" hidden><svg class="ic" aria-hidden="true"><use href="#i-fwd"/></svg><select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
+        <label class="inline" title="Częstotliwość [Hz]" hidden><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><input id="sawFreq" type="number" step="any" min="0" max="120"></label>
       </div>
       <div id="manInfo" class="info"></div>
     </div>
@@ -360,7 +359,6 @@
         <button type="button" data-apage="log">Historia</button>
         <button type="button" data-apage="all">Wszystkie</button>
       </div>
-      <p class="hint" id="alarmHint"></p>
       <div class="tableWrap"><table class="alarmTable" id="alarmTable"></table></div>
       <div class="row"><button type="button" id="alarmAck" title="Reset alarmów jak w HMI (PLC: HMI2.bAlarmReset; symulacja: kasuje alarmy symulacji)"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Reset alarmów</span></button></div>
     </div>
