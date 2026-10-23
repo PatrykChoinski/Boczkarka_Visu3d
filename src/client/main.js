@@ -1807,8 +1807,9 @@ function authChanged() {
   // polaczenie z PLC (#148): Serwis / Admin, nie w wersji statycznej
   $('#connOpen').hidden = !connAllowed();
   if (!connAllowed()) $('#connWin').hidden = true;
-  $('#authBox').hidden = !a.enabled;
-  $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
+  // logowanie zawsze widoczne; bez users.json - informacja, jak zalozyc uzytkownikow
+  $('#authBox').hidden = false;
+  $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : a.enabled ? 'Niezalogowany' : 'Logowanie wyłączone';
   $('#loginBtn').innerHTML = icon(a.user ? 'logout' : 'login');
   $('#loginBtn').title = a.user ? `Wyloguj (${a.user})` : 'Zaloguj';
   if (state.forms) {
@@ -1893,7 +1894,15 @@ function logout() {
 }
 
 function bindAuth() {
-  $('#loginBtn').onclick = () => (state.auth.user ? logout() : showLogin(true));
+  $('#loginBtn').onclick = () => {
+    if (!state.auth.enabled) {
+      alert('Logowanie wyłączone – brak użytkowników (plik users.json obok config.json).\n'
+        + 'Załóż użytkownika na komputerze z VizuApp: node scripts/users.mjs set Serwis (albo Operator / Admin), potem uruchom VizuApp ponownie.\n'
+        + 'Bez użytkowników: pełny dostęp tylko na tym komputerze, z tabletu – STOP i PAUZA.');
+      return;
+    }
+    if (state.auth.user) logout(); else showLogin(true);
+  };
   $('#loginClose').onclick = () => showLogin(false);
   $('#loginCancel').onclick = () => showLogin(false);
   $('#loginForm').onsubmit = (e) => { e.preventDefault(); login($('#loginUser').value, $('#loginPass').value); };
