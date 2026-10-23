@@ -6,11 +6,37 @@
 
 import { EventEmitter } from 'node:events';
 import {
-  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType,
+  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType, VariantArrayType,
 } from 'node-opcua-client';
 import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Limit wezlow w jednym odczycie: Server.ServerCapabilities.OperationLimits.MaxNodesPerRead (CODESYS: 100) -
+// wiekszy Read konczy sie BadTooManyOperations; bez limitu w serwerze - DEFAULT_MAX_READ
+const MAX_NODES_PER_READ = 'ns=0;i=11705';
+const DEFAULT_MAX_READ = 100;
+
+// Wartosc z DataValue do JSON: tablice LREAL (Float64Array) -> zwykle tablice, LINT / ULINT (Int64 / UInt64 - w node-opcua
+// para [starsze, mlodsze 32 bity]) -> liczba (np. licznik pracy maszyny HMI.iOverallMinutes)
+export function plainValue(variant) {
+  const v = variant?.value;
+  const t = variant?.dataType;
+  const int64 = (x) => (Array.isArray(x) && x.length === 2 ? x[0] * 4294967296 + x[1] : x);
+  if (t === DataType.Int64 || t === DataType.UInt64) {
+    return variant.arrayType === VariantArrayType.Scalar ? int64(v) : Array.from(v ?? [], int64);
+  }
+  return ArrayBuffer.isView(v) ? Array.from(v) : v;
+}
+
+// Odczyt w porcjach po maxRead wezlow (wyniki w tej samej kolejnosci)
+export async function readChunked(session, nodes, maxRead = DEFAULT_MAX_READ) {
+  const n = Math.max(1, maxRead);
+  if (nodes.length <= n) return session.read(nodes);
+  const out = [];
+  for (let i = 0; i < nodes.length; i += n) out.push(...await session.read(nodes.slice(i, i + n)));
+  return out;
+}
 
 export class OpcUaSource extends EventEmitter {
   constructor(cfg) {
@@ -69,6 +95,7 @@ export class OpcUaSource extends EventEmitter {
         session = await client.createSession(this.cfg.username
           ? { type: UserTokenType.UserName, userName: this.cfg.username, password: this.cfg.password || '' }
           : undefined);
+        await this.readLimits(session);
         const nodes = await this.resolve(session);
         await this.readDataTypes(session, nodes);
         const total = Object.keys(this.cfg.variables).length;
@@ -104,12 +131,11 @@ export class OpcUaSource extends EventEmitter {
         const withSlow = n % slowEvery === 0;
         n++;
         const keys = withSlow ? [...fastKeys, ...slowKeys] : fastKeys;
-        const dvs = await session.read(withSlow ? allReq : fastReq);
+        const dvs = await readChunked(session, withSlow ? allReq : fastReq, this.maxRead);
         const values = {};
         keys.forEach((k, i) => {
           if (!dvs[i].statusCode.isGood()) return;
-          const v = dvs[i].value.value;
-          values[k] = ArrayBuffer.isView(v) ? Array.from(v) : v;   // tablice LREAL (Float64Array) -> JSON
+          values[k] = plainValue(dvs[i].value);
         });
         if (withSlow) slowValues = Object.fromEntries(slowKeys.filter((k) => k in values).map((k) => [k, values[k]]));
         this.values = { ...values, ...slowValues };
@@ -119,13 +145,23 @@ export class OpcUaSource extends EventEmitter {
     }
   }
 
+  // Limit wezlow w odczycie z serwera (0 / brak / blad - DEFAULT_MAX_READ)
+  async readLimits(session) {
+    this.maxRead = DEFAULT_MAX_READ;
+    try {
+      const [dv] = await session.read([{ nodeId: MAX_NODES_PER_READ, attributeId: AttributeIds.Value }]);
+      const v = Number(dv.value?.value);
+      if (dv.statusCode.isGood() && v > 0) this.maxRead = v;
+    } catch { /* serwer bez OperationLimits */ }
+  }
+
   async resolve(session) {
     const variables = this.cfg.variables;
     let nodes;
     if (this.cfg.nodePrefix) {
       nodes = {};
       const keys = Object.keys(variables);
-      const dvs = await session.read(keys.map((k) => ({ nodeId: this.cfg.nodePrefix + variables[k], attributeId: AttributeIds.Value })));
+      const dvs = await readChunked(session, keys.map((k) => ({ nodeId: this.cfg.nodePrefix + variables[k], attributeId: AttributeIds.Value })), this.maxRead);
       keys.forEach((k, i) => {
         if (dvs[i].statusCode.isGood()) nodes[k] = this.cfg.nodePrefix + variables[k];
       });
@@ -144,7 +180,7 @@ export class OpcUaSource extends EventEmitter {
     const keys = Object.keys(nodes);
     this.dataTypes = {};
     try {
-      const dvs = await session.read(keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.DataType })));
+      const dvs = await readChunked(session, keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.DataType })), this.maxRead);
       keys.forEach((k, i) => {
         if (!dvs[i].statusCode.isGood()) return;
         // typ wbudowany (ns=0;i=11 -> Double), typy uzytkownika (enumy, struktury PLC) - NodeId

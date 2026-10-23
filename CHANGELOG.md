@@ -6,6 +6,11 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Testy z prawdziwym CODESYS (OPC UA localhost) – poprawki
+- Odczyt OPC UA w porcjach według `MaxNodesPerRead` serwera (CODESYS SoftMotion Win 3.5.18: 100). Wcześniej wszystkie 438 zmiennych jednym `Read` – z prawdziwym PLC `BadTooManyOperations` i brak jakichkolwiek wartości. Testowy PLC ma teraz limit 100 jak CODESYS.
+- LINT / ULINT (Int64 – w node-opcua para [starsze, młodsze 32 bity]) zamieniane na liczbę – licznik pracy maszyny (`HMI.iOverallDays/Hours/Minutes`) zamiast „–”.
+- Sprawdzone: `npm test` 180/180 (`test/opcvalues.test.js`), smoke test, `check-plc-live` na lokalnym CODESYS (438/438, geometria zgodna). Raport z testów: repo główne `_DOKUMENTACJA/Raport_testy_Visu3D_PLC_2026-10-23.md`.
+
 ### Alarmy z tablicy HMI2.aAlarms (#155)
 - Alarmy online czytane z tablicy `HMI2.aAlarms` (ARRAY [0..199] OF BOOL – jest w konfiguracji symboli PLC) jak w HMI (`ReadAlarmVar = HMI2.aAlarms[0]`, adresy ciągłe): alarm n = `aAlarms[n-1]` – zamiast 78 osobnych bitów `HMI2.bAlarm…`, których nie ma w symbol configu. Bez zmian w PLC; działa też alarm 84 (polerowanie, bez własnego bitu). Usunięte zmienne opcjonalne (`alarm:…`), stan połączenia i `check-plc-symbols` jak przed #155. Lista „Wszystkie” pokazuje pozycję w tablicy i bit HMI.
 - Sprawdzone: `npm test` 178/178, `check-plc-symbols` (oba pliki: `HMI2.aAlarms` ARRAY [0..199] OF BOOL, wszystkie zmienne OK); online z testowym PLC (tablica 200 bitów, zmienne 438/438, alarmy 8 i 24 pojawiają się i ustępują, historia).

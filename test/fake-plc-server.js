@@ -167,6 +167,8 @@ export async function startFakePlc(port, mode = 'saw') {
     securityModes: [MessageSecurityMode.None],
     securityPolicies: [SecurityPolicy.None],
     buildInfo: { productName: 'VizuApp fake PLC' },
+    // jak CODESYS (SoftMotion Win 3.5.18): najwyzej 100 wezlow w jednym Read - wiekszy konczy sie BadTooManyOperations
+    serverCapabilities: { operationLimits: { maxNodesPerRead: 100, maxNodesPerBrowse: 100 } },
   });
   await server.initialize();
   const space = server.engine.addressSpace;
