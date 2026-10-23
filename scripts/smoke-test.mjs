@@ -147,11 +147,26 @@ async function main() {
       await page.screenshot({ path: path.join(OUT, 'online.png') });
       assertNoErrors('serwer online', errors);
       log(`OK serwer online: ${conn}, pozycja ${await page.textContent('#pos')}`);
-      // podpiecie zmiennych: kazda zmienna z konfiguracji znaleziona w OPC UA, z typem i wartoscia
-      const vars = await (await fetch(`http://127.0.0.1:${PORT_ONLINE}/api/variables`)).json();
-      const missing = vars.variables.filter((v) => !v.found || !v.dataType || v.value === null).map((v) => v.name);
-      if (missing.length) throw new Error(`zmienne PLC bez wezla / typu / wartosci: ${missing.join(', ')}`);
-      log(`OK zmienne PLC: ${vars.variables.length}/${vars.variables.length} z typem i wartością`);
+      // podpiecie zmiennych: kazda zmienna z konfiguracji znaleziona w OPC UA; typ i wartosc - z subskrypcji: zmienne
+      // w tle od razu, pozostale po zgloszeniu jako ekran (POST /api/plc/watch) - tu wszystkie naraz
+      const api = `http://127.0.0.1:${PORT_ONLINE}/api`;
+      const all = (await (await fetch(`${api}/variables`)).json()).variables;
+      const noNode = all.filter((v) => !v.found).map((v) => v.name);
+      if (noNode.length) throw new Error(`zmienne PLC bez wezla OPC UA: ${noNode.join(', ')}`);
+      // jeden ekran - najwyzej 400 zmiennych: wszystkie jako kilka stron (cid)
+      for (let i = 0; i < all.length; i += 200) {
+        await fetch(`${api}/plc/watch`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ cid: `smoke${i}`, keys: all.slice(i, i + 200).map((v) => v.key) }) });
+      }
+      let missing = [];
+      for (let i = 0; i < 40; i++) {
+        const vars = (await (await fetch(`${api}/variables`)).json()).variables;
+        missing = vars.filter((v) => !v.dataType || v.value === null).map((v) => v.name);
+        if (!missing.length) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (missing.length) throw new Error(`zmienne PLC bez typu / wartosci z subskrypcji: ${missing.join(', ')}`);
+      log(`OK zmienne PLC: ${all.length}/${all.length} z typem i wartością (subskrypcje)`);
       await context.close();
     }
 
