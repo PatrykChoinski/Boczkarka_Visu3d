@@ -13,7 +13,7 @@ import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor 
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition, opPlanLines } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays, hasSurfaceSteps } from '../shared/automat.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, SCREEN_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
@@ -605,12 +605,15 @@ function onlineValues(v) {
 }
 
 function connectEvents() {
-  const es = new EventSource('api/events');
+  // cid - identyfikator strony: serwer konczy subskrypcje jej ekranow po zamknieciu strony
+  const es = new EventSource(`api/events?cid=${plcCtl().cid}`);
   es.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if ('status' in msg) { state.online.status = msg.status; state.online.connected = msg.connected; }
-    if (msg.values) onlineValues(msg.values);
-    if (msg.hmi) plcFormValues(msg.hmi);
+    // pelny stan na poczatku, potem tylko zmiany z subskrypcji OPC UA
+    if (msg.values) onlineValues(msg.full ? msg.values : { ...state.online.values, ...msg.values });
+    if (msg.hmi) plcFormValues(msg.full ? msg.hmi : { ...state.plcVals, ...msg.hmi });
+    if (msg.full || 'status' in msg) updatePlcWatch();
     if ('status' in msg || msg.values) updatePlcControls();
     if ('status' in msg && state.conn && !$('#connWin').hidden) connInfo(state.conn);
     $('#fromPlc').disabled = !hasPlcDynamics();
@@ -855,6 +858,7 @@ function showOp() {
   renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields), op.saves);
   syncOpFromPlc();
   updatePlcOpForm();
+  updatePlcWatch();
   updateCutInfo();
   requestDraw();
 }
@@ -1504,6 +1508,7 @@ function extraServiceGroup(all = SERVICE_PAGES.flatMap((p) => p.groups.flatMap((
 function showServicePage(id) {
   state.servicePage = id;
   renderService();
+  updatePlcWatch();
 }
 
 function renderService() {
@@ -1936,6 +1941,7 @@ function showManWin(open) {
     syncManualWin();
     updateManInfo();
   }
+  updatePlcWatch();
 }
 
 // Okno w granicach ekranu (pozycja zapamietana w przegladarce)
@@ -2299,6 +2305,7 @@ function setMode(mode) {
   state.tool.key = '';
   toolModeChanged();
   updatePlcControls();
+  updatePlcWatch();
   if (!$('.tab[data-tab="service"]').hidden) renderService();
   $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
@@ -2341,6 +2348,7 @@ function showTab(name) {
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
   if (name === 'cnc') updateCncInfo();
+  updatePlcWatch();
   requestDraw();
 }
 
@@ -2828,8 +2836,6 @@ function updatePlcControls() {
   $('#plcStop').hidden = !on;
   $('#plcPause').hidden = !on;
   if (!on) return;
-  plcCtl().watch(MAN_WATCH);
-  if (state.forms) plcCtl().watch(plcFormVars());
   const paused = Boolean(state.online.values.pauseMachine);
   $('#plcPause').classList.toggle('active', paused);
   $('#plcPause').querySelector('.lbl').textContent = paused ? 'WZNÓW' : 'PAUZA';
@@ -2838,7 +2844,40 @@ function updatePlcControls() {
 }
 
 let plcCtlObj = null;
-const plcCtl = () => (plcCtlObj ??= Object.assign(new PlcCtl({ headers: authHeaders, onError: plcError }), { active: () => plcOnline() && state.online.connected }));
+const plcCtl = () => (plcCtlObj ??= Object.assign(new PlcCtl({ headers: (...a) => authHeaders(...a), onError: (m) => plcError(m) }),
+  { active: () => Boolean(state.cfg?.plc) && !state.cfg.static }));
+
+// Subskrypcje zmiennych otwartego ekranu / okna (poza zmiennymi w tle): przy kazdej zmianie ekranu - nowa lista,
+// serwer zamyka subskrypcje poprzedniego ekranu
+function updatePlcWatch() {
+  if (!state.cfg?.plc || state.cfg.static || !state.forms) return;
+  const tab = $('.tabs button.active')?.dataset.tab;
+  const keys = [];
+  const paths = [];
+  if (SCREEN_KEYS[tab]) keys.push(...SCREEN_KEYS[tab]);
+  if (tab === 'service') keys.push(...serviceScreenKeys());
+  if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars());
+  if (!$('#manWin').hidden) {
+    keys.push(...SCREEN_KEYS.man);
+    if (state.mode === 'online') paths.push(...MAN_WATCH);
+  }
+  plcCtl().setScreen(keys, paths);
+}
+
+// zmienne otwartej strony serwisu (klucze "hmi:..." / klucze konfiguracji)
+function serviceScreenKeys() {
+  const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
+  const items = [...page.groups.flatMap((g) => g.items), ...(page.id === 'settings' ? extraServiceGroup()?.items || [] : [])];
+  const out = [];
+  for (const it of items) {
+    for (const v of [it.v, /^\s*([\w.[\]]+)\s*=/.exec(it.vis || '')?.[1]]) {
+      if (!v) continue;
+      const k = plcKey(v.replace(/\[\d+\]$/, ''));
+      if (k) out.push(k);
+    }
+  }
+  return out;
+}
 const plcWrite = (items) => plcCtl().write(items);
 
 // komunikat bledu zapisu (np. brak uprawnien, brak polaczenia) - na dole ekranu przez kilka sekund

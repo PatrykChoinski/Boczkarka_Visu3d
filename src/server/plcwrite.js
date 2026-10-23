@@ -9,7 +9,7 @@
 //
 // POST /api/plc/write {items: [{v, value}]}   zapis (Set / Reset / pole liczbowe / lista / przelacznik)
 // POST /api/plc/hold  {v, on}                 przycisk chwilowy
-// POST /api/plc/watch {vars: [...]}           zmienne otwartego formularza (odczyt w strumieniu SSE: {hmi})
+// POST /api/plc/watch {cid, keys, paths}      subskrypcja zmiennych otwartego ekranu (SSE: {values}, {hmi})
 
 import fs from 'node:fs';
 
@@ -106,10 +106,11 @@ export class PlcControl {
     for (const [v, h] of this.holds) if (h.until < now) this.release(v, 'puszczony (brak potwierdzenia z panelu)').catch(() => {});
   }
 
-  // zmienne do odczytu: tylko zmienne z listy HMI
-  watch(vars) {
-    const list = (Array.isArray(vars) ? vars : []).filter((v) => this.access.read.has(v)).slice(0, MAX_WATCH);
-    this.source.watchVars(list);
-    return list.length;
+  // Subskrypcja zmiennych otwartego ekranu klienta (cid): keys - klucze konfiguracji, paths - zmienne z listy HMI
+  watch(cid, keys, paths) {
+    if (!cid || typeof cid !== 'string' || cid.length > 64) throw Object.assign(new Error('brak identyfikatora strony (cid)'), { code: 400 });
+    const p = (Array.isArray(paths) ? paths : []).filter((v) => this.access.read.has(v)).slice(0, MAX_WATCH);
+    const k = (Array.isArray(keys) ? keys : []).filter((x) => typeof x === 'string').slice(0, MAX_WATCH);
+    return this.source.watch(cid, { keys: k, paths: p });
   }
 }

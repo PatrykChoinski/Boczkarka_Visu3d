@@ -141,13 +141,25 @@ for (const v of [...Object.keys(SERVICE_SCREEN_VARS), ...SERVICE_BITS.map((b) =>
 // klucz odczytu zmiennej PLC (sciezka GVL.zmienna) w wartosciach z serwera
 export const plcKey = (v) => Object.keys(VARIABLES).find((k) => VARIABLES[k] === v) ?? null;
 
-// Zmienne czytane rzadziej (co slowEvery odczytow) - duze tablice i ustawienia programu
-export const SLOW_KEYS = ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
-  'progOriginX', 'progOriginY', 'progCutCount', 'progProfCount', 'progMillCount', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays',
-  'boardX', 'boardY', 'boardZ', 'boardCount', 'rockX', 'rockY', 'rockZ', 'rockCount',
-  'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB',
-  'maxMainDriveHz', 'maxFastVel', 'maxSawVel', 'maxMillVel', 'maxZUpVel', 'maxZVel', 'advancedDesktop',
-  'alarms', ...Object.keys(VARIABLES).filter((k) => k.startsWith('hmi:'))];
+// Subskrypcje OPC UA (wymiana danych tylko przez subskrypcje, bez cyklicznego odczytu):
+// SCREEN_KEYS - zmienne ekranu, subskrybowane tylko, gdy ekran / okno jest otwarte (strona zglasza je przy otwarciu,
+// zamkniecie - koniec subskrypcji); ekran Serwis - zmienne otwartej strony serwisu (klucze "hmi:..."). Pozostale
+// zmienne konfiguracji (BACKGROUND_KEYS: pozycje, tryb, narzedzie, stany, stol i kamien, alarmy, STOP / PAUZA,
+// liczniki automatu) - subskrypcja w tle przez caly czas polaczenia.
+export const SCREEN_KEYS = {
+  speed: ['fastVel', 'cutVel', 'millVel', 'zUpVel', 'zVel', 'mainDriveHz', 'maxMainDriveHz', 'maxFastVel', 'maxSawVel', 'maxMillVel',
+    'maxZUpVel', 'maxZVel', 'advancedDesktop'],
+  auto: ['progX', 'progY', 'progStep', 'progRadius', 'progAngle', 'progDepth', 'progDepthEnd', 'progLength', 'progOutIn',
+    'progOriginX', 'progOriginY', 'progOuterInner', 'profileJump', 'smoothingJump', 'smoothingArrays'],
+  cnc: ['g54X', 'g54Y', 'g54Z'],
+  // okno Ruchy reczne
+  man: ['jogXVel', 'jogYVel', 'jogZVel', 'jogAVel', 'jogBVel'],
+  // Parametry (offline): przycisk "Z PLC" - dynamika z PLC
+  par: ['cutVel', 'cutAcc', 'cutDec', 'fastVel', 'zVel', 'zUpVel', 'aVel', 'bVel', 'jogXVel', 'jogYVel', 'jogZVel', 'jogAVel', 'jogBVel',
+    'maxJogX', 'maxJogZ', 'maxJogA', 'maxJogB', 'autoTaccX', 'autoTaccZ', 'taccA', 'taccB'],
+};
+const screenOnly = new Set(Object.values(SCREEN_KEYS).flat());
+export const BACKGROUND_KEYS = Object.keys(VARIABLES).filter((k) => !k.startsWith('hmi:') && !screenOnly.has(k));
 
 export const REQUIRED = ['x', 'y', 'z', 'a', 'b', 'discDiameter', 'materialHeight'];
 
@@ -213,8 +225,7 @@ export const DEFAULTS = {
   username: '',
   password: '',
   nodePrefix: '',                       // np. "ns=4;s=|var|AX-8.Application." - puste = szukanie w drzewie
-  pollMs: 50,
-  slowEvery: 20,                        // zmienne SLOW_KEYS co tyle odczytow (domyslnie co 1 s)
+  pollMs: 50,                           // subskrypcje OPC UA: interwal publikacji i probkowania (CODESYS zwykle min. 100 ms)
   variables: {},                        // nadpisanie VARIABLES
   autoClearOnStart: true,               // nowe ciecie (bCutStart) czysci poprzednie
   materialMargin: 300,

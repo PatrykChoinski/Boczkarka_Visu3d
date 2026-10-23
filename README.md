@@ -675,7 +675,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika (adres domyślny; adres wpisany w oknie „Połączenie z PLC” – `connection.json`) |
 | `username`, `password` | puste | logowanie do OPC UA; puste oznacza anonimowe |
 | `nodePrefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
-| `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |
+| `pollMs` | 50 | interwał subskrypcji OPC UA (publikacja i próbkowanie; CODESYS zwykle podnosi do 100 ms). Cała wymiana przez subskrypcje: zmienne w tle (`BACKGROUND_KEYS`) przez cały czas, zmienne ekranu tylko na czas jego otwarcia |
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |

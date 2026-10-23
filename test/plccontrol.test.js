@@ -112,10 +112,12 @@ test('przycisk chwilowy (jog X+): wcisniety - TRUE, bez potwierdzenia serwer pus
 
 test('odczyt zmiennych formularza (watch) - wartosci w strumieniu SSE {hmi}', async () => {
   plc.panel['HMI.fManualXEndPosition'] = 777;
-  const r = await post('/api/plc/watch', { vars: ['HMI.fManualXEndPosition', 'HMI2.bManualXJogRight', 'NieMa.zmiennej'] });
+  let r = await post('/api/plc/watch', { paths: ['HMI.fManualXEndPosition'] });
+  assert.equal(r.status, 400, 'bez identyfikatora strony (cid)');
+  r = await post('/api/plc/watch', { cid: 'test1', paths: ['HMI.fManualXEndPosition', 'HMI2.bManualXJogRight', 'NieMa.zmiennej'] });
   assert.deepEqual(await r.json(), { watched: 2 }, 'tylko zmienne z listy HMI');
   const ctrl = new AbortController();
-  const res = await fetch(`${base}/api/events`, { signal: ctrl.signal });
+  const res = await fetch(`${base}/api/events?cid=test1`, { signal: ctrl.signal });
   const reader = res.body.getReader();
   let buf = '';
   let hmi = null;

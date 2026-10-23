@@ -3,16 +3,18 @@
 // write([{v, value}])  - zapis (Set / przelacznik / pole liczbowe); blad - komunikat (onError)
 // hold(v) / release(v) - przycisk chwilowy jak Momentary w HMI: wcisniety = TRUE, potwierdzany co 200 ms (serwer sam
 //                        zapisuje FALSE, gdy potwierdzenia ustana - np. zerwane polaczenie z tabletem)
-// watch(vars)          - zmienne do odczytu poza konfiguracja (pola formularzy, stany przelacznikow), odswiezane co 3 s;
-//                        wartosci przychodza w strumieniu SSE ({hmi})
+// setScreen(keys, paths) - zmienne otwartego ekranu / okna (subskrypcja OPC UA tylko na czas otwarcia ekranu);
+//                        wartosci przychodza w strumieniu SSE ({values}, {hmi})
 
 export class PlcCtl {
   constructor({ headers, onError }) {
     this.headers = headers;
     this.onError = onError;
     this.holds = new Map();
-    this.watched = new Set();
-    setInterval(() => this.sendWatch(), 3000);
+    // identyfikator strony: strumien SSE i subskrypcje ekranow (zamkniecie strony - koniec subskrypcji)
+    this.cid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    this.sig = null;
+    setInterval(() => this.sendWatch(), 5000);
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.releaseAll(); });
     window.addEventListener('pagehide', () => this.releaseAll());
   }
@@ -49,14 +51,19 @@ export class PlcCtl {
 
   releaseAll() { for (const v of [...this.holds.keys()]) this.release(v); }
 
-  watch(vars) {
-    const before = this.watched.size;
-    for (const v of vars) this.watched.add(v);
-    if (this.watched.size !== before) this.sendWatch();
+  // Zmienne otwartego ekranu (subskrypcja OPC UA na serwerze): keys - klucze konfiguracji, paths - inne zmienne.
+  // Nowy ekran - nowa lista (serwer zamyka subskrypcje poprzedniego); lista odswiezana co 5 s (bez odswiezenia
+  // serwer konczy subskrypcje po 15 s); pusta lista - brak zmiennych ekranu (tylko zmienne w tle)
+  setScreen(keys, paths) {
+    const sig = JSON.stringify([[...new Set(keys)].sort(), [...new Set(paths)].sort()]);
+    if (sig === this.sig) return;
+    this.sig = sig;
+    this.sendWatch();
   }
 
   sendWatch() {
-    if (!this.watched.size || !this.active?.()) return;
-    this.post('api/plc/watch', { vars: [...this.watched] }).catch(() => {});
+    if (!this.sig || !this.active?.()) return;
+    const [keys, paths] = JSON.parse(this.sig);
+    this.post('api/plc/watch', { cid: this.cid, keys, paths }).catch(() => {});
   }
 }

@@ -9,7 +9,7 @@
 //
 // GET /              strona (public/, budowana przez scripts/build-client.js)
 // GET /api/config    konfiguracja dla strony (zmienne, kroki CutStep, wartosci poczatkowe offline)
-// GET /api/events    strumien SSE: {status, connected} i {values}
+// GET /api/events?cid=  strumien SSE: {status, connected}, pelny stan {values, hmi, full}, potem zmiany z subskrypcji
 // GET /api/health    "ok" (vizu.ps1 sprawdza, czy serwer juz dziala)
 // POST /api/login, POST /api/logout, GET /api/session - logowanie (#145, auth.js; uzytkownicy z users.json)
 // GET /api/variables zmienne PLC: nazwa, wezel OPC UA, typ, ostatnia wartosc (diagnostyka podpiecia)
@@ -112,7 +112,7 @@ async function handlePlc(control, source, auth, req, res, pathname) {
   if (!control) return json(res, 409, { error: 'Serwer uruchomiony bez PLC (--no-plc)' });
   const body = await readJson(req, 65536);
   try {
-    if (pathname === '/api/plc/watch') return json(res, 200, { watched: control.watch(body.vars) });
+    if (pathname === '/api/plc/watch') return json(res, 200, { watched: control.watch(body.cid, body.keys, body.paths) });
     if (pathname === '/api/plc/write') await control.write(body.items, acc.who, acc.level);
     else if (pathname === '/api/plc/hold') await control.hold(String(body.v || ''), Boolean(body.on), acc.who, acc.level);
     else return json(res, 404, { error: 'Nieznana operacja' });
@@ -189,10 +189,9 @@ export function createServer(cfg, source, auth = null, hmiWrites = null) {
     for (const res of clients) res.write(msg);
   };
   if (source) {
-    source.active = false;
+    // zmiany z subskrypcji OPC UA (tylko zmienione wartosci; strona je laczy)
     source.on('status', send);
-    source.on('values', (values) => send({ values }));
-    source.on('hmi', (hmi) => send({ hmi }));
+    source.on('delta', send);
   }
 
   const server = http.createServer((req, res) => {
@@ -213,14 +212,16 @@ export function createServer(cfg, source, auth = null, hmiWrites = null) {
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+      // na poczatek pelny stan; cid - identyfikator strony (zamkniecie strony konczy subskrypcje jej ekranow)
       res.write(`data: ${JSON.stringify(source
-        ? { status: source.status, connected: source.connected, values: source.values }
+        ? { status: source.status, connected: source.connected, values: source.values, hmi: source.hmiValues, full: true }
         : { status: 'Bez PLC (--no-plc)', connected: false })}\n\n`);
+      const cid = url.searchParams.get('cid');
+      res.cid = cid;
       clients.add(res);
-      if (source) source.active = true;
       req.on('close', () => {
         clients.delete(res);
-        if (source) source.active = clients.size > 0;
+        if (source && cid && ![...clients].some((r) => r.cid === cid)) source.unwatch(cid);
       });
     } else {
       serveStatic(url.pathname, res);

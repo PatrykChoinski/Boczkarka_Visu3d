@@ -7,8 +7,9 @@
 import { EventEmitter } from 'node:events';
 import {
   OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType, VariantArrayType, Variant,
+  ClientSubscription, ClientMonitoredItemGroup, TimestampsToReturn,
 } from 'node-opcua-client';
-import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
+import { REQUIRED, BACKGROUND_KEYS } from '../shared/config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -61,24 +62,36 @@ export async function readChunked(session, nodes, maxRead = DEFAULT_MAX_READ) {
   return out;
 }
 
+// Wymiana danych tylko przez subskrypcje OPC UA (CODESYS: pojedynczy Read ~0,5 s, subskrypcja - zmiany co ~100 ms):
+// - subskrypcja w tle (BACKGROUND_KEYS z config.js) przez caly czas polaczenia,
+// - zmienne otwartych ekranow - grupa elementow monitorowanych na kazdego klienta (strone): watch(cid, {keys, paths})
+//   zastepuje poprzednia grupe klienta (inny ekran), pusta lista albo brak odswiezenia przez WATCH_TTL - koniec subskrypcji.
+// Zmiany wysylane zbiorczo co EMIT_MS jako {values, hmi} (tylko zmienione wartosci) - zdarzenie 'delta';
+// 'values' - pelny zestaw (diagnostyka, testy).
+export const WATCH_TTL = 15000;
+const EMIT_MS = 50;
+
 export class OpcUaSource extends EventEmitter {
   constructor(cfg) {
     super();
     this.cfg = cfg;
     this.status = 'Łączenie...';
     this.connected = false;
-    this.values = {};
+    this.values = {};         // klucz konfiguracji -> wartosc (subskrybowane zmienne konfiguracji)
+    this.hmiValues = {};      // "GVL.zmienna" -> wartosc (zmienne spoza konfiguracji: pola formularzy, przelaczniki)
     this.resolved = {};       // klucz -> NodeId (po polaczeniu)
     this.missing = [];        // klucze bez wezla w OPC UA (zmienna nie ma w symbol configu / zla nazwa)
     this.dataTypes = {};      // klucz -> typ danych z serwera OPC UA (diagnostyka /api/variables)
-    this.active = true;       // czytanie tylko, gdy ktos oglada strone
+    this.types = new Map();   // NodeId -> DataType (zapis bez dodatkowego odczytu)
     this.stopped = false;
-    // panel HMI (tryb PLC): zmienne otwartych ekranow - sciezka -> czas wygasniecia; wartosci, zmienne bez wezla
-    this.watch = new Map();
-    this.hmiValues = {};
-    this.hmiBad = new Set();
     this.session = null;
+    this.sub = null;
     this.prefix = null;       // przedrostek NodeId zmiennych ("ns=4;s=|var|<urzadzenie>.Application.")
+    this.clients = new Map(); // cid -> {sig, keys, paths, group, until}
+    this.pending = { values: {}, hmi: {} };
+    this.emitTimer = null;
+    this.gcTimer = setInterval(() => this.expireWatches(), 1000);
+    this.gcTimer.unref?.();
   }
 
   setStatus(status, connected) {
@@ -94,6 +107,8 @@ export class OpcUaSource extends EventEmitter {
 
   async stop() {
     this.stopped = true;
+    clearInterval(this.gcTimer);
+    this.wake?.();
     await this.loop;
   }
 
@@ -102,6 +117,8 @@ export class OpcUaSource extends EventEmitter {
     this.cfg.endpoint = endpoint;
     this.restart = true;
     this.values = {};
+    this.hmiValues = {};
+    this.wake?.();
     this.client?.disconnect().catch(() => {});
   }
 
@@ -115,6 +132,7 @@ export class OpcUaSource extends EventEmitter {
         endpointMustExist: false,
         connectionStrategy: { maxRetry: 0, initialDelay: 500, maxDelay: 1000 },
         requestedSessionTimeout: 60000,
+        keepSessionAlive: true,
       });
       this.client = client;
       let session = null;
@@ -128,56 +146,88 @@ export class OpcUaSource extends EventEmitter {
         const nodes = await this.resolve(session);
         await this.readDataTypes(session, nodes);
         this.session = session;
+        this.nodes = nodes;
+        const lost = new Promise((resolve) => {
+          this.wake = resolve;
+          client.on('connection_lost', resolve);
+          session.on('session_closed', resolve);
+        });
+        this.sub = await this.subscribe(session);
+        this.sub.on('terminated', () => this.wake?.());
+        // w tle: zmienne BACKGROUND_KEYS (te, ktore sa w OPC UA)
+        const bg = BACKGROUND_KEYS.filter((k) => k in nodes);
+        this.background = this.monitor(bg.map((k) => ({ key: k })));
+        // klienci podlaczeni przed zerwaniem polaczenia - ich ekrany od nowa
+        for (const c of this.clients.values()) { c.group = null; this.applyWatch(c); }
         const total = Object.keys(this.cfg.variables).length;
         const miss = this.missing.map((k) => this.cfg.variables[k]);
         this.setStatus(`Połączono (${this.cfg.endpoint}), zmienne ${total - miss.length}/${total}`
           + (miss.length ? `, brak: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}` : ''), true);
-        await this.poll(session, nodes);
+        if (!this.stopped && !this.restart) await lost;
+        if (!this.stopped && !this.restart) this.setStatus(`Brak połączenia: zerwane połączenie z ${this.cfg.endpoint}`, false);
       } catch (err) {
-        if (!this.restart) this.setStatus(`Brak połączenia: ${err.message || err}`, false);
+        if (!this.restart && !this.stopped) this.setStatus(`Brak połączenia: ${err.message || err}`, false);
       } finally {
+        this.wake = null;
         this.session = null;
-        try { if (session) await session.close(); } catch { /* polaczenie juz zerwane */ }
+        this.background = null;
+        for (const c of this.clients.values()) c.group = null;
+        try { if (this.sub) await this.sub.terminate(); } catch { /* polaczenie juz zerwane */ }
+        this.sub = null;
+        try { if (session) await session.close(); } catch { /* jw. */ }
         try { await client.disconnect(); } catch { /* jw. */ }
       }
       for (let i = 0; i < 20 && !this.stopped && !this.restart; i++) await sleep(100);
     }
   }
 
-  async poll(session, nodes) {
-    const all = Object.keys(nodes);
-    const slow = new Set(SLOW_KEYS);
-    const fastKeys = all.filter((k) => !slow.has(k));
-    const slowKeys = all.filter((k) => slow.has(k));
-    const req = (keys) => keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.Value }));
-    const fastReq = req(fastKeys);
-    const allReq = req([...fastKeys, ...slowKeys]);
-    const period = Math.max(10, Number(this.cfg.pollMs) || 50);
-    const slowEvery = Math.max(1, Math.round(Number(this.cfg.slowEvery) || 20));
-    let n = 0;
-    let slowValues = {};
-    while (!this.stopped && !this.restart) {
-      const t0 = Date.now();
-      if (this.active) {
-        const withSlow = n % slowEvery === 0;
-        n++;
-        const keys = withSlow ? [...fastKeys, ...slowKeys] : fastKeys;
-        const dvs = await readChunked(session, withSlow ? allReq : fastReq, this.maxRead);
-        const values = {};
-        keys.forEach((k, i) => {
-          if (!dvs[i].statusCode.isGood()) return;
-          values[k] = plainValue(dvs[i].value);
-        });
-        if (withSlow) slowValues = Object.fromEntries(slowKeys.filter((k) => k in values).map((k) => [k, values[k]]));
-        this.values = { ...values, ...slowValues };
-        this.emit('values', this.values);
-        if (n % 4 === 1) await this.readWatched(session);
-      }
-      await sleep(Math.max(0, period - (Date.now() - t0)));
-    }
+  // Subskrypcja: interwal publikacji z konfiguracji (pollMs, domyslnie 50 ms - CODESYS zwykle zwieksza do 100 ms)
+  async subscribe(session) {
+    const ms = Math.max(10, Number(this.cfg.pollMs) || 50);
+    const sub = ClientSubscription.create(session, {
+      requestedPublishingInterval: ms, requestedLifetimeCount: 600, requestedMaxKeepAliveCount: 20,
+      maxNotificationsPerPublish: 0, publishingEnabled: true, priority: 10,
+    });
+    await new Promise((resolve, reject) => { sub.once('started', resolve); sub.once('internal_error', reject); });
+    return sub;
   }
 
-  // --- panel HMI (tryb PLC) ---------------------------------------------------------------------
+  // Grupa elementow monitorowanych: [{key}] - zmienna konfiguracji, [{path}] - dowolna zmienna "GVL.zmienna"
+  monitor(items) {
+    const list = items.map((it) => ({ ...it, nodeId: it.key ? this.nodes[it.key] : this.nodeIdFor(it.path) })).filter((it) => it.nodeId);
+    if (!this.sub || !list.length) return null;
+    const ms = Math.max(10, Number(this.cfg.pollMs) || 50);
+    const group = ClientMonitoredItemGroup.create(this.sub, list.map((it) => ({ nodeId: it.nodeId, attributeId: AttributeIds.Value })),
+      { samplingInterval: ms, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Neither);
+    group.on('changed', (item, dv, index) => {
+      const it = list[index];
+      if (!it || !dv.statusCode.isGood()) return;
+      if (dv.value?.dataType) this.types.set(String(it.nodeId), dv.value.dataType);
+      const v = plainValue(dv.value);
+      if (it.key) { this.values[it.key] = v; this.pending.values[it.key] = v; } else { this.hmiValues[it.path] = v; this.pending.hmi[it.path] = v; }
+      this.scheduleEmit();
+    });
+    group.on('err', () => {});
+    return group;
+  }
+
+  scheduleEmit() {
+    if (this.emitTimer) return;
+    this.emitTimer = setTimeout(() => {
+      this.emitTimer = null;
+      const d = this.pending;
+      this.pending = { values: {}, hmi: {} };
+      const out = {};
+      if (Object.keys(d.values).length) out.values = d.values;
+      if (Object.keys(d.hmi).length) out.hmi = d.hmi;
+      if (!Object.keys(out).length) return;
+      this.emit('delta', out);
+      if (out.values) this.emit('values', this.values);
+      if (out.hmi) this.emit('hmi', this.hmiValues);
+    }, EMIT_MS);
+  }
+
+  // --- zmienne otwartych ekranow ------------------------------------------------------------------
   // NodeId dowolnej zmiennej "GVL.zmienna" / "GVL.tablica[3]" / "GVL.struktura.pole": nodePrefix z configu albo przedrostek
   // wziety z podpietej zmiennej (CODESYS publikuje symbole jako "ns=N;s=|var|<urzadzenie>.Application.<sciezka>")
   nodeIdFor(path) {
@@ -185,39 +235,70 @@ export class OpcUaSource extends EventEmitter {
     return this.prefix ? this.prefix + path : null;
   }
 
-  // Zmienne otwartego ekranu: czytane co 4 cykle odczytu, dopoki strona je odswieza (ttl)
-  watchVars(paths, ttlMs = 5000) {
-    const until = Date.now() + ttlMs;
-    for (const p of paths) this.watch.set(p, until);
+  // Ekran klienta: keys - klucze konfiguracji (poza zmiennymi w tle), paths - inne zmienne. Ta sama lista - tylko
+  // odswiezenie; inna - nowa grupa (stara zamknieta); pusta - koniec subskrypcji ekranu
+  watch(cid, { keys = [], paths = [] } = {}) {
+    const bg = new Set(BACKGROUND_KEYS);
+    const k = [...new Set(keys)].filter((x) => x in this.cfg.variables && !bg.has(x)).sort();
+    const p = [...new Set(paths)].sort();
+    const sig = JSON.stringify([k, p]);
+    let c = this.clients.get(cid);
+    if (!c) { c = { group: null }; this.clients.set(cid, c); }
+    c.until = Date.now() + WATCH_TTL;
+    if (c.sig === sig && (c.group || !this.sub)) return k.length + p.length;
+    c.sig = sig;
+    c.keys = k;
+    c.paths = p;
+    this.applyWatch(c);
+    return k.length + p.length;
   }
 
-  async readWatched(session) {
+  applyWatch(c) {
+    const old = c.group;
+    c.group = this.monitor([...c.keys.map((key) => ({ key })), ...c.paths.map((path) => ({ path }))]);
+    if (old) old.terminate().catch(() => {});
+    this.dropUnwatched();
+  }
+
+  unwatch(cid) {
+    const c = this.clients.get(cid);
+    if (!c) return;
+    this.clients.delete(cid);
+    if (c.group) c.group.terminate().catch(() => {});
+    this.dropUnwatched();
+  }
+
+  // wartosci zmiennych, ktorych juz nikt nie oglada - usuniete (nieaktualne po koncu subskrypcji)
+  dropUnwatched() {
+    const keys = new Set(BACKGROUND_KEYS);
+    const paths = new Set();
+    for (const c of this.clients.values()) { for (const k of c.keys || []) keys.add(k); for (const x of c.paths || []) paths.add(x); }
+    for (const k of Object.keys(this.values)) if (!keys.has(k)) delete this.values[k];
+    for (const x of Object.keys(this.hmiValues)) if (!paths.has(x)) delete this.hmiValues[x];
+  }
+
+  expireWatches() {
     const now = Date.now();
-    for (const [p, until] of this.watch) if (until < now) { this.watch.delete(p); delete this.hmiValues[p]; }
-    const paths = [...this.watch.keys()].filter((p) => !this.hmiBad.has(p));
-    if (!paths.length || !this.nodeIdFor('')) return;
-    const dvs = await readChunked(session, paths.map((p) => ({ nodeId: this.nodeIdFor(p), attributeId: AttributeIds.Value })), this.maxRead);
-    const out = {};
-    paths.forEach((p, i) => {
-      if (dvs[i].statusCode.isGood()) out[p] = plainValue(dvs[i].value);
-      else this.hmiBad.add(p);
-    });
-    this.hmiValues = out;
-    this.emit('hmi', out);
+    for (const [cid, c] of this.clients) if (c.until < now) this.unwatch(cid);
   }
 
-  // Zapis [{v: "GVL.zmienna", value}] - typ z biezacej wartosci w PLC; blad przerywa caly zapis (nic nie zapisane)
+  // Zapis [{v: "GVL.zmienna", value}] - typ z subskrypcji (albo jednorazowy odczyt typu); blad przerywa caly zapis
   async write(items) {
     const session = this.session;
     if (!session || !this.connected) throw new Error('brak połączenia z PLC');
     const ids = items.map((it) => this.nodeIdFor(it.v));
     if (ids.some((id) => !id)) throw new Error('nieznany przedrostek węzłów OPC UA');
-    const cur = await readChunked(session, ids.map((nodeId) => ({ nodeId, attributeId: AttributeIds.Value })), this.maxRead);
-    const req = items.map((it, i) => {
-      if (!cur[i].statusCode.isGood()) throw new Error(`${it.v}: brak w OPC UA (${cur[i].statusCode.name})`);
-      if (cur[i].value.arrayType !== VariantArrayType.Scalar) throw new Error(`${it.v}: tablica – zapis tylko pojedynczych elementów`);
-      return { nodeId: ids[i], attributeId: AttributeIds.Value, value: { value: writeVariant(cur[i].value.dataType, it.value) } };
-    });
+    const unknown = ids.filter((id) => !this.types.has(id));
+    if (unknown.length) {
+      const dvs = await readChunked(session, unknown.map((nodeId) => ({ nodeId, attributeId: AttributeIds.Value })), this.maxRead);
+      unknown.forEach((id, i) => {
+        const it = items[ids.indexOf(id)];
+        if (!dvs[i].statusCode.isGood()) throw new Error(`${it.v}: brak w OPC UA (${dvs[i].statusCode.name})`);
+        if (dvs[i].value.arrayType !== VariantArrayType.Scalar) throw new Error(`${it.v}: tablica – zapis tylko pojedynczych elementów`);
+        this.types.set(id, dvs[i].value.dataType);
+      });
+    }
+    const req = items.map((it, i) => ({ nodeId: ids[i], attributeId: AttributeIds.Value, value: { value: writeVariant(this.types.get(ids[i]), it.value) } }));
     const res = await session.write(req);
     res.forEach((sc, i) => { if (!sc.isGood()) throw new Error(`${items[i].v}: ${sc.name}`); });
   }
@@ -253,7 +334,6 @@ export class OpcUaSource extends EventEmitter {
     for (const [k, id] of Object.entries(this.resolved)) {
       if (id.endsWith(`.${variables[k]}`)) { this.prefix = id.slice(0, id.length - variables[k].length); break; }
     }
-    this.hmiBad.clear();
     return nodes;
   }
 

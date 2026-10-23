@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { startFakePlc, DEVICE } from './fake-plc-server.js';
 import { OpcUaSource } from '../src/server/opcua-source.js';
 import { loadConfig, createServer } from '../src/server/main.js';
-import { VARIABLES } from '../src/shared/config.js';
+import { VARIABLES, BACKGROUND_KEYS, SCREEN_KEYS } from '../src/shared/config.js';
 
 const PORT = 48461;
 let plc;
@@ -31,11 +31,12 @@ function collect(source, n, timeoutMs = 30000) {
   });
 }
 
-test('wyszukiwanie wezlow w drzewie OPC UA, odczyt wszystkich zmiennych', async () => {
+test('wyszukiwanie wezlow w drzewie OPC UA, subskrypcja zmiennych w tle (bez zmiennych ekranow)', async () => {
   const source = new OpcUaSource(config()).start();
   try {
     const { values, xs } = await collect(source, 30);
-    assert.deepEqual(Object.keys(values).sort(), Object.keys(VARIABLES).sort());
+    assert.deepEqual(Object.keys(values).sort(), [...BACKGROUND_KEYS].sort());
+    assert.equal(Object.keys(source.resolved).length, Object.keys(VARIABLES).length, 'wszystkie zmienne znalezione w OPC UA');
     assert.ok(xs.size > 5, 'pozycja osi sie nie zmienia');
     assert.equal(typeof values.cutStep, 'number');
     assert.equal(typeof values.cutStart, 'boolean');
@@ -80,7 +81,31 @@ test('nodePrefix z configu', async () => {
   const source = new OpcUaSource(config({ nodePrefix: `ns=${plc.nsIndex};s=|var|${DEVICE}.Application.` })).start();
   try {
     const { values } = await collect(source, 5);
-    assert.deepEqual(Object.keys(values).sort(), Object.keys(VARIABLES).sort());
+    assert.deepEqual(Object.keys(values).sort(), [...BACKGROUND_KEYS].sort());
+  } finally {
+    await source.stop();
+  }
+});
+
+test('subskrypcja zmiennych ekranu: tylko na czas otwarcia (nowy ekran - nowa lista, zamkniecie - koniec)', async () => {
+  const source = new OpcUaSource(config()).start();
+  const until = async (fn, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
+  try {
+    await collect(source, 3);
+    assert.ok(!('fastVel' in source.values), 'zmienne ekranu Predkosc nie sa subskrybowane bez ekranu');
+    source.watch('strona1', { keys: SCREEN_KEYS.speed });
+    assert.ok(await until(() => typeof source.values.fastVel === 'number'), 'ekran Predkosc - wartosci z subskrypcji');
+    // drugi ekran tej samej strony: Predkosc zamknieta, zmienne ekranu G-kod
+    source.watch('strona1', { keys: SCREEN_KEYS.cnc });
+    assert.ok(await until(() => typeof source.values.g54X === 'number'));
+    assert.ok(!('fastVel' in source.values), 'po zmianie ekranu poprzednie zmienne usuniete');
+    source.watch('strona1', { paths: ['HMI.fManualXZeroPosition'] });
+    assert.ok(await until(() => 'HMI.fManualXZeroPosition' in source.hmiValues), 'zmienna spoza konfiguracji (pole formularza)');
+    // zamkniecie strony - koniec subskrypcji ekranu, zmienne w tle zostaja
+    source.unwatch('strona1');
+    assert.ok(!('HMI.fManualXZeroPosition' in source.hmiValues) && !('g54X' in source.values));
+    assert.equal(source.clients.size, 0);
+    assert.equal(typeof source.values.x, 'number');
   } finally {
     await source.stop();
   }

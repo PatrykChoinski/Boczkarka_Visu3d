@@ -19,14 +19,15 @@ const { values: args, positionals: [endpoint] } = parseArgs({
 });
 if (!endpoint) { console.log('Użycie: node scripts/check-plc-live.mjs opc.tcp://<IP>:4840 [--user u --password p]'); process.exit(2); }
 
-const source = new OpcUaSource({ ...DEFAULTS, endpoint, username: args.user || '', password: args.password || '', variables: VARIABLES, pollMs: 100, slowEvery: 1 });
+const source = new OpcUaSource({ ...DEFAULTS, endpoint, username: args.user || '', password: args.password || '', variables: VARIABLES, pollMs: 100 });
 source.on('status', (s) => console.log(`[OPC UA] ${s.status}`));
 source.start();
 
 const deadline = Date.now() + Number(args.timeout) * 1000;
 while (Date.now() < deadline && !(source.connected && Object.keys(source.values).length)) await new Promise((r) => setTimeout(r, 200));
-// drugi odczyt (wolne zmienne, typy)
-await new Promise((r) => setTimeout(r, 1500));
+// wszystkie zmienne konfiguracji - jak jeden "ekran" (subskrypcja), wartosci po pierwszych powiadomieniach
+source.watch('check-plc-live', { keys: Object.keys(VARIABLES) });
+await new Promise((r) => setTimeout(r, Math.min(20000, 3000 + Object.keys(VARIABLES).length * 30)));
 await source.stop();
 if (!source.connected && !Object.keys(source.values).length) { console.log('Brak połączenia ze sterownikiem'); process.exit(1); }
 

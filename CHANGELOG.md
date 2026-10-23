@@ -6,6 +6,12 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### OPC UA tylko przez subskrypcje
+- Cała wymiana danych z PLC przez subskrypcje OPC UA zamiast cyklicznego odczytu (CODESYS na maszynie: jeden Read ~0,45 s – strona dostawała pozycje 1,6 razy na sekundę, ruchy ręczne nie były płynne; subskrypcja – zmiany co ~100 ms).
+- Subskrypcja w tle przez cały czas połączenia tylko dla `BACKGROUND_KEYS` (60 zmiennych: pozycje, prędkości osi, narzędzie, tryb, stany, stół i kamień, alarmy, STOP / PAUZA, liczniki automatu). Zmienne ekranów (`SCREEN_KEYS`: Prędkość, Automat, G-kod, Ruchy ręczne, Parametry; Serwis – zmienne otwartej strony; Manual – pola operacji) subskrybowane tylko na czas otwarcia ekranu / okna: strona zgłasza listę przy otwarciu (`POST /api/plc/watch {cid, keys, paths}`), nowy ekran zamyka subskrypcję poprzedniego, zamknięcie strony (koniec strumienia SSE `?cid=`) albo brak odświeżenia przez 15 s – koniec subskrypcji.
+- SSE: pełny stan na początku, potem tylko zmienione wartości (wcześniej ~20 kB co odczyt). Zapis do PLC bez dodatkowego odczytu (typ z subskrypcji).
+- Sprawdzone: `npm test` 189/189 (subskrypcja ekranu: otwarcie, zmiana, zamknięcie), na PLC maszyny: wartości ekranu 0,3–0,4 s po otwarciu, po zmianie ekranu i zamknięciu strony subskrypcja zamknięta.
+
 ### Sterowanie maszyną z Visu3D w trybie PLC (tablet)
 - Zapis do PLC przez serwer VizuApp (`src/server/plcwrite.js`, `POST /api/plc/write`, `/hold`, `/watch`): tylko zmienne zapisywane przez ekrany HMI (`src/server/hmiwrites.json` z `scripts/gen-hmi-writes.py` – 956 zmiennych, poziom ekranu, rodzaj przycisku wg SubType DIAScreen), po zalogowaniu (Operator / Serwis); bez `users.json` – tylko komputer z VizuApp, z sieci STOP / PAUZA. Typ zapisu z bieżącej wartości w PLC (BOOL, INT w zakresie, REAL, STRING).
 - Przyciski chwilowe (jog, skosy, ruch wzdłuż wychylonej tarczy, +/- prędkości): potwierdzane co 200 ms, serwer sam zapisuje FALSE po 0,7 s bez potwierdzenia.
