@@ -20,7 +20,7 @@ import { installIcons, icon } from './icons.js';
 import { watchPlcNames, setPlcNamesAdmin } from './plcnamesdom.js';
 import { SERVICE_BITS, serviceDefaults } from '../shared/service.js';
 import { SERVICE_PAGES } from '../shared/servicescreens.js';
-import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmByNumber } from '../shared/alarms.js';
+import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmByNumber, alarmIndex } from '../shared/alarms.js';
 import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext, MILL_STEPS, previewMill } from '../shared/figures/index.js';
 import { MILL_COMMON_FIELDS, addAutomatMill } from '../shared/millops.js';
 import { figurePicture, fieldLetter } from '../shared/figpics.js';
@@ -185,7 +185,7 @@ function limitHit(pose, lim) {
 }
 
 // --- #155 alarmy (przepisane z HMI, src/shared/alarms.js) ---------------------------------------------------
-// Online - bity HMI2.bAlarm... z PLC (OPC UA; gdy bitow nie ma w symbol configu - lista bez stanu), offline - alarmy
+// Online - tablica HMI2.aAlarms z PLC (alarm n = aAlarms[n - 1] jak w HMI), offline - alarmy
 // wykrywane w symulacji (start bez bazowania, krancowka elektroniczna, skok o zero); "Kwituj" offline kasuje alarmy
 // symulacji (jak bAlarmReset), online tylko potwierdza wpisy historii (Visu3D nie pisze do PLC).
 const alarmLog = new AlarmLog(500);
@@ -225,16 +225,17 @@ const fmtTime = (ms) => new Date(ms).toLocaleTimeString('pl-PL');
 function renderAlarms() {
   for (const b of $$('#alarmPages [data-apage]')) b.classList.toggle('active', b.dataset.apage === alarmPage);
   const online = state.mode === 'online';
-  const optKeys = Object.keys(state.cfg.variables || {}).filter((k) => k.startsWith('alarm:'));
-  const readable = online ? optKeys.filter((k) => k in (state.online.values || {})).length : 0;
+  const table = state.online.values?.alarms;
   $('#alarmHint').textContent = online
-    ? `Alarmy z PLC: ${readable} z ${optKeys.length} bitów HMI2.bAlarm… dostępnych przez OPC UA${readable < optKeys.length ? ' – brakujące trzeba dodać w konfiguracji symboli PLC' : ''}.`
+    ? (Array.isArray(table) ? `Alarmy z PLC: tablica HMI2.aAlarms (${table.length} bitów, alarm n = aAlarms[n-1] jak w HMI).`
+      : 'Alarmy z PLC: brak tablicy HMI2.aAlarms w odczycie z PLC (konfiguracja symboli / OPC UA).')
     : 'Symulacja: alarmy wykrywane w symulacji (start bez bazowania, krańcówka elektroniczna, skok o zero). Lista alarmów jak w HMI.';
   const row = (a, cls, cells) => `<tr class="${cls}"><td class="n">${a.n}</td>${cells}</tr>`;
   let html = '';
   if (alarmPage === 'all') {
     html = '<tr><th>Nr</th><th>Alarm</th><th>Bit PLC</th></tr>' + ALARMS.map((a) => row(a, alarmLog.active.includes(a.n) ? 'on' : a.off ? 'off' : '',
-      `<td>${a.pl || `<span class="muted">${a.en}</span>`}${a.off ? ' <span class="muted">(wyłączony w HMI)</span>' : ''}</td><td><code>${a.v ?? '–'}</code></td>`)).join('');
+      `<td>${a.pl || `<span class="muted">${a.en}</span>`}${a.off ? ' <span class="muted">(wyłączony w HMI)</span>' : ''}</td>`
+      + `<td><code>HMI2.aAlarms[${alarmIndex(a.n)}]${a.v ? ` – ${a.v}` : ''}</code></td>`)).join('');
   } else {
     const list = alarmPage === 'active' ? alarmLog.entries.filter((e) => e.off === null) : alarmLog.entries;
     html = '<tr><th>Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th></tr>' + (list.length ? list.map((e) => {

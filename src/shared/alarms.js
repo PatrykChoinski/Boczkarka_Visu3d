@@ -1,7 +1,8 @@
 // Alarmy (#155) - przepisane z projektu HMI (PilaJednosuportowaINNER.dpa, sekcja [Alarm]: HMI/scripts/dpa.py alarms):
 // n - numer alarmu w HMI, v - bit PLC (HMI2.bAlarm...), pl / en - tekst jak w HMI (jezyk 0 / 1), off - alarm wylaczony
-// w HMI (AlarmEnable = 0). Online bity czytane przez OPC UA (zmienne opcjonalne 'alarm:...' w config.js - moga nie byc
-// w konfiguracji symboli PLC), offline symulacja zglasza alarmy, ktore sama wykrywa (SIM_ALARMS).
+// w HMI (AlarmEnable = 0). Online alarmy z tablicy HMI2.aAlarms (ARRAY[0..199] OF BOOL, w konfiguracji symboli PLC) - jak
+// HMI: ReadAlarmVar = HMI2.aAlarms[0], adresy ciagle - alarm n = aAlarms[n - 1]; offline symulacja zglasza alarmy,
+// ktore sama wykrywa (SIM_ALARMS).
 
 export const ALARMS = [
   {
@@ -497,8 +498,8 @@ export const ALARMS = [
 export const alarmByVar = (v) => ALARMS.find((a) => a.v === v) ?? null;
 export const alarmByNumber = (n) => ALARMS.find((a) => a.n === n) ?? null;
 
-// Klucz zmiennej opcjonalnej (config.js VARIABLES) dla bitu alarmu
-export const alarmKey = (v) => `alarm:${v}`;
+// Alarm n w tablicy HMI2.aAlarms (jak HMI: od aAlarms[0], adresy ciagle)
+export const alarmIndex = (n) => n - 1;
 
 // Alarmy wykrywane w symulacji (offline) - bity jak w PLC
 export const SIM_ALARMS = {
@@ -508,9 +509,11 @@ export const SIM_ALARMS = {
   active: 'HMI2.bAlarmActive',                    // jakikolwiek alarm aktywny
 };
 
-// Aktywne alarmy z wartosci PLC ({klucz: wartosc}): numery alarmow wlaczonych w HMI z bitem = TRUE
+// Aktywne alarmy z wartosci PLC ({alarms: tablica HMI2.aAlarms}): numery alarmow wlaczonych w HMI z bitem = TRUE
 export function activeFromValues(values) {
-  return ALARMS.filter((a) => a.v && !a.off && values[alarmKey(a.v)] === true).map((a) => a.n);
+  const arr = values.alarms;
+  if (!Array.isArray(arr)) return [];
+  return ALARMS.filter((a) => !a.off && arr[alarmIndex(a.n)] === true).map((a) => a.n);
 }
 
 // Historia alarmow (jak lista alarmow HMI, RecordNumber 500): wpis {n, on (ms), off (ms) | null, ack}

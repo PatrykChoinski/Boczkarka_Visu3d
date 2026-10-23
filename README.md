@@ -292,9 +292,8 @@ podpowiedzi i komunikaty.
   aktywnych): 81 alarmów przepisanych z HMI (`src/shared/alarms.js`, numery,
   bity `HMI2.bAlarm…`, teksty PL / EN; `HMI/scripts/dpa.py alarms`). Okno:
   aktywne, historia (wystąpił / ustąpił, do 500 wpisów), lista wszystkich,
-  „Kwituj”. Online bity z PLC przez OPC UA – zmienne opcjonalne (stan połączenia
-  pokazuje „alarmy N/78”; bitów nie ma jeszcze w konfiguracji symboli PLC poza
-  `bAlarmStopMachine` – trzeba je tam dodać). Offline symulacja zgłasza: 21
+  „Kwituj”. Online z tablicy `HMI2.aAlarms` (ARRAY [0..199] OF BOOL, w
+  konfiguracji symboli PLC) jak w HMI: alarm n = `aAlarms[n-1]`. Offline symulacja zgłasza: 21
   „Maszyna nie zbazowana” (start bez bazowania), 58 „Zadana pozycja poza
   limitami” (krańcówka elektroniczna #154), 45 „Skok wynosi zero” i 24 „Aktywny
   Alarm”; „Kwituj” je kasuje (jak `bAlarmReset`). Online Visu3D nie pisze do PLC.

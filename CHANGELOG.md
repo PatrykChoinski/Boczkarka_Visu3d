@@ -4,6 +4,12 @@ Zmiany w Promasz Visu3D (VizuApp) – wizualizacji cięcia piły mostowej Promas
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-23
+
+### Alarmy z tablicy HMI2.aAlarms (#155)
+- Alarmy online czytane z tablicy `HMI2.aAlarms` (ARRAY [0..199] OF BOOL – jest w konfiguracji symboli PLC) jak w HMI (`ReadAlarmVar = HMI2.aAlarms[0]`, adresy ciągłe): alarm n = `aAlarms[n-1]` – zamiast 78 osobnych bitów `HMI2.bAlarm…`, których nie ma w symbol configu. Bez zmian w PLC; działa też alarm 84 (polerowanie, bez własnego bitu). Usunięte zmienne opcjonalne (`alarm:…`), stan połączenia i `check-plc-symbols` jak przed #155. Lista „Wszystkie” pokazuje pozycję w tablicy i bit HMI.
+- Sprawdzone: `npm test` 178/178, `check-plc-symbols` (oba pliki: `HMI2.aAlarms` ARRAY [0..199] OF BOOL, wszystkie zmienne OK); online z testowym PLC (tablica 200 bitów, zmienne 438/438, alarmy 8 i 24 pojawiają się i ustępują, historia).
+
 ## 2026-10-22
 
 ### Alarmy z HMI (#155), ukrywanie wyciętych elementów (#156)
