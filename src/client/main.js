@@ -279,10 +279,10 @@ function bindAlarms() {
   $('#alarmClose').onclick = () => { $('#alarmWin').hidden = true; };
   for (const b of $$('#alarmPages [data-apage]')) b.onclick = () => { alarmPage = b.dataset.apage; renderAlarms(); };
   $('#alarmAck').onclick = async () => {
-    // PLC: kwitowanie w bazie serwera
+    // PLC: reset alarmow jak przycisk HMI (HMI2.bAlarmReset - PLC kasuje bit po resecie), wpisy w bazie potwierdzone
     if (alarmDbOn()) {
-      const r = await fetch('api/alarms/ack', { method: 'POST', headers: authHeaders() }).catch(() => null);
-      if (!r?.ok) plcError(`Nie pokwitowano: ${r ? (await r.json().catch(() => ({}))).error || r.status : 'brak połączenia z serwerem'}`);
+      if (!await plcWrite([{ v: 'HMI2.bAlarmReset', value: true }])) return;
+      await fetch('api/alarms/ack', { method: 'POST', headers: authHeaders() }).catch(() => null);
       fetchAlarmHistory();
     }
     alarmLog.ack();

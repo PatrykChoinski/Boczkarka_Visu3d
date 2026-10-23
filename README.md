@@ -203,7 +203,8 @@ Serwer VizuApp zapisuje historię alarmów PLC w bazie SQLite `alarms.db` obok
 Każda zmiana tablicy `HMI2.aAlarms` (subskrypcja w tle) – wystąpienie albo
 ustąpienie alarmu – to wpis z datą i godziną, także gdy żadna strona nie jest
 otwarta. Okno Alarmy w trybie PLC pokazuje historię z bazy (data i godzina,
-niepotwierdzone); Kwituj zapisuje potwierdzenie w bazie (po zalogowaniu).
+niepotwierdzone); Reset alarmów zapisuje `HMI2.bAlarmReset` (jak przycisk HMI) i
+potwierdza wpisy w bazie (po zalogowaniu).
 `GET /api/alarms?limit=&offset=&active=1`, `POST /api/alarms/ack`. Tabela
 `alarm_history`: `n`, `name`, `on_ms`, `off_ms` (NULL – aktywny), `ack`, `endpoint`.
 

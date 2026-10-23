@@ -7,7 +7,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ## 2026-10-23
 
 ### Historia alarmów w SQLite
-- Serwer zapisuje historię alarmów PLC (wystąpienie, ustąpienie, kwitowanie) w bazie SQLite `alarms.db` obok `config.json` (`src/server/alarmdb.js`, wbudowany `node:sqlite`), z subskrypcji `HMI2.aAlarms` w tle – także bez otwartej strony; historia zostaje po restarcie. Okno Alarmy w trybie PLC: historia z bazy z datą, Kwituj w bazie (po zalogowaniu). Testy: `test/alarmdb.test.js`, integracja z testowym PLC w `test/plccontrol.test.js`.
+- Serwer zapisuje historię alarmów PLC (wystąpienie, ustąpienie, kwitowanie) w bazie SQLite `alarms.db` obok `config.json` (`src/server/alarmdb.js`, wbudowany `node:sqlite`), z subskrypcji `HMI2.aAlarms` w tle – także bez otwartej strony; historia zostaje po restarcie. Okno Alarmy w trybie PLC: historia z bazy z datą; przycisk Reset alarmów (zamiast Kwituj) zapisuje `HMI2.bAlarmReset` jak przycisk HMI i potwierdza wpisy w bazie (po zalogowaniu). Testy: `test/alarmdb.test.js`, integracja z testowym PLC w `test/plccontrol.test.js`.
 
 ### Bez okien potwierdzenia ruchu w trybie PLC
 - Bazowanie i START operacji Manual działają od razu, jak przyciski HMI (usunięte okna „Maszyna wykona ruch. Kontynuować?”).
