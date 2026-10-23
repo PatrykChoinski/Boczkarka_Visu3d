@@ -137,6 +137,13 @@
         <details id="commonBox">
           <summary>Głębokość, wyjazd</summary>
           <div class="grid2" id="commonFields"></div>
+          <!-- tablica glebokosci jak HMI glebokosci_ciecia / glebokosci_frez: przyciski przeliczenia (Depths) i tablica -->
+          <div class="row depthBtns" id="depthBtns">
+            <button type="button" data-depth="same">Równe głębokości</button>
+            <button type="button" data-depth="step">Skok cięcia</button>
+            <button type="button" data-depth="one">Cięcie na raz</button>
+          </div>
+          <div class="tableWrap"><table class="depthTable" id="depthTable"></table></div>
         </details>
         <div id="cutInfo" class="info"></div>
         <div class="row">

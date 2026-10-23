@@ -234,7 +234,6 @@ export const PLC_COMMON = {
     minLast: { v: 'HMI.fCutDepthMinLastJumpDistance' },
     above: { v: 'HMI.fParameterZMoveAboveMaterial' },
     lastCutWithDirection: { v: 'HMI.bManualLastCutWithDirection' },
-    innerCorr: { v: 'HMI.fParameterInnerCutCorrection', lvl: 2 },   // ekran serwisowy - zapis od poziomu Serwis
   },
   // tablica glebokosci frezu (ekran 42 glebokosci_frez)
   mill: {
@@ -247,6 +246,13 @@ export const PLC_COMMON = {
     above: { v: 'HMI.fParameterZMoveAboveMaterial' },
   },
 };
+
+// Tablice glebokosci w PLC (Depths): pila - podstawowa i alternatywna (ekran 40), frez - jedna (ekran 42)
+export const PLC_DEPTH = {
+  saw: { tables: [['Podstawowa', 'HMI.aCutDepthPrimary', 10], ['Alternatywna', 'HMI.aCutDepthSecondary', 10]] },
+  mill: { tables: [['Głębokości frezu', 'HMI.aMillDepthPrimary', 20]] },
+};
+export const depthVars = (mode) => (PLC_DEPTH[mode]?.tables || []).flatMap(([, arr, n]) => Array.from({ length: n }, (_, i) => `${arr}[${i}]`));
 
 // Nazwa elementu tablicy (i - indeks listy od 0)
 const elem = (m, i) => (m.arr.includes('{i}') ? m.arr.replace('{i}', i + (m.from ?? 0)) : `${m.arr}[${i + (m.from ?? 0)}]`);

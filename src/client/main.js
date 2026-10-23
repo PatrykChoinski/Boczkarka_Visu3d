@@ -29,7 +29,9 @@ import { cncProgram, cncTipPath } from '../shared/cnc.js';
 import { HeightMap, shadeHeightMap } from '../shared/heightmap.js';
 import { cutoutShapes } from '../shared/cutout.js';
 import { PlcCtl } from './plcctl.js';
-import { PLC_OPS, PLC_COMMON, fieldWrites, fieldRead, mapVars, pulseCount } from '../shared/plcforms.js';
+import { PLC_OPS, PLC_COMMON, PLC_DEPTH, depthVars, fieldWrites, fieldRead, mapVars, pulseCount } from '../shared/plcforms.js';
+import { depthTables } from '../shared/cutst.js';
+import { millDepths } from '../shared/millops.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1008,9 +1010,69 @@ function renderCommon() {
   const box = $('#commonFields');
   $('#commonBox').hidden = !fields;
   $('#commonBox summary').textContent = currentMode() === 'mill' ? 'Głębokości frezu (Depths), wyjazd' : 'Głębokość, wyjazd';
-  if (!fields || box.dataset.mode === currentMode()) return;
+  if (!fields || box.dataset.mode === currentMode()) { renderDepthTable(); return; }
   box.dataset.mode = currentMode();
   renderGroup(box, 'common', fields, { ...defaults(fields), ...(state.forms[commonSlot()] || {}) });
+  renderDepthTable();
+}
+
+// Tablica glebokosci (Depths): PLC - wartosci z PLC (komorki do poprawienia jak pola HMI), symulacja - wyliczona z pol
+function depthTablesNow() {
+  const mode = currentMode();
+  const cfg = PLC_DEPTH[mode];
+  if (!cfg) return null;
+  if (state.mode === 'online') {
+    const pv = state.plcVals;
+    return cfg.tables.map(([name, arr, n]) => ({ name, arr, cells: Array.from({ length: n }, (_, i) => pv[`${arr}[${i}]`]) }));
+  }
+  const c = commonValues();
+  const thickness = mode === 'mill' ? offlineMachine().materialThickness : c.thickness;
+  if (mode === 'mill') return [{ name: cfg.tables[0][0], cells: millDepths(c, thickness) }];
+  const t = depthTables({ mode: c.depthMode, total: thickness + (c.reserve || 0), passes: c.passes, maxJump: c.maxJump, step: c.step, minLast: c.minLast });
+  return [{ name: cfg.tables[0][0], cells: t.primary }, { name: cfg.tables[1][0], cells: t.secondary }];
+}
+
+function renderDepthTable() {
+  const tables = depthTablesNow();
+  $('#depthBtns').hidden = !tables;
+  if (!tables) { $('#depthTable').innerHTML = ''; return; }
+  const mode = commonFields() ? readGroup('common', commonFields()).depthMode : null;
+  for (const b of $$('[data-depth]')) b.classList.toggle('active', b.dataset.depth === mode);
+  const n = Math.max(...tables.map((t) => t.cells.length));
+  const edit = state.mode === 'online' && plcCanControl();
+  const cell = (t, i) => {
+    const x = t.cells[i];
+    const txt = typeof x === 'number' ? (x ? +x.toFixed(2) : '') : '';
+    if (edit && t.arr) return `<td><input type="number" step="any" data-depth-cell="${t.arr}[${i}]" value="${txt}"></td>`;
+    return `<td>${txt === '' ? '–' : txt}</td>`;
+  };
+  const focused = document.activeElement?.dataset?.depthCell;
+  if (focused) return;   // nie przerywa wpisywania w komorke
+  $('#depthTable').innerHTML = `<tr><th>#</th>${tables.map((t) => `<th>${t.name}</th>`).join('')}</tr>`
+    + Array.from({ length: n }, (_, i) => `<tr><td class="n">${i + 1}</td>${tables.map((t) => cell(t, i)).join('')}</tr>`).join('');
+  for (const el of $$('[data-depth-cell]')) {
+    el.addEventListener('change', () => { const v = Number(el.value); if (Number.isFinite(v)) plcWrite([{ v: el.dataset.depthCell, value: v }]); });
+  }
+}
+
+// Przycisk przeliczenia tablicy (jak HMI): tryb w formularzu; PLC - parametry i bit przeliczenia (Depths), PLC kasuje bit
+async function depthButton(mode) {
+  const fields = commonFields();
+  if (!fields) return;
+  const el = fieldEl('common', 'depthMode');
+  if (el) el.value = mode;
+  offlineFormsChanged();
+  if (state.mode === 'online') {
+    if (!plcCanControl()) { plcError('Zaloguj się, żeby sterować maszyną'); return; }
+    const cv = readGroup('common', fields);
+    const items = [];
+    for (const [k, m] of Object.entries(plcCommonMap() || {})) if (!m.cmd && !(m.lvl > state.plc.level)) items.push(...fieldWrites(m, cv[k]));
+    if (!await plcWrite(items)) return;
+    await plcWrite(fieldWrites(plcCommonMap().depthMode, mode));
+  }
+  renderDepthTable();
+  updateCutInfo();
+  requestDraw();
 }
 
 // Wspolne parametry trybu + szerokosc tarczy z parametrow maszyny
@@ -2866,7 +2928,7 @@ function updatePlcWatch() {
   const paths = [];
   if (SCREEN_KEYS[tab]) keys.push(...SCREEN_KEYS[tab]);
   if (tab === 'service') keys.push(...serviceScreenKeys());
-  if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars());
+  if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars(), ...depthVars(currentMode()));
   // okno Alarmy, zakladka Zaawansowane (ekran HMI 81)
   if (!$('#alarmWin').hidden && alarmPage === 'adv' && state.mode === 'online') paths.push(...ADVANCED_VARS);
   if (!$('#manWin').hidden) {
@@ -2941,10 +3003,11 @@ function syncOpFromPlc() {
   const op = currentOp();
   apply('op', op.fields, plcOpMap(op)?.fields);
   const cf = commonFields();
-  if (cf) apply(commonSlot(), cf, plcCommonMap());
+  if (cf) apply('common', cf, plcCommonMap());
+  renderDepthTable();
   if (changed) {
     applyVisibility('op', op.fields);
-    if (cf) applyVisibility(commonSlot(), cf);
+    if (cf) applyVisibility('common', cf);
     updateCutInfo();
     requestDraw();
   }
@@ -2986,7 +3049,7 @@ async function plcOpStart() {
   const cf = commonFields();
   const cmap = plcCommonMap();
   if (cf && cmap) {
-    const cv = readGroup(commonSlot(), cf);
+    const cv = readGroup('common', cf);
     for (const [k, m] of Object.entries(cmap)) if (!(m.lvl > state.plc.level)) items.push(...fieldWrites(m, cv[k]));
   }
   const v = readGroup('op', op.fields);
@@ -3134,6 +3197,8 @@ function bindUi() {
   }
   $('#stoneShow').onclick = () => { if (state.pose) growExtent(); view.viewName = 'top'; fit(); };
 
+  for (const b of $$('[data-depth]')) b.onclick = () => depthButton(b.dataset.depth);
+  $('#commonFields').addEventListener('input', () => renderDepthTable());
   $('#cutStart').onclick = () => {
     if (state.mode === 'online') { plcOpStart(); return; }
     const d = offlineDynamics();

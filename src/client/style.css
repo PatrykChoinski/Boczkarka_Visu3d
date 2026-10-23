@@ -388,3 +388,11 @@ body:not(.admin) .plcName { display: none !important; }
 #plcPause.active { background: #f9a825; color: #000; }
 .plcToast { position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); z-index: 50; max-width: min(90vw, 640px);
   background: var(--bad); color: #fff; padding: 10px 16px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .3); font-weight: 600; }
+
+/* tablica glebokosci (Depths) w sekcji Glebokosc */
+.depthBtns { flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.depthBtns button.active { background: var(--accent, #1e6fd9); color: #fff; }
+table.depthTable { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+table.depthTable th, table.depthTable td { border: 1px solid var(--border, #ddd); padding: 2px 6px; text-align: right; }
+table.depthTable td.n { color: var(--muted); text-align: center; width: 2em; }
+table.depthTable input { width: 100%; box-sizing: border-box; text-align: right; }

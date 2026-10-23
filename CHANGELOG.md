@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Głębokość, wyjazd – tablica głębokości i przyciski jak w PLC
+- Bez pola „Korekta cięcia wewn.”. Tryb tablicy przyciskami „Równe głębokości” / „Skok cięcia” / „Cięcie na raz” (jak ekran HMI glebokosci_ciecia; frez – glebokosci_frez) zamiast listy; parametry zawsze widoczne. Tablica pod przyciskami: piła – podstawowa i alternatywna (`HMI.aCutDepthPrimary` / `Secondary`), frez – `HMI.aMillDepthPrimary`. PLC: przycisk zapisuje parametry i bit przeliczenia (Depths), tablica z PLC (subskrypcja przy otwartym Manual), komórki do poprawienia jak w HMI; symulacja – tablica liczona jak w PLC.
+- Poprawka: wartości z PLC do pól wspólnych frezu (grupa pól `common`).
+
 ### Alarmy – zakładka Zaawansowane
 - Jak ekran HMI 81 „alarmy opis”: ID alarmów osi X / Y / Z / A / B i napędu głównego, błędy napędów, napięcia enkoderów, błędy grup interpolacji XYZAB / XYZ z tekstem SoftMotion CNC, CNC ERROR i FILE PROCESSOR ERROR. Subskrypcja tylko przy otwartej zakładce. Generator listy HMI zbiera też wyświetlacze tekstu (Character Display). Sprawdzone na PLC maszyny: 22/22 wartości.
 

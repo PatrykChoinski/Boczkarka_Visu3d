@@ -18,10 +18,11 @@ const DEG = Math.PI / 180;
 // Wspolne parametry frezu (Depths frezu, serwis MillST) - w zakladce Operacja zamiast parametrow ciecia
 export const MILL_COMMON_FIELDS = [
   { k: 'reserve', label: 'Zapas głębokości [mm] (fMillDepthMillReserve)', t: 'num', d: 0 },
-  { k: 'depthMode', label: 'Tablica głębokości frezu', t: 'sel', d: 'same', o: [['same', 'równe przejścia'], ['step', 'stały skok'], ['one', 'jedno przejście']] },
-  { k: 'passes', label: 'Przejścia (iMillDepthPrimaryNumber)', t: 'int', d: 3, show: (v) => v.depthMode === 'same' },
-  { k: 'step', label: 'Skok głębokości [mm] (fMillDepthMillHeight)', t: 'num', d: 10, show: (v) => v.depthMode === 'step' },
-  { k: 'minLast', label: 'Min. ostatni skok [mm] (fMillDepthMinLastJumpDistance)', t: 'num', d: 2, show: (v) => v.depthMode === 'step' },
+  // tryb tablicy - przyciski przeliczenia (jak HMI glebokosci_frez), pole ukryte
+  { k: 'depthMode', label: 'Tablica głębokości frezu', t: 'sel', d: 'same', o: [['same', 'równe przejścia'], ['step', 'stały skok'], ['one', 'jedno przejście']], show: () => false },
+  { k: 'passes', label: 'Przejścia (iMillDepthPrimaryNumber)', t: 'int', d: 3 },
+  { k: 'step', label: 'Skok głębokości [mm] (fMillDepthMillHeight)', t: 'num', d: 10 },
+  { k: 'minLast', label: 'Min. ostatni skok [mm] (fMillDepthMinLastJumpDistance)', t: 'num', d: 2 },
   { k: 'zFirst', label: 'Najpierw Z, potem przejście (bServiceMillZFirst)', t: 'bool', d: false, svc: 'bServiceMillZFirst' },
   { k: 'overtaking', label: 'Zjazd na % długości (fCutOvertakingPrecent)', t: 'num', d: 70, show: (v) => !v.zFirst },
   { k: 'above', label: 'Wyjazd nad materiał [mm] (fParameterZMoveAboveMaterial)', t: 'num', d: 20 },
