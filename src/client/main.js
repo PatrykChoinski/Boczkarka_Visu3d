@@ -13,7 +13,7 @@ import { MODES, AUTO_KINDS, modeById, modeFromValues, homingProgram, toolOpsFor 
 import { ProgramBuilder, gotoProgram, AXES } from '../shared/motion.js';
 import { OPS, COMMON_FIELDS, defaults, parseField, savedPosition, opPlanLines } from '../shared/ops.js';
 import { STEPS, stepName, addAutomat, previewSteps, rowsFromArrays, hasSurfaceSteps } from '../shared/automat.js';
-import { MACHINE_KEYS, DYNAMICS_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
+import { MACHINE_KEYS, DYNAMICS_KEYS, SCREEN_KEYS, dynamicsToInternal, dynamicsToDisplay, plcDynamics, plcKey, validEndpoint } from '../shared/config.js';
 import { JogMotion, jogVelocity, interpolationDir, laserLine, DIAGONALS, diagonalDir, tiltMoveVector } from '../shared/jog.js';
 import { MANUAL_SCREENS, manualScreenHtml } from './manualpanel.js';
 import { installIcons, icon } from './icons.js';
@@ -28,6 +28,8 @@ import { parseGcode, gcodeSummary } from '../shared/gcode.js';
 import { cncProgram, cncTipPath } from '../shared/cnc.js';
 import { HeightMap, shadeHeightMap } from '../shared/heightmap.js';
 import { cutoutShapes } from '../shared/cutout.js';
+import { PlcCtl } from './plcctl.js';
+import { PLC_OPS, PLC_COMMON, fieldWrites, fieldRead, mapVars, pulseCount } from '../shared/plcforms.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -69,6 +71,9 @@ const state = {
   forms: null,              // formularze offline: operacje, wspolne parametry, automat
   jog: null,                // ruch reczny offline (JogMotion) w toku
   saw: { manual: false, angle: 0, last: 0 },   // naped tarczy: offline wlaczony recznie, kat obrotu szprych
+  // sterowanie w trybie PLC (serwer /api/plc): poziom dostepu do zapisu (bez users.json - pelny tylko na komputerze z VizuApp)
+  plc: { level: 0, user: '', local: false, auth: false },
+  plcVals: {},              // zmienne PLC spoza konfiguracji (pola formularzy, przelaczniki) - /api/plc/watch, SSE {hmi}
 };
 
 let view;
@@ -600,11 +605,16 @@ function onlineValues(v) {
 }
 
 function connectEvents() {
-  const es = new EventSource('api/events');
+  // cid - identyfikator strony: serwer konczy subskrypcje jej ekranow po zamknieciu strony
+  const es = new EventSource(`api/events?cid=${plcCtl().cid}`);
   es.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if ('status' in msg) { state.online.status = msg.status; state.online.connected = msg.connected; }
-    if (msg.values) onlineValues(msg.values);
+    // pelny stan na poczatku, potem tylko zmiany z subskrypcji OPC UA
+    if (msg.values) onlineValues(msg.full ? msg.values : { ...state.online.values, ...msg.values });
+    if (msg.hmi) plcFormValues(msg.full ? msg.hmi : { ...state.plcVals, ...msg.hmi });
+    if (msg.full || 'status' in msg) updatePlcWatch();
+    if ('status' in msg || msg.values) updatePlcControls();
     if ('status' in msg && state.conn && !$('#connWin').hidden) connInfo(state.conn);
     $('#fromPlc').disabled = !hasPlcDynamics();
     requestDraw();
@@ -682,7 +692,8 @@ function writeFields(attr, obj) {
 }
 
 function saveForms() {
-  if (!state.forms) return;
+  // tryb PLC: formularze pokazuja wartosci z PLC - w przegladarce zostaja wartosci symulacji
+  if (!state.forms || state.mode === 'online') return;
   try {
     const op = currentOp();
     state.forms.ops[op.id] = readGroup('op', op.fields);
@@ -754,6 +765,8 @@ function renderGroup(container, group, fields, values, saves = []) {
   applyVisibility(group, fields);
   for (const el of container.querySelectorAll('[data-g]')) {
     el.addEventListener('input', () => { applyVisibility(group, fields); offlineFormsChanged(); });
+    // tryb PLC: zmiana pola zapisuje zmienna PLC (jak pole ekranu HMI)
+    el.addEventListener('change', () => { if (state.mode === 'online') plcFieldChanged(group, el.dataset.k); });
   }
   for (const b of container.querySelectorAll('[data-save-x]')) b.onclick = () => savePoint(group, fields, b.dataset.saveX, b.dataset.saveY);
   for (const b of container.querySelectorAll('[data-save-z]')) b.onclick = () => savePoint(group, fields, null, null, b.dataset.saveZ);
@@ -843,6 +856,9 @@ function showOp() {
   // wspolne pola: pila - glebokosc / wychyl / wyjazd, frez - tablica glebokosci frezu (Depths), wiercenie / polerowanie - brak
   renderCommon();
   renderGroup($('#opFields'), 'op', op.fields, state.forms.ops[op.id] || defaults(op.fields), op.saves);
+  syncOpFromPlc();
+  updatePlcOpForm();
+  updatePlcWatch();
   updateCutInfo();
   requestDraw();
 }
@@ -1423,7 +1439,7 @@ function svcValue(it) {
 }
 
 function setSvcValue(it, val) {
-  if (state.mode !== 'offline') return;
+  if (state.mode === 'online') { if (it.v) plcWrite([{ v: it.v, value: val }]); return; }
   const v = it.v;
   const ix = svcIndex(v);
   if (ix) {
@@ -1471,7 +1487,7 @@ function svcItemHtml(it, i, ro) {
     case 'bit':
       return `<div class="svcItem" title="${tip}">${it.label ? `<span>${it.label}</span>` : ''}<button type="button" class="svcBit" ${id}${dis}></button>${code}</div>`;
     case 'button':
-      return `<div class="svcItem" title="${tip}"><button type="button" class="svcBtn" ${id}${ro || !it.act ? ' disabled' : ''}>${it.label ?? it.v}</button>${code}</div>`;
+      return `<div class="svcItem" title="${tip}"><button type="button" class="svcBtn" ${id}${ro || !(it.act || (state.mode === 'online' && it.v)) ? ' disabled' : ''}>${it.label ?? it.v}</button>${code}</div>`;
     case 'goto':
       return `<div class="svcItem" title="HMI: ${it.hmi}${it.page || it.tab ? '' : ' – brak w Visu3D'}"><button type="button" class="svcGoto" ${id}${it.page || it.tab ? '' : ' disabled'}>${it.label}</button></div>`;
     case 'dead':
@@ -1492,10 +1508,11 @@ function extraServiceGroup(all = SERVICE_PAGES.flatMap((p) => p.groups.flatMap((
 function showServicePage(id) {
   state.servicePage = id;
   renderService();
+  updatePlcWatch();
 }
 
 function renderService() {
-  const ro = state.mode === 'online';
+  const ro = state.mode === 'online' && !plcCanControl();
   // Zmienne PLC (lista zmiennych i wezlow OPC UA) - tryb PLC, tylko Admin
   const varsOk = ro && accessLevel() >= 3;
   for (const b of $$('#servicePages [data-spage="plcvars"]')) b.hidden = !varsOk;
@@ -1522,7 +1539,7 @@ function renderService() {
   }
   const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
   $('#serviceHint').textContent = `${page.title} – jak ekran HMI ${page.hmi}. ${page.note ? `${page.note} ` : ''}`
-    + (ro ? 'Wartości z PLC (tylko odczyt).' : 'Symulacja: parametry głowicy i narzędzi, bity serwisowe (HMI.bService…) i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
+    + (state.mode === 'online' ? (ro ? 'Wartości z PLC (tylko odczyt – zaloguj się, żeby zmieniać).' : 'Wartości z PLC – zmiana zapisuje do PLC jak ekran HMI.') : 'Symulacja: parametry głowicy i narzędzi, bity serwisowe (HMI.bService…) i prędkość jog A są wspólne z resztą aplikacji; pozostałe wartości jak w HMI, zapamiętane w przeglądarce; odczyty sprzętu (falowniki, wejścia) tylko w trybie PLC.');
   const all = svcAll();
   const extra = page.id === 'settings' ? extraServiceGroup() : null;
   $('#servicePage').innerHTML = [...page.groups, ...(extra ? [{ ...extra, items: all.slice(all.length - extra.items.length) }] : [])]
@@ -1545,7 +1562,7 @@ function renderService() {
       el.onclick = () => setSvcValue(it, !svcValue(it));
     } else if (it.k === 'goto') {
       el.onclick = () => { if (it.page) showServicePage(it.page); else if (it.tab && !$(`.tabs [data-tab="${it.tab}"]`).hidden) showTab(it.tab); };
-    } else if (it.k === 'button' && it.act) {
+    } else if (it.k === 'button' && (it.act || (state.mode === 'online' && it.v))) {
       bindServiceAction(el, it, all);
     }
   }
@@ -1554,7 +1571,15 @@ function renderService() {
 
 // Akcje przyciskow serwisu w symulacji
 function bindServiceAction(el, it, all) {
-  const [kind, a1, a2] = it.act.split(':');
+  const [kind, a1, a2] = (it.act || '').split(':');
+  // PLC: przycisk jak w HMI - chwilowy (jog A / B) trzymany, pozostale - zapis TRUE (PLC sam kasuje)
+  if (state.mode === 'online') {
+    if (kind === 'jog') {
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); plcCtl().hold(it.v); });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => plcCtl().release(it.v));
+    } else el.onclick = () => plcWrite([{ v: it.v, value: kind === 'set' && Number.isFinite(Number(a1)) ? Number(a1) : true }]);
+    return;
+  }
   if (kind === 'jog') {
     // JOG obrot / wychyl (bManualA/BJogLeft/Right) - trzymany
     el.addEventListener('pointerdown', (e) => {
@@ -1645,10 +1670,11 @@ function speedGroups() {
 }
 
 function renderSpeed() {
-  const online = state.mode === 'online';
+  // PLC: zapis po zalogowaniu (pole - HMI.fVelocity..., +/- - HMI2.bVelocity...Inc / Dec jak w HMI); bez - tylko odczyt
+  const online = state.mode === 'online' && !plcCanControl();
   const groups = speedGroups();
-  $('#speedHint').innerHTML = online
-    ? `Jak ekran HMI „predkosc”: wartości z PLC (tylko odczyt).${state.online.values.advancedDesktop ? ' <b>Pulpit rozszerzony</b> (bServiceAdvancedDesktop) – prędkości z potencjometrów pulpitu.' : ''}`
+  $('#speedHint').innerHTML = state.mode === 'online'
+    ? `Jak ekran HMI „predkosc”: wartości z PLC${online ? ' (tylko odczyt – zaloguj się, żeby zmieniać)' : '; wpisana wartość i +/- (trzymane) zapisują do PLC'}.${state.online.values.advancedDesktop ? ' <b>Pulpit rozszerzony</b> (bServiceAdvancedDesktop) – prędkości z potencjometrów pulpitu.' : ''}`
     : 'Jak ekran HMI „predkosc”: wpisz wartość albo +/- (przytrzymaj – szybciej). Zmiana działa od razu w symulacji (te same wartości co w Parametrach).';
   $('#speedGroups').innerHTML = groups.map((g) => `
     <div class="speedGroup" data-speed="${g.k}" title="HMI.${g.plc}">
@@ -1672,21 +1698,27 @@ function renderSpeed() {
       const step = g.step ?? (g.max > 0 ? g.max / 100 : 0.01);
       setSpeed(k, Math.min(g.max ?? Infinity, Math.max(0, (Number.isFinite(g.value) ? g.value : 0) + sign * step)));
     };
+    const plcVar = () => `HMI2.b${speedGroups().find((x) => x.k === k).plc.slice(1)}${sign > 0 ? 'Inc' : 'Dec'}`;
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      if (state.mode === 'online') { plcCtl().hold(plcVar()); return; }
       stepOnce();
       timer = setTimeout(function rep() { stepOnce(); timer = setTimeout(rep, 80); }, 400);
     });
-    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => clearTimeout(timer));
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+      b.addEventListener(ev, () => { clearTimeout(timer); if (state.mode === 'online') plcCtl().release(plcVar()); });
+    }
   }
   syncSpeed(true);
 }
 
 // Offline: nowa predkosc do pol dynamiki (m/min) albo czestotliwosci pily (Hz), LIMIT(0, wartosc, maksimum) jak w PLC
 function setSpeed(k, value) {
-  if (state.mode !== 'offline' || !Number.isFinite(value)) return;
+  if (!Number.isFinite(value)) return;
   const g = speedGroups().find((x) => x.k === k);
   const val = Math.min(g.max ?? Infinity, Math.max(0, value));
+  // PLC: HMI.fVelocity... w mm/s (silnik w Hz)
+  if (state.mode === 'online') { plcWrite([{ v: `HMI.${g.plc}`, value: k === 'drive' ? val : val / M_MIN }]); return; }
   if (k === 'drive') {
     $('#sawFreq').value = +val.toFixed(2);
     requestDraw();
@@ -1774,13 +1806,15 @@ const isServiceField = (f) => /\(serwis\)|bService/.test(f.label);
 
 function authChanged() {
   const a = state.auth;
+  refreshPlcAccess();
   // opisy zmiennych PLC (nazwy, podpowiedzi) tylko dla Admina
   setPlcNamesAdmin(accessLevel() >= 3);
   // polaczenie z PLC (#148): Serwis / Admin, nie w wersji statycznej
   $('#connOpen').hidden = !connAllowed();
   if (!connAllowed()) $('#connWin').hidden = true;
-  $('#authBox').hidden = !a.enabled;
-  $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : 'Niezalogowany';
+  // logowanie zawsze widoczne; bez users.json - informacja, jak zalozyc uzytkownikow
+  $('#authBox').hidden = false;
+  $('#authUser').innerHTML = a.user ? `<b>${a.user}</b>` : a.enabled ? 'Niezalogowany' : 'Logowanie wyłączone';
   $('#loginBtn').innerHTML = icon(a.user ? 'logout' : 'login');
   $('#loginBtn').title = a.user ? `Wyloguj (${a.user})` : 'Zaloguj';
   if (state.forms) {
@@ -1865,7 +1899,15 @@ function logout() {
 }
 
 function bindAuth() {
-  $('#loginBtn').onclick = () => (state.auth.user ? logout() : showLogin(true));
+  $('#loginBtn').onclick = () => {
+    if (!state.auth.enabled) {
+      alert('Logowanie wyłączone – brak użytkowników (plik users.json obok config.json).\n'
+        + 'Załóż użytkownika na komputerze z VizuApp: node scripts/users.mjs set Serwis (albo Operator / Admin), potem uruchom VizuApp ponownie.\n'
+        + 'Bez użytkowników: pełny dostęp tylko na tym komputerze, z tabletu – STOP i PAUZA.');
+      return;
+    }
+    if (state.auth.user) logout(); else showLogin(true);
+  };
   $('#loginClose').onclick = () => showLogin(false);
   $('#loginCancel').onclick = () => showLogin(false);
   $('#loginForm').onsubmit = (e) => { e.preventDefault(); login($('#loginUser').value, $('#loginPass').value); };
@@ -1899,6 +1941,7 @@ function showManWin(open) {
     syncManualWin();
     updateManInfo();
   }
+  updatePlcWatch();
 }
 
 // Okno w granicach ekranu (pozycja zapamietana w przegladarce)
@@ -1979,6 +2022,11 @@ function updateManInfo() {
   if (!p || $('#manWin').hidden) return;
   const d = offlineDynamics();
   syncManualSpeeds();
+  if (state.mode === 'online') {
+    $('#manInfo').innerHTML = `PLC: ${state.manContinuous ? 'tryb ciągły – ruch, dopóki przycisk jest wciśnięty' : `tryb skok – ruch o ${Number($('#manJump').value) || 0} mm`}`
+      + '; przyciski zapisują do PLC jak ekrany MPG / MANUAL INTERPOLATION (punkty A, B, C – zapisane w PLC).';
+    return;
+  }
   const pts = ['A', 'B', 'C'].filter((k) => state.points[k]).join(', ') || 'brak';
   $('#manInfo').innerHTML = `${state.manContinuous ? 'Tryb ciągły – ruch, dopóki przycisk jest wciśnięty' : `Tryb skok – ruch o ${Number($('#manJump').value) || 0} mm`}; `
     + `ruchy po skosie i interpolowane: ${((state.saw.manual ? d.cutVel : d.fastVel) * 0.06).toFixed(2)} m/min `
@@ -1996,6 +2044,18 @@ function syncManualWin() {
     const el = $(`#manPos_${ax}`);
     if (el) el.value = fmtAxis(ax === 'a' || ax === 'b' ? p[ax] : tool[ax]);
   }
+  if (state.mode === 'online') {
+    // stany z PLC: laser (IOVars.yLaser), przelaczniki ruchu interpolowanego, tryb ciagly, skok
+    const pv = state.plcVals;
+    for (const b of $$('#manWin [data-hmi="laser"]')) b.classList.toggle('on', Boolean(v.laser));
+    for (const b of $$('#manWin [data-toggle]')) b.classList.toggle('on', Boolean(pv[MAN_TOGGLE[b.dataset.hmi]]));
+    if ('HMI.bManualContinousMode' in pv && state.manContinuous !== Boolean(pv['HMI.bManualContinousMode'])) {
+      state.manContinuous = Boolean(pv['HMI.bManualContinousMode']);
+      renderContinuous();
+    }
+    if (typeof pv['HMI.fManualJumpDist'] === 'number' && $('#manJump') !== document.activeElement) $('#manJump').value = +pv['HMI.fManualJumpDist'].toFixed(2);
+    return;
+  }
   for (const b of $$('#manWin [data-hmi="laser"]')) b.classList.toggle('on', $('#showLaser').checked);
   if (state.manToggle && !state.jog) state.manToggle = null;
   for (const b of $$('#manWin [data-toggle]')) b.classList.toggle('on', b.dataset.hmi === state.manToggle);
@@ -2003,6 +2063,14 @@ function syncManualWin() {
 
 // Prędkości osi na ekranie Ręczne (#140) - te same pola co jog w Parametrach (data-d), wpisane tu przepisywane tam
 function syncManualSpeeds() {
+  if (state.mode === 'online') {
+    // PLC: HMI.fJogX/Y/ZVelocity [mm/s] -> m/min
+    for (const el of $$('[data-jogvel]')) {
+      const x = state.online.values[el.dataset.jogvel];
+      if (el !== document.activeElement && typeof x === 'number') el.value = +(x * 0.06).toFixed(3);
+    }
+    return;
+  }
   for (const el of $$('[data-jogvel]')) {
     if (el !== document.activeElement) el.value = $(`[data-d="${el.dataset.jogvel}"]`).value;
   }
@@ -2159,12 +2227,22 @@ function bindManual() {
   renderPoints();
   for (const el of $$('[data-jogvel]')) {
     el.addEventListener('input', () => {
+      if (state.mode === 'online') return;
       $(`[data-d="${el.dataset.jogvel}"]`).value = el.value;
       offlineFormsChanged();
       updateManInfo();
     });
+    // PLC: HMI.fJogX/Y/ZVelocity w mm/s, pole w m/min
+    el.addEventListener('change', () => {
+      const n = Number(el.value);
+      if (state.mode === 'online' && n > 0) plcWrite([{ v: `HMI.fJog${el.dataset.jogvel[3]}Velocity`, value: n / 0.06 }]);
+    });
   }
   $('#manJump').addEventListener('input', updateManInfo);
+  $('#manJump').addEventListener('change', () => {
+    const n = Number($('#manJump').value);
+    if (state.mode === 'online' && n >= 0) plcWrite([{ v: 'HMI.fManualJumpDist', value: n }]);
+  });
   for (const b of $$('#manWin [data-hmi]')) {
     if ('hold' in b.dataset) {
       // trzymany: ruch od nacisniecia, puszczenie - hamowanie (jog) albo stop (skok, wychyl)
@@ -2172,18 +2250,20 @@ function bindManual() {
         e.preventDefault();
         b.setPointerCapture?.(e.pointerId);
         b.classList.add('pressed');
+        if (state.mode === 'online') { if (MAN_HOLD[b.dataset.hmi]) plcCtl().hold(MAN_HOLD[b.dataset.hmi]); return; }
         manualAction(b.dataset.hmi);
       });
       const up = () => {
         if (!b.classList.contains('pressed')) return;
         b.classList.remove('pressed');
+        if (state.mode === 'online') { if (MAN_HOLD[b.dataset.hmi]) plcCtl().release(MAN_HOLD[b.dataset.hmi]); return; }
         releaseJog();
         // ManualInterpolationST: skosy i wychyl tylko trzymane (puszczenie - stop, tez w trybie skok); skok osi (MCRelative) do konca
         if (/^(tilt|diag)/.test(b.dataset.hmi)) stopProgram();
       };
       for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up);
     } else {
-      b.onclick = () => manualAction(b.dataset.hmi);
+      b.onclick = () => (state.mode === 'online' ? plcManualAction(b.dataset.hmi, b.closest('[data-page]')?.dataset.page) : manualAction(b.dataset.hmi));
     }
   }
   // punkty A, B, C w zakladce Pozycja: zapis aktualnej pozycji (bManualSavePointA..C)
@@ -2206,8 +2286,9 @@ function bindManual() {
     updateManInfo();
     requestDraw();
   };
-  $('#sawStart').onclick = () => setSaw(true);
-  $('#sawStop').onclick = () => setSaw(false);
+  // PLC: START / STOP PIŁY jak na ekranach manual (bManualMainDriveOn / bManualMainDriveOff)
+  $('#sawStart').onclick = () => (state.mode === 'online' ? plcWrite([{ v: 'HMI2.bManualMainDriveOn', value: true }]) : setSaw(true));
+  $('#sawStop').onclick = () => (state.mode === 'online' ? plcWrite([{ v: 'HMI2.bManualMainDriveOff', value: true }]) : setSaw(false));
   for (const el of [$('#sawFreq'), $('#sawDir'), $('#showLaser')]) el.addEventListener('input', requestDraw);
 }
 
@@ -2223,6 +2304,8 @@ function setMode(mode) {
   for (const b of $$('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
   state.tool.key = '';
   toolModeChanged();
+  updatePlcControls();
+  updatePlcWatch();
   if (!$('.tab[data-tab="service"]').hidden) renderService();
   $('#speedBox').hidden = mode !== 'offline';
   $('#stoneOffline').hidden = mode !== 'offline';
@@ -2265,6 +2348,7 @@ function showTab(name) {
   if (name === 'cut') state.planSource = 'op';
   if (name === 'auto') { state.planSource = 'auto'; showAuto(); }
   if (name === 'cnc') updateCncInfo();
+  updatePlcWatch();
   requestDraw();
 }
 
@@ -2623,10 +2707,10 @@ function updateTabs() {
     const need = name === 'auto' ? (state.mode === 'offline' ? 1 : 0) : (TAB_LEVEL[name] ?? 0);
     t.hidden = !show || level < need;
   }
-  const manOk = state.mode === 'offline' && based && mode.tabs.includes('man') && level >= 1;
+  const manOk = based && mode.tabs.includes('man') && (state.mode === 'offline' ? level >= 1 : plcCanControl());
   $('#manOpen').disabled = !manOk;
   $('#manOpen').title = manOk ? 'Ruchy ręczne (jak ekran ruchów ręcznych w HMI) – okno, które można przesuwać i zamknąć'
-    : state.mode === 'offline' ? 'Ruchy ręczne – dopiero po bazowaniu' : 'Ruchy ręczne – tylko offline (wizualizacja nie steruje maszyną)';
+    : !based ? 'Ruchy ręczne – dopiero po bazowaniu' : 'Ruchy ręczne – zaloguj się (sterowanie maszyną z PLC)';
   if (!manOk) showManWin(false);
   const locked = !based || level < 1;
   $('#lockInfo').hidden = !locked;
@@ -2638,7 +2722,7 @@ function updateTabs() {
     el.classList.toggle('locked', locked);
   }
   for (const el of $$('[data-level]')) el.classList.toggle('noaccess', level < Number(el.dataset.level));
-  for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' || level < 1;
+  for (const b of $$('[data-home], #homeStart')) b.disabled = state.mode !== 'offline' ? !plcCanControl() : level < 1;
   const active = $('.tabs button.active');
   if (active && !active.hidden) setPanelTitle(active.dataset.tab);
   // zakladka zniknela (tryb, bazowanie, wylogowanie): online automat, potem Stol i kamien, inaczej pierwsza widoczna
@@ -2681,7 +2765,7 @@ function renderHoming() {
   const target = state.tool.homing || state.tool.target || mode.id;
   for (const b of $$('[data-home]')) {
     b.classList.toggle('active', b.dataset.home === (offline ? target : mode.id));
-    b.disabled = !offline || accessLevel() < 1;
+    b.disabled = offline ? accessLevel() < 1 : !plcCanControl();
   }
   $('#homeStart').hidden = !offline;
   $('#homeStop').hidden = !offline;
@@ -2732,6 +2816,243 @@ function finishHoming() {
   toolModeChanged();
 }
 
+// --- sterowanie maszyna w trybie PLC: bazowanie, STOP / PAUZA, formularze -------------------------------
+// Zapis przez serwer VizuApp (/api/plc/*, src/server/plcwrite.js) - tylko zmienne zapisywane przez ekrany HMI;
+// poziom dostepu liczy serwer (logowanie; bez users.json - pelny tylko na komputerze z VizuApp, z sieci STOP / PAUZA).
+
+const plcOnline = () => state.mode === 'online' && Boolean(state.cfg.plc) && !state.cfg.static;
+const plcCanControl = () => plcOnline() && state.online.connected && state.plc.level >= 1;
+
+async function refreshPlcAccess() {
+  if (!state.cfg.plc || state.cfg.static) return;
+  const r = await fetch('api/plc', { headers: authHeaders() }).catch(() => null);
+  if (r?.ok) state.plc = await r.json();
+  updatePlcControls();
+  if (state.forms) { renderHoming(); updateTabs(); updatePlcOpForm(); }
+}
+
+function updatePlcControls() {
+  const on = plcOnline();
+  $('#plcStop').hidden = !on;
+  $('#plcPause').hidden = !on;
+  if (!on) return;
+  const paused = Boolean(state.online.values.pauseMachine);
+  $('#plcPause').classList.toggle('active', paused);
+  $('#plcPause').querySelector('.lbl').textContent = paused ? 'WZNÓW' : 'PAUZA';
+  $('#plcStop').disabled = !state.online.connected;
+  $('#plcPause').disabled = !state.online.connected;
+}
+
+let plcCtlObj = null;
+const plcCtl = () => (plcCtlObj ??= Object.assign(new PlcCtl({ headers: (...a) => authHeaders(...a), onError: (m) => plcError(m) }),
+  { active: () => Boolean(state.cfg?.plc) && !state.cfg.static }));
+
+// Subskrypcje zmiennych otwartego ekranu / okna (poza zmiennymi w tle): przy kazdej zmianie ekranu - nowa lista,
+// serwer zamyka subskrypcje poprzedniego ekranu
+function updatePlcWatch() {
+  if (!state.cfg?.plc || state.cfg.static || !state.forms) return;
+  const tab = $('.tabs button.active')?.dataset.tab;
+  const keys = [];
+  const paths = [];
+  if (SCREEN_KEYS[tab]) keys.push(...SCREEN_KEYS[tab]);
+  if (tab === 'service') keys.push(...serviceScreenKeys());
+  if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars());
+  if (!$('#manWin').hidden) {
+    keys.push(...SCREEN_KEYS.man);
+    if (state.mode === 'online') paths.push(...MAN_WATCH);
+  }
+  plcCtl().setScreen(keys, paths);
+}
+
+// zmienne otwartej strony serwisu (klucze "hmi:..." / klucze konfiguracji)
+function serviceScreenKeys() {
+  const page = SERVICE_PAGES.find((p) => p.id === state.servicePage) || SERVICE_PAGES[0];
+  const items = [...page.groups.flatMap((g) => g.items), ...(page.id === 'settings' ? extraServiceGroup()?.items || [] : [])];
+  const out = [];
+  for (const it of items) {
+    for (const v of [it.v, /^\s*([\w.[\]]+)\s*=/.exec(it.vis || '')?.[1]]) {
+      if (!v) continue;
+      const k = plcKey(v.replace(/\[\d+\]$/, ''));
+      if (k) out.push(k);
+    }
+  }
+  return out;
+}
+const plcWrite = (items) => plcCtl().write(items);
+
+// komunikat bledu zapisu (np. brak uprawnien, brak polaczenia) - na dole ekranu przez kilka sekund
+function plcError(msg) {
+  const el = $('#plcToast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(plcError.timer);
+  plcError.timer = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+// wartosci zmiennych z /api/plc/watch (SSE {hmi}): okno ruchow recznych, formularze
+function plcFormValues(vals) {
+  state.plcVals = vals || {};
+  syncManualWin();
+  updateManInfo();
+  syncOpFromPlc();
+}
+
+// --- Manual w trybie PLC: pola operacji = zmienne PLC (plcforms.js), START - bit startu operacji -----------------
+const plcCommonMap = () => PLC_COMMON[currentMode()] || null;
+const plcOpMap = (op = currentOp()) => PLC_OPS[op.id] || null;
+
+// zmienne do odczytu: wszystkie operacje trybu i wspolne parametry
+function plcFormVars() {
+  return [...modeOps().flatMap((op) => mapVars(plcOpMap(op)?.fields)), ...mapVars(plcCommonMap())];
+}
+
+// wartosci z PLC do formularza (pole w trakcie edycji zostaje)
+function syncOpFromPlc() {
+  if (state.mode !== 'online' || !state.forms || $('.tab[data-tab="cut"]').hidden) return;
+  const pv = state.plcVals;
+  let changed = false;
+  const apply = (group, fields, map) => {
+    for (const f of fields) {
+      if (f.svc) continue;
+      const x = fieldRead(map?.[f.k], pv);
+      const el = fieldEl(group, f.k);
+      if (x === undefined || !el || el === document.activeElement) continue;
+      if (f.t === 'bool') {
+        if (el.checked !== Boolean(x)) { el.checked = Boolean(x); changed = true; }
+      } else {
+        const txt = Array.isArray(x) ? x.join(', ') : String(typeof x === 'number' ? +x.toFixed(3) : x);
+        if (el.value !== txt) { el.value = txt; changed = true; }
+      }
+    }
+  };
+  const op = currentOp();
+  apply('op', op.fields, plcOpMap(op)?.fields);
+  const cf = commonFields();
+  if (cf) apply(commonSlot(), cf, plcCommonMap());
+  if (changed) {
+    applyVisibility('op', op.fields);
+    if (cf) applyVisibility(commonSlot(), cf);
+    updateCutInfo();
+    requestDraw();
+  }
+}
+
+function plcFieldChanged(group, k) {
+  const fields = group === 'op' ? currentOp().fields : commonFields() || [];
+  const map = group === 'op' ? plcOpMap()?.fields : plcCommonMap();
+  const f = fields.find((x) => x.k === k);
+  const m = map?.[k];
+  // tablica glebokosci (polecenie przeliczenia) - przy START
+  if (!f || !m || m.cmd) return;
+  const el = fieldEl(group, k);
+  const val = parseField(f, f.t === 'bool' ? el.checked : el.value);
+  if (m.pulse) { plcPulse(m, val); return; }
+  plcWrite(fieldWrites(m, val));
+}
+
+// wartosc zmieniana impulsami (np. rodzaj polerowania: bPolishingIncrease +1 na cykl PLC, jak przycisk w HMI)
+async function plcPulse(m, value) {
+  const n = pulseCount(m, value, state.plcVals);
+  if (n === null) { plcError('Brak odczytu wartości z PLC – spróbuj za chwilę'); return false; }
+  for (let i = 0; i < n; i++) {
+    if (!await plcWrite([{ v: m.pulse, value: true }])) return false;
+    await new Promise((r) => { setTimeout(r, 250); });
+  }
+  return true;
+}
+
+// START operacji: wartosci formularza do PLC (z poleceniem przeliczenia tablicy glebokosci), po 0,3 s bit startu
+async function plcOpStart() {
+  const op = currentOp();
+  const spec = plcOpMap(op);
+  if (!plcCanControl()) { plcError('Zaloguj się, żeby sterować maszyną'); return; }
+  if (!spec) { plcError(`${op.name}: w PLC brak ręcznego startu tej operacji`); return; }
+  const why = spec.noStart?.(readGroup('op', op.fields));
+  if (why) { plcError(why); return; }
+  const items = (spec.pre || []).map(([v, value]) => ({ v, value }));
+  const cf = commonFields();
+  const cmap = plcCommonMap();
+  if (cf && cmap) {
+    const cv = readGroup(commonSlot(), cf);
+    for (const [k, m] of Object.entries(cmap)) if (!(m.lvl > state.plc.level)) items.push(...fieldWrites(m, cv[k]));
+  }
+  const v = readGroup('op', op.fields);
+  for (const [k, m] of Object.entries(spec.fields)) if (op.fields.some((f) => f.k === k && !f.svc)) items.push(...fieldWrites(m, v[k]));
+  if (!confirm(`START na maszynie: ${op.name} (${op.plc}). Kontynuować?`)) return;
+  if (!await plcWrite(items)) return;
+  for (const [k, m] of Object.entries(spec.fields)) if (m?.pulse && !await plcPulse(m, v[k])) return;
+  await new Promise((r) => { setTimeout(r, 300); });
+  plcWrite([{ v: spec.start, value: true }]);
+}
+
+// Manual w trybie PLC: pola i START tylko po zalogowaniu
+function updatePlcOpForm() {
+  const online = state.mode === 'online';
+  const ro = online && !plcCanControl();
+  const map = { ...(plcOpMap()?.fields || {}) };
+  for (const el of $$('#opFields [data-g], #commonFields [data-g]')) {
+    // tylko odczyt: brak uprawnien albo wartosc liczona przez PLC / pole bez zmiennej PLC (w operacji)
+    const m = el.dataset.g === 'op' ? map[el.dataset.k] : plcCommonMap()?.[el.dataset.k];
+    el.disabled = ro || (online && (m === null || (m && m.ro && !m.pulse) || m?.lvl > state.plc.level));
+  }
+  if (online) {
+    const spec = plcOpMap();
+    $('#cutStart').disabled = ro || !spec;
+    $('#cutStart').title = spec ? `START na maszynie (${spec.start})` : 'Ta operacja nie ma ręcznego startu w PLC';
+  } else {
+    $('#cutStart').disabled = false;
+    $('#cutStart').title = 'Start';
+  }
+}
+
+// --- ruchy reczne w trybie PLC: przyciski okna jak MPG (121) i MANUAL INTERPOLATION (125) w HMI ---------------
+const MAN_HOLD = {
+  'jog:x:1': 'HMI2.bManualXJogRight', 'jog:x:-1': 'HMI2.bManualXJogLeft', 'jog:y:1': 'HMI2.bManualYJogUp', 'jog:y:-1': 'HMI2.bManualYJogDown',
+  'jog:z:-1': 'HMI2.bManualZJogUp', 'jog:z:1': 'HMI2.bManualZJogDown',
+  'diag:lu': 'HMI2.bManualXYLeftUp', 'diag:ru': 'HMI2.bManualXYRightUp', 'diag:ld': 'HMI2.bManualXYLeftDown', 'diag:rd': 'HMI2.bManualXYRightDown',
+  'tilt:down': 'HMI2.bManualMoveWithTiltDown', 'tilt:up': 'HMI2.bManualMoveWithTiltUp',
+};
+// przelaczniki (Maintained w HMI): ruch interpolowany do STOP albo ponownego nacisniecia, laser, tryb ciagly
+const MAN_TOGGLE = {
+  'interp:along': 'HMI2.bManualXYSetAngle', 'interp:back': 'HMI2.bManualXYSetAngle180',
+  'interp:perp': 'HMI2.bManualXYSetAngle90', 'interp:perpBack': 'HMI2.bManualXYSetAngle270',
+  laser: 'HMI2.bLaser', continuous: 'HMI.bManualContinousMode',
+};
+const MAN_WATCH = [...Object.values(MAN_TOGGLE), 'HMI.fManualJumpDist', 'HMI.fManualASetPosition', 'HMI.fManualBSetPosition'];
+const abSetVar = (ax, v) => `HMI2.bManual${ax.toUpperCase()}SetPosition${v < 0 ? `M${-v}` : v}`;
+
+function plcManualAction(act, page) {
+  const [kind, arg] = act.split(':');
+  const pv = state.plcVals;
+  if (MAN_TOGGLE[act]) { plcWrite([{ v: MAN_TOGGLE[act], value: !pv[MAN_TOGGLE[act]] }]); return; }
+  switch (kind) {
+    case 'a': case 'b': plcWrite([{ v: abSetVar(kind, Number(arg)), value: true }]); break;
+    case 'goto': {
+      const val = Number($(`#${arg}Set`).value);
+      if (!Number.isFinite(val) || (arg === 'b' && (val < 0 || val > 90))) { plcError(arg === 'b' ? 'Wychył B: zadaj 0–90°' : 'Zadaj kąt obrotu'); break; }
+      plcWrite([{ v: `HMI.fManual${arg.toUpperCase()}SetPosition`, value: val }, { v: `HMI2.bManual${arg.toUpperCase()}MoveToPosAbs`, value: true }]);
+      break;
+    }
+    case 'point': plcWrite([{ v: `HMI2.bManualMovePoint${arg}`, value: true }]); break;
+    case 'stop':
+      plcCtl().releaseAll();
+      plcWrite(page === 'interp' ? [{ v: 'HMI2.bManualXYAngleStop', value: true }, { v: 'HMI2.bManualMoveWithTiltStop', value: true }]
+        : [{ v: 'HMI2.bManualMovePointStop', value: true }]);
+      break;
+    case 'tab': if (!$(`.tabs [data-tab="${arg}"]`).hidden) showTab(arg); break;
+    default: break;
+  }
+}
+
+// Bazowanie z PLC: jak przycisk PRZYGOTUJ DO PRACY (HMI2.bBaseSaw / Mill / Drill / Polishing) - PLC robi BaseHomingST
+function plcHoming(modeId) {
+  const m = modeById(modeId);
+  if (!plcCanControl() || !m) return;
+  if (!confirm(`Bazowanie maszyny – ${m.name}: Z do 0, A na 0, B na ${m.homeB}°. Maszyna wykona ruch. Kontynuować?`)) return;
+  plcWrite([{ v: `HMI2.${m.base}`, value: true }]);
+}
+
+
 // --- obsluga przyciskow ------------------------------------------------------------
 
 function bindUi() {
@@ -2774,6 +3095,9 @@ function bindUi() {
   renderGroup($('#figCtx'), 'figctx', FIGURE_CONTEXT_FIELDS, { ...defaults(FIGURE_CONTEXT_FIELDS), ...(state.forms.figCtx || {}) });
   $('#figFill').onclick = fillFigure;
   $('#autoStart').onclick = () => {
+    // PLC (IO): program automatu startuje tylko przycisk START na pulpicie przy ekranie automatu (bProgramCutStart ...);
+    // przycisk START listy w HMI (bStartProgramCut) nie jest czytany przez PLC
+    if (state.mode === 'online') { plcError('Program automatu w PLC startuje przycisk START na pulpicie maszyny (ekran automatu)'); return; }
     const d = offlineDynamics();
     const kind = readAuto().kind;
     if (!validDynamics(d) || state.mode !== 'offline' || (kind === 'mill') !== (currentMode() === 'mill')) return;
@@ -2800,6 +3124,7 @@ function bindUi() {
   $('#stoneShow').onclick = () => { if (state.pose) growExtent(); view.viewName = 'top'; fit(); };
 
   $('#cutStart').onclick = () => {
+    if (state.mode === 'online') { plcOpStart(); return; }
     const d = offlineDynamics();
     if (!validDynamics(d)) return;
     clearCuts();
@@ -2814,9 +3139,11 @@ function bindUi() {
     if (sim.running) { sim.lastFrame = performance.now(); requestAnimationFrame(simFrame); }
     requestDraw();
   };
-  for (const b of $$('.pauseBtn')) b.onclick = togglePause;
+  // tryb PLC: PAUZA / STOP jak na ekranach HMI (HMI2.bPauseMachine - przelacznik, HMI.bStopMachine)
+  for (const b of $$('.pauseBtn')) b.onclick = () => (state.mode === 'online' ? plcWrite([{ v: 'HMI2.bPauseMachine', value: !state.online.values.pauseMachine }]) : togglePause());
   for (const b of $$('.stopBtn')) {
     b.onclick = () => {
+      if (state.mode === 'online') { plcWrite([{ v: 'HMI.bStopMachine', value: true }]); return; }
       stopProgram();
       state.sim.program = null;
       markAutoRow(-1);
@@ -2835,7 +3162,15 @@ function bindUi() {
   // tryby bazowania: piktogram narzedzia i B po bazowaniu (nazwa w podpowiedzi)
   const MODE_ICON = { saw: 'saw', mill: 'mill', drill: 'drill', polishing: 'polish' };
   $('#homeModes').innerHTML = MODES.map((x) => `<button data-home="${x.id}" title="${x.name}">${icon(MODE_ICON[x.id], 'big')}<small>B ${x.homeB}°</small></button>`).join('');
-  for (const b of $$('[data-home]')) b.onclick = () => { state.tool.target = b.dataset.home; renderHoming(); };
+  for (const b of $$('[data-home]')) {
+    b.onclick = () => {
+      if (state.mode === 'online') { plcHoming(b.dataset.home); return; }
+      state.tool.target = b.dataset.home;
+      renderHoming();
+    };
+  }
+  $('#plcStop').onclick = () => plcWrite([{ v: 'HMI.bStopMachine', value: true }]);
+  $('#plcPause').onclick = () => plcWrite([{ v: 'HMI2.bPauseMachine', value: !state.online.values.pauseMachine }]);
   $('#homeStart').onclick = () => startHoming(state.tool.target || state.tool.mode);
   // automat: punkt startowy z aktualnej pozycji (bProgramSaveStartPosition / bProgramMillStartPointSave)
   $('#autoSaveStart').onclick = () => {

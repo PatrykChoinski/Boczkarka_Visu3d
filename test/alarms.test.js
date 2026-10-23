@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ALARMS, SIM_ALARMS, AlarmLog, activeFromValues, alarmByVar, alarmIndex } from '../src/shared/alarms.js';
-import { VARIABLES, SLOW_KEYS } from '../src/shared/config.js';
+import { VARIABLES, BACKGROUND_KEYS } from '../src/shared/config.js';
 
 test('lista alarmow jak w HMI: 81 alarmow, bity HMI2.bAlarm..., teksty PL / EN', () => {
   assert.equal(ALARMS.length, 81);
@@ -15,9 +15,9 @@ test('lista alarmow jak w HMI: 81 alarmow, bity HMI2.bAlarm..., teksty PL / EN',
   for (const v of Object.values(SIM_ALARMS)) assert.ok(alarmByVar(v), v);
 });
 
-test('alarmy z tablicy HMI2.aAlarms jak w HMI (alarm n = aAlarms[n - 1]), czytanej rzadziej', () => {
+test('alarmy z tablicy HMI2.aAlarms jak w HMI (alarm n = aAlarms[n - 1]), subskrybowanej w tle (caly czas)', () => {
   assert.equal(VARIABLES.alarms, 'HMI2.aAlarms');
-  assert.ok(SLOW_KEYS.includes('alarms'));
+  assert.ok(BACKGROUND_KEYS.includes('alarms'));
   assert.ok(!Object.values(VARIABLES).some((v) => /^HMI2\.bAlarm/.test(v)));
   assert.equal(alarmIndex(1), 0);
   assert.ok(ALARMS.every((a) => alarmIndex(a.n) >= 0 && alarmIndex(a.n) < 200));

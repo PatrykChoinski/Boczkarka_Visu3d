@@ -17,6 +17,9 @@
     <!-- #155 alarmy jak w HMI: liczba aktywnych, okno z lista -->
     <button id="alarmOpen" class="tool" title="Alarmy"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span class="alarmCount" id="alarmCount" hidden></span></button>
     <button id="manOpen" class="tool" title="Ruchy ręczne – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
+    <!-- tryb PLC: STOP i PAUZA maszyny jak na ekranach HMI (HMI.bStopMachine, HMI2.bPauseMachine) - bez logowania -->
+    <button id="plcStop" class="tool plcStop" title="STOP maszyny (HMI.bStopMachine)" hidden><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">STOP</span></button>
+    <button id="plcPause" class="tool" title="PAUZA / WZNÓW (HMI2.bPauseMachine)" hidden><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="lbl">PAUZA</span></button>
     <div class="spacer"></div>
     <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
       <select id="speed">
@@ -36,6 +39,7 @@
     </div>
   </header>
 
+  <div id="plcToast" class="plcToast" role="alert" hidden></div>
   <main>
     <!-- przyciski ekranow po lewej stronie jak menu HMI (Menu_Lewo) -->
     <!-- przyciski ekranow po lewej stronie w kolejnosci menu HMI (Menu_Lewo): tryb automatyczny, CNC, manualny,
@@ -43,7 +47,7 @@
     <nav class="tabs side" id="screens">
       <button data-tab="auto" title="Automat"><svg class="ic big" aria-hidden="true"><use href="#i-auto"/></svg></button>
       <button data-tab="cnc" title="G-kod (CNC)"><svg class="ic big" aria-hidden="true"><use href="#i-gcode"/></svg></button>
-      <button data-tab="cut" data-offline title="Manual"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
+      <button data-tab="cut" title="Manual"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
       <button data-tab="home" title="Bazowanie"><svg class="ic big" aria-hidden="true"><use href="#i-homing"/></svg></button>
       <button data-tab="service" title="Serwis"><svg class="ic big" aria-hidden="true"><use href="#i-wrench"/></svg></button>
       <button data-tab="par" data-offline title="Parametry"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>

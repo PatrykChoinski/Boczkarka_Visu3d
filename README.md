@@ -158,6 +158,44 @@ nie mają własnych użytkowników (w HMI jest tylko poziom 5 na przycisku ekran
   na maszynie. Hasła sprawdza tylko serwer VizuApp; w publicznej stronie nie ma
   ani haseł, ani ich skrótów (dałyby się złamać).
 
+### Sterowanie maszyną w trybie PLC (tablet)
+
+Ekrany Visu3D sterują maszyną tak jak panel HMI: zmiana pola zapisuje zmienną PLC
+(jak pole na ekranie HMI), przycisk ustawia ten sam bit co przycisk HMI. Zapisuje
+serwer VizuApp przez OPC UA (`src/server/plcwrite.js`).
+
+- **Dostęp:** zapis po zalogowaniu (Operator – ekrany pracy, Serwis – ekrany
+  serwisowe; poziom liczy serwer). Bez `users.json` – pełny dostęp tylko na
+  komputerze z VizuApp, z tabletu wyłącznie STOP i PAUZA. Tablet: załóż
+  użytkowników (`node scripts/users.mjs set Operator` …) i zaloguj się.
+- **Tylko zmienne HMI:** serwer zapisuje wyłącznie zmienne, które zapisuje któryś
+  element ekranów HMI (`src/server/hmiwrites.json`, z projektu DIAScreen:
+  `python scripts/gen-hmi-writes.py`), z poziomem ekranu i rodzajem przycisku.
+- **STOP / PAUZA** w górnym pasku (`HMI.bStopMachine`, `HMI2.bPauseMachine` –
+  przełącznik PAUZA / WZNÓW) – zawsze, także bez logowania.
+- **Bazowanie:** przycisk trybu = PRZYGOTUJ DO PRACY (`HMI2.bBaseSaw` / `Mill` /
+  `Drill` / `Polishing`), po potwierdzeniu; resztę robi PLC (BaseHomingST).
+- **Manual:** formularz pokazuje wartości z PLC, zmiana pola zapisuje zmienną
+  (`src/shared/plcforms.js` – pole → zmienna, przeliczenia, bit START). START
+  (po potwierdzeniu) zapisuje wartości formularza i polecenie przeliczenia tablicy
+  głębokości, po 0,3 s bit startu operacji (np. `HMI2.bCutStart`, `HMI2.bMillStart`,
+  `PolishingGVL.bStart`). Zmienne wspólne kilku operacji (np. `HMI.iManualInternal`,
+  `HMI.bManualToLaser`) mają jedną wartość – jak w HMI. Profil nie ma ręcznego startu
+  w PLC (tylko krok programu profili); frezowanie stołu (`bMillTableStart`) – tylko
+  z panelu maszyny.
+- **Ruchy ręczne:** strzałki, skosy i ruch wzdłuż wychylonej tarczy – przyciski
+  chwilowe (wciśnięty = TRUE, potwierdzany co 200 ms; serwer zapisuje FALSE, gdy
+  potwierdzenia ustaną na 0,7 s – zerwane połączenie z tabletem nie zostawia jazdy).
+  Ruchy interpolowane, laser, tryb ciągły / skok – przełączniki jak w HMI; kąty,
+  punkty A / B / C, NAD MATERIAŁ, STOP – bity Set; skok i prędkości jog – zmienne.
+- **Prędkość:** pole zapisuje `HMI.fVelocity…` (mm/s, na ekranie m/min), +/- trzymane
+  jak w HMI (`HMI2.bVelocity…Inc` / `Dec`). **Serwis:** pola, przełączniki i
+  przyciski zapisują zmienne ekranów serwisowych (od poziomu Serwis).
+- **Automat:** program startuje w PLC tylko przycisk START na pulpicie przy ekranie
+  automatu (IO); START listy w HMI (`bStartProgramCut`) nie jest czytany przez PLC.
+- Wartości pól spoza konfiguracji serwer czyta na żądanie strony
+  (`POST /api/plc/watch`, strumień SSE `{hmi}`).
+
 ### Full HD na maszynie, tablet z adresem PLC (#148)
 
 - **Domyślnie (maszyna):** ekran Full HD (1920×1080), serwer VizuApp na
@@ -637,7 +675,7 @@ Geometria znaczników: `src/shared/toolspin.js` (`toolLayout`, `toolSpinMarks`),
 | `endpoint` | `opc.tcp://localhost:4840` | serwer OPC UA sterownika (adres domyślny; adres wpisany w oknie „Połączenie z PLC” – `connection.json`) |
 | `username`, `password` | puste | logowanie do OPC UA; puste oznacza anonimowe |
 | `nodePrefix` | puste | np. `ns=4;s=\|var\|<urządzenie>.Application.`; puste oznacza szukanie węzłów w drzewie `.../Application/GlobalVars/<GVL>` |
-| `pollMs` | 50 | okres odczytu; serwer czyta tylko wtedy, gdy strona jest otwarta |
+| `pollMs` | 50 | interwał subskrypcji OPC UA (publikacja i próbkowanie; CODESYS zwykle podnosi do 100 ms). Cała wymiana przez subskrypcje: zmienne w tle (`BACKGROUND_KEYS`) przez cały czas, zmienne ekranu tylko na czas jego otwarcia |
 | `variables` | `{}` | podmiana zmiennych, np. `{"materialHeight": "HMI.fParameterZMaterialHeight"}` |
 | `autoClearOnStart` | `true` | nowe cięcie (`bCutStart`) czyści poprzednie |
 | `materialMargin`, `materialMinSize` | 300, [1200, 800] | rozmiar materiału w trybie „bez wymiarów” (mm) |
