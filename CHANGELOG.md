@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Automat w trybie PLC – kreator figur liczony w PLC
+- Kreator figur widoczny także w trybie PLC. „Wypełnij bufor” zapisuje pola figury do PLC (pełne ścieżki z nazw w etykietach – `POST /api/plc/resolve`), ustawia `HMI2.iFigureType` + `bFigureAddToCurrent` (jak makro HMI), czeka na `bFigureCalculated` z `FiguresGeometricSt`, kopiuje `aFigure*` do bufora programu `aProgram*` i liczbę kroków `iFigureNumber` (jak makro HMI / `GetDemoProgram`), na koniec `bFigureCalculated` FALSE (PLC wraca do NONE). Tabela Automatu pokazuje program z PLC. Parametry figury i bity serwisowe zostają z PLC; przy pracującym programie automatu bufor nie jest zmieniany.
+- Serwer: zapis całej tablicy jednym zapisem OPC UA (lista wartości, typ elementu z subskrypcji), zmienne zapisywane w HMI makrami (`MACRO_WRITES`: figury i bufor programu) na liście zapisu. Testowy PLC liczy figury jak `FiguresGeometricSt`. Testy: `npm test` 192/192, przeglądarka na testowym PLC (Prostokąt – 7 kroków w buforze PLC).
+
 ### Bazowanie i dostęp bez bazowania
 - Bazowanie w trybie PLC nie startowało: PLC startuje na zboczu `bBase*` i kasuje bit dopiero po udanym bazowaniu, a po przerwanym zostaje TRUE (na maszynie wszystkie cztery były TRUE). Przycisk jak przełącznik w HMI: najpierw wszystkie `HMI2.bBase*` FALSE, po 0,3 s wybrany TRUE.
 - Przyciski bazowania w trybie PLC przeliczane po każdej zmianie połączenia z PLC (wcześniej stan z chwili przed połączeniem – mogły zostać wyłączone mimo zalogowania).

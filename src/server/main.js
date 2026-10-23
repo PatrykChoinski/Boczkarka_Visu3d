@@ -130,6 +130,7 @@ async function handlePlc(control, source, auth, req, res, pathname) {
   const body = await readJson(req, 65536);
   try {
     if (pathname === '/api/plc/watch') return json(res, 200, { watched: control.watch(body.cid, body.keys, body.paths) });
+    if (pathname === '/api/plc/resolve') return json(res, 200, control.resolve(body.names));
     if (pathname === '/api/plc/write') await control.write(body.items, acc.who, acc.level);
     else if (pathname === '/api/plc/hold') await control.hold(String(body.v || ''), Boolean(body.on), acc.who, acc.level);
     else return json(res, 404, { error: 'Nieznana operacja' });

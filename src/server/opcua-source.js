@@ -26,6 +26,13 @@ export function plainValue(variant) {
   return ArrayBuffer.isView(v) ? Array.from(v) : v;
 }
 
+// Tablica w typie elementu (node-opcua: Float64Array dla LREAL itd.; BOOL / STRING - zwykla lista)
+const TYPED = {
+  [DataType.Double]: Float64Array, [DataType.Float]: Float32Array, [DataType.Int16]: Int16Array, [DataType.UInt16]: Uint16Array,
+  [DataType.Int32]: Int32Array, [DataType.UInt32]: Uint32Array, [DataType.SByte]: Int8Array, [DataType.Byte]: Uint8Array,
+};
+const typedArray = (dataType, list) => (TYPED[dataType] ? TYPED[dataType].from(list) : list);
+
 // Wartosc do zapisu w typie wezla (typ z biezacej wartosci w PLC): BOOL, liczby calkowite (zaokraglone, w zakresie typu),
 // REAL / LREAL, STRING. Inne typy (LINT, struktury) - blad
 const INT_RANGE = {
@@ -69,7 +76,7 @@ export class OpcUaSource extends EventEmitter {
     this.resolved = {};       // klucz -> NodeId (po polaczeniu)
     this.missing = [];        // klucze bez wezla w OPC UA (zmienna nie ma w symbol configu / zla nazwa)
     this.dataTypes = {};      // klucz -> typ danych z serwera OPC UA (diagnostyka /api/variables)
-    this.types = new Map();   // NodeId -> DataType (zapis bez dodatkowego odczytu)
+    this.types = new Map();   // NodeId -> {dataType, array} (zapis bez dodatkowego odczytu)
     this.stopped = false;
     this.session = null;
     this.sub = null;
@@ -195,7 +202,7 @@ export class OpcUaSource extends EventEmitter {
         return;
       }
       if (dv.value?.dataType) {
-        this.types.set(String(it.nodeId), dv.value.dataType);
+        this.types.set(String(it.nodeId), { dataType: dv.value.dataType, array: dv.value.arrayType !== VariantArrayType.Scalar });
         if (it.key) this.dataTypes[it.key] = DataType[dv.value.dataType];
       }
       const v = plainValue(dv.value);
@@ -285,11 +292,19 @@ export class OpcUaSource extends EventEmitter {
     const ids = items.map((it) => this.nodeIdFor(it.v));
     if (ids.some((id) => !id)) throw new Error('nieznany przedrostek węzłów OPC UA');
     items.forEach((it, i) => {
-      if (!this.types.has(ids[i]) && /^b[A-Z0-9]/.test(it.v.split('.').pop())) this.types.set(ids[i], DataType.Boolean);
+      if (!this.types.has(ids[i]) && !Array.isArray(it.value) && /^b[A-Z0-9]/.test(it.v.split('.').pop())) this.types.set(ids[i], { dataType: DataType.Boolean, array: false });
     });
     const unknown = [...new Set(ids.filter((id) => !this.types.has(id)))];
     if (unknown.length) await this.typesBySubscription(unknown, items, ids);
-    const req = items.map((it, i) => ({ nodeId: ids[i], attributeId: AttributeIds.Value, value: { value: writeVariant(this.types.get(ids[i]), it.value) } }));
+    const req = items.map((it, i) => {
+      const t = this.types.get(ids[i]);
+      // cala tablica (np. bufor programu aProgram*): wartosc - lista, typ elementu z subskrypcji
+      if (t.array !== Array.isArray(it.value)) throw new Error(`${it.v}: ${t.array ? 'tablica – podaj listę wartości' : 'to nie jest tablica'}`);
+      const value = t.array
+        ? new Variant({ dataType: t.dataType, arrayType: VariantArrayType.Array, value: typedArray(t.dataType, it.value.map((x) => writeVariant(t.dataType, x).value)) })
+        : writeVariant(t.dataType, it.value);
+      return { nodeId: ids[i], attributeId: AttributeIds.Value, value: { value } };
+    });
     const res = await session.write(req);
     res.forEach((sc, i) => { if (!sc.isGood()) throw new Error(`${items[i].v}: ${sc.name}`); });
   }
@@ -309,8 +324,7 @@ export class OpcUaSource extends EventEmitter {
           if (!left.has(id)) return;
           left.delete(id);
           if (!dv.statusCode.isGood()) { clearTimeout(timer); reject(new Error(`${name(id)}: brak w OPC UA (${dv.statusCode.name})`)); return; }
-          if (dv.value.arrayType !== VariantArrayType.Scalar) { clearTimeout(timer); reject(new Error(`${name(id)}: tablica – zapis tylko pojedynczych elementów`)); return; }
-          this.types.set(id, dv.value.dataType);
+          this.types.set(id, { dataType: dv.value.dataType, array: dv.value.arrayType !== VariantArrayType.Scalar });
           if (!left.size) { clearTimeout(timer); resolve(); }
         });
       });

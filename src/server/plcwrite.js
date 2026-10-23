@@ -19,6 +19,15 @@ const BUTTONS = new Set(['seton', 'mom', 'maint', 'setc', 'mstate']);
 // zatrzymanie maszyny / ruchu - zawsze dozwolone (bez logowania)
 const STOP_VAR = /(^|\.)b\w*(Stop|Pause)\w*$|\.(stop|pause)Button\.button$/i;
 
+// Zmienne zapisywane w HMI makrami (generator ich nie widzi): kreator figur (FiguresGeometricSt) i bufor programu
+// automatu (makro kopiuje aFigure* do aProgram*, jak GetDemoProgram w PLC) - poziom Operator
+export const MACRO_WRITES = ['HMI2.iFigureType', 'HMI2.bFigureAddToCurrent', 'HMI2.bFigureCalculated',
+  'HMI2.aProgramXPosition', 'HMI2.aProgramYPosition', 'HMI2.aProgramNextStep', 'HMI2.aProgramRadius', 'HMI2.aProgramAngle',
+  'HMI2.aProgramDepth', 'HMI2.aProgramDepthEnd', 'HMI2.aProgramLength', 'HMI2.aProgramOutIn',
+  'HMI2.iProgramCutNumber', 'HMI2.iProgramProfilesNumber', 'HMI2.iProgramMillNumber'];
+export const MACRO_READS = ['HMI2.aFigureXPosition', 'HMI2.aFigureYPosition', 'HMI2.aFigureIndex', 'HMI2.aFigureRadius',
+  'HMI2.aFigureAngle', 'HMI2.aFigureDepthStart', 'HMI2.aFigureDepthEnd', 'HMI2.aFigureLength', 'HMI2.iFigureNumber'];
+
 // Dostep z listy HMI (src/server/hmiwrites.json, scripts/gen-hmi-writes.py): {write: {zmienna: {level, kinds}}, read};
 // STOP / PAUZA (przyciski) - poziom 0
 export function hmiAccess(data) {
@@ -28,7 +37,8 @@ export function hmiAccess(data) {
     const stop = STOP_VAR.test(v) && !/\.bService/.test(v) && [...kinds].some((k) => BUTTONS.has(k));
     write[v] = { level: stop ? 0 : w.level, kinds };
   }
-  return { write, read: new Set([...(data?.read || []), ...Object.keys(write)]) };
+  for (const v of MACRO_WRITES) write[v] ??= { level: 1, kinds: new Set(['macro']) };
+  return { write, read: new Set([...(data?.read || []), ...Object.keys(write), ...MACRO_READS]) };
 }
 
 export function loadHmiWrites(file) {
@@ -104,6 +114,22 @@ export class PlcControl {
   tick() {
     const now = Date.now();
     for (const [v, h] of this.holds) if (h.until < now) this.release(v, 'puszczony (brak potwierdzenia z panelu)').catch(() => {});
+  }
+
+  // Pelne sciezki zmiennych z samych nazw (np. etykiety pol figur: "fFigureLength" -> "HMI2.fFigureLength",
+  // "aPolygonX[3]" -> "HMI.aPolygonX[3]") - z listy zmiennych zapisywanych przez HMI
+  resolve(names) {
+    const base = new Map();
+    for (const v of Object.keys(this.access.write)) {
+      const short = v.split('.').pop().replace(/\[\d+\]$/, '');
+      if (!base.has(short)) base.set(short, v.slice(0, v.length - v.split('.').pop().length));
+    }
+    const out = {};
+    for (const n of Array.isArray(names) ? names.slice(0, 500) : []) {
+      const m = /^([A-Za-z_]\w*)(\[\d+\])?$/.exec(String(n));
+      if (m && base.has(m[1])) out[n] = base.get(m[1]) + n;
+    }
+    return out;
   }
 
   // Subskrypcja zmiennych otwartego ekranu klienta (cid): keys - klucze konfiguracji, paths - zmienne z listy HMI

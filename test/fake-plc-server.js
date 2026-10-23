@@ -46,6 +46,9 @@ import { cutProgram, depthTable, ProgramBuilder } from '../src/shared/motion.js'
 import { MODES, toolOpsFor } from '../src/shared/tools.js';
 import { defaults } from '../src/shared/ops.js';
 import { MAX_APEX, rectangle } from '../src/shared/area.js';
+import { FIGURES, FIGURE_CONTEXT_FIELDS, figureContext } from '../src/shared/figures/index.js';
+import { COMMON_FIELDS } from '../src/shared/ops.js';
+import { MACRO_WRITES, MACRO_READS } from '../src/server/plcwrite.js';
 
 // Sterowanie z Visu3D (tryb PLC): zmienne zapisywane / czytane przez HMI (src/server/hmiwrites.json) spoza konfiguracji -
 // w pamieci, zapisywalne jak w PLC.
@@ -242,22 +245,66 @@ export async function startFakePlc(port, mode = 'saw') {
     });
   }
   const known = new Set(Object.values(VARIABLES));
-  for (const p of panelVars()) {
+  // kreator figur (FiguresGeometricSt): tablice wyniku aFigure* [0..249]
+  const FIG_ARRAYS = new Set(MACRO_READS.filter((v) => /aFigure/.test(v)));
+  const onSet = {};
+  for (const p of new Set([...panelVars(), ...MACRO_WRITES, ...MACRO_READS])) {
     if (known.has(p)) continue;
-    const type = panelType(p);
-    panel[p] = panelDefault(type);
+    const array = FIG_ARRAYS.has(p);
+    const type = array ? (/Index$/.test(p) ? DataType.Int16 : DataType.Double) : panelType(p);
+    panel[p] = array ? Array(250).fill(0) : panelDefault(type);
     ns.addVariable({
       componentOf: globalVars,
       browseName: p,
       nodeId: `s=|var|${DEVICE}.Application.${p}`,
       dataType: type,
+      ...(array ? { valueRank: 1, arrayDimensions: [250] } : {}),
       minimumSamplingInterval: 50,
       value: {
-        get: () => new Variant({ dataType: type, value: panel[p] }),
-        set: (variant) => { panel[p] = variant.value; return StatusCodes.Good; },
+        get: () => (array ? new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: (type === DataType.Int16 ? Int16Array : Float64Array).from(panel[p]) })
+          : new Variant({ dataType: type, value: panel[p] })),
+        set: (variant) => { panel[p] = array ? Array.from(variant.value) : variant.value; onSet[p]?.(panel[p]); return StatusCodes.Good; },
       },
     });
   }
+  // FiguresGeometricSt jak w PLC (NONE -> iFigureType przy bFigureAddToCurrent, END_PROCEDURE -> bFigureCalculated,
+  // SAVE_DONE -> po bFigureCalculated FALSE reset); figura liczona funkcjami Visu3D z pol zapisanych w PLC
+  const byShort = (name) => Object.keys(panel).find((k) => k.split('.').pop() === name);
+  const LABEL_VAR = /\(([A-Za-z][A-Za-z0-9_]*)[^)]*\)\s*$/;
+  const fieldValues = (fields) => Object.fromEntries(fields.map((f) => {
+    const m = f.label.match(LABEL_VAR);
+    if (!m) return [f.k, f.d];
+    if (f.t === 'list') {
+      const off = m[1].startsWith('aPolygon') ? 1 : 0;
+      const size = m[1].startsWith('aPolygon') ? 100 : 8;
+      const list = Array.from({ length: size - off }, (_, i) => Number(panel[byShort(`${m[1]}[${i + off}]`)] ?? 0));
+      while (list.length && !list.at(-1)) list.pop();
+      return [f.k, list.length ? list : f.d];
+    }
+    const k = byShort(m[1]);
+    return [f.k, k ? panel[k] : f.d];
+  }));
+  onSet['HMI2.bFigureAddToCurrent'] = (on) => {
+    if (!on) return;
+    const fig = FIGURES.find((f) => f.v === Number(panel['HMI2.iFigureType']));
+    if (!fig) return;
+    setTimeout(() => {
+      const m = machine({ ...DEFAULTS.offline.machine });
+      const buf = fig.build(fieldValues(fig.fields), figureContext(fieldValues(FIGURE_CONTEXT_FIELDS), m, { ...defaults(COMMON_FIELDS), bladeWidth: m.bladeWidth }));
+      const col = (k) => Array.from({ length: 250 }, (_, i) => Number(buf.rows[i]?.[k]) || 0);
+      Object.assign(panel, {
+        'HMI2.aFigureXPosition': col('x'), 'HMI2.aFigureYPosition': col('y'), 'HMI2.aFigureIndex': col('step'), 'HMI2.aFigureRadius': col('r'),
+        'HMI2.aFigureAngle': col('angle'), 'HMI2.aFigureDepthStart': col('depth'), 'HMI2.aFigureDepthEnd': col('depthEnd'), 'HMI2.aFigureLength': col('length'),
+        'HMI2.iFigureNumber': buf.count,
+      });
+      panel['HMI2.bFigureCalculated'] = true;
+    }, 200);
+  };
+  onSet['HMI2.bFigureCalculated'] = (on) => {
+    if (on) return;
+    panel['HMI2.bFigureAddToCurrent'] = false;
+    panel['HMI2.iFigureType'] = 0;
+  };
   await server.start();
   return { server, nsIndex: ns.index, panel, overrides, stop: () => server.shutdown(0) };
 }

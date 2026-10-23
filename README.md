@@ -191,6 +191,9 @@ serwer VizuApp przez OPC UA (`src/server/plcwrite.js`).
 - **Prędkość:** pole zapisuje `HMI.fVelocity…` (mm/s, na ekranie m/min), +/- trzymane
   jak w HMI (`HMI2.bVelocity…Inc` / `Dec`). **Serwis:** pola, przełączniki i
   przyciski zapisują zmienne ekranów serwisowych (od poziomu Serwis).
+- **Kreator figur (Automat):** w trybie PLC figurę liczy PLC (`FiguresGeometricSt`): pola figury do PLC,
+  `iFigureType` + `bFigureAddToCurrent`, po `bFigureCalculated` kopia `aFigure*` do bufora programu `aProgram*`
+  (jak makro HMI), tabela pokazuje program z PLC.
 - **Automat:** program startuje w PLC tylko przycisk START na pulpicie przy ekranie
   automatu (IO); START listy w HMI (`bStartProgramCut`) nie jest czytany przez PLC.
 - Wartości pól spoza konfiguracji serwer czyta na żądanie strony

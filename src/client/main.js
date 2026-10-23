@@ -984,7 +984,75 @@ function showFigPicture() {
 }
 
 // "Wypelnij bufor": figura jak FiguresGeometricSt, bufor jak GetDemoProgram (aProgram* := aFigure*)
+// --- kreator figur w trybie PLC: pola figury do PLC, FiguresGeometricSt liczy aFigure*, kopia do bufora programu ---
+const FIG_LABEL_VAR = /\(([A-Za-z][A-Za-z0-9_]*)[^)]*\)\s*$/;
+const FIG_OUT = [['x', 'HMI2.aFigureXPosition', 'HMI2.aProgramXPosition'], ['y', 'HMI2.aFigureYPosition', 'HMI2.aProgramYPosition'],
+  ['step', 'HMI2.aFigureIndex', 'HMI2.aProgramNextStep'], ['r', 'HMI2.aFigureRadius', 'HMI2.aProgramRadius'],
+  ['angle', 'HMI2.aFigureAngle', 'HMI2.aProgramAngle'], ['depth', 'HMI2.aFigureDepthStart', 'HMI2.aProgramDepth'],
+  ['depthEnd', 'HMI2.aFigureDepthEnd', 'HMI2.aProgramDepthEnd'], ['length', 'HMI2.aFigureLength', 'HMI2.aProgramLength']];
+const FIG_VARS = [...FIG_OUT.map((c) => c[1]), 'HMI2.iFigureNumber', 'HMI2.bFigureCalculated'];
+const FIG_COUNT = { cut: 'HMI2.iProgramCutNumber', profile: 'HMI2.iProgramProfilesNumber', mill: 'HMI2.iProgramMillNumber' };
+
+// Zapisy pol figury (nazwy zmiennych z etykiet pol, jak scripts/compare-figures-plc.mjs)
+function figureWrites(fig) {
+  const out = [];
+  const add = (fields, v) => {
+    for (const f of fields) {
+      const m = f.label.match(FIG_LABEL_VAR);
+      // bity serwisowe (np. bServiceRectangleACBD) - ustawiane w Serwisie, nie w kreatorze
+      if (!m || f.svc) continue;
+      if (f.t === 'list') {
+        // listy: aWorktopLenghts od [0] (8), aPolygonX / Y od [1] (100); reszta tablicy 0
+        const off = m[1].startsWith('aPolygon') ? 1 : 0;
+        const size = m[1].startsWith('aPolygon') ? 100 : 8;
+        for (let i = 0; i < size; i++) out.push([`${m[1]}[${i}]`, i >= off ? Number(v[f.k]?.[i - off]) || 0 : 0]);
+      } else out.push([m[1], f.t === 'bool' ? Boolean(v[f.k]) : Number(v[f.k])]);
+    }
+  };
+  // tylko pola figury; parametry figury (korekty, szerokosc tarczy ...) - z PLC, jak w HMI
+  add(fig.fields, readGroup('fig', fig.fields));
+  return out;
+}
+
+async function plcFillFigure() {
+  const fig = currentFig();
+  const info = (t, bad = false) => { $('#figInfo').innerHTML = bad ? `<span style="color:var(--bad)">${t}</span>` : t; };
+  const v = state.online.values;
+  if (!plcCanControl()) { info('Zaloguj się, żeby wypełnić bufor programu w PLC', true); return; }
+  if (v.progCutStart || v.progProfStart || v.progMillStart) { info('Program automatu w PLC pracuje – bufor zmieniany po zakończeniu', true); return; }
+  info(`${fig.name}: zapis pól do PLC…`);
+  const writes = figureWrites(fig);
+  const r = await fetch('api/plc/resolve', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ names: writes.map((w) => w[0]) }) });
+  const paths = r.ok ? await r.json() : {};
+  // zmienne, ktorych HMI nie zapisuje (np. fSinkDrainerStartDepth) - pominiete jak w HMI
+  const items = writes.filter(([n]) => paths[n]).map(([n, value]) => ({ v: paths[n], value }));
+  for (let i = 0; i < items.length; i += 100) if (!await plcWrite(items.slice(i, i + 100))) { info(`${fig.name}: nie zapisano pól`, true); return; }
+  // FiguresGeometricSt: NONE -> iFigureType przy bFigureAddToCurrent, END_PROCEDURE -> bFigureCalculated
+  if (!await plcWrite([{ v: 'HMI2.bFigureCalculated', value: false }])) return;
+  await new Promise((res) => { setTimeout(res, 300); });
+  if (!await plcWrite([{ v: 'HMI2.iFigureType', value: fig.v }, { v: 'HMI2.bFigureAddToCurrent', value: true }])) return;
+  info(`${fig.name}: PLC liczy figurę (FiguresGeometricSt)…`);
+  const t0 = Date.now();
+  while (!state.plcVals['HMI2.bFigureCalculated'] && Date.now() - t0 < 8000) await new Promise((res) => { setTimeout(res, 100); });
+  if (!state.plcVals['HMI2.bFigureCalculated']) { info(`${fig.name}: PLC nie policzył figury (brak bFigureCalculated w 8 s)`, true); return; }
+  await new Promise((res) => { setTimeout(res, 300); });   // tablice aFigure* z tej samej publikacji subskrypcji
+  const pv = state.plcVals;
+  const count = Math.max(0, Math.round(Number(pv['HMI2.iFigureNumber']) || 0));
+  // bufor programu jak makro HMI / GetDemoProgram: aProgram* := aFigure*, liczba krokow := iFigureNumber
+  const copy = FIG_OUT.map(([, from, to]) => ({ v: to, value: Array.isArray(pv[from]) ? pv[from] : [] })).filter((it) => it.value.length);
+  if (copy.length < FIG_OUT.length) { info(`${fig.name}: brak tablic aFigure* z PLC`, true); return; }
+  const outIn = Array.from({ length: copy[0].value.length }, () => 0);
+  const ok = await plcWrite([...copy, { v: 'HMI2.aProgramOutIn', value: outIn }, { v: FIG_COUNT[fig.kind] || FIG_COUNT.cut, value: count }]);
+  // koniec procedury figury w PLC (SAVE_DONE -> NONE)
+  await plcWrite([{ v: 'HMI2.bFigureCalculated', value: false }]);
+  if (!ok) { info(`${fig.name}: nie zapisano bufora programu`, true); return; }
+  state.autoKey = '';
+  refreshOnlineAuto();
+  info(`Bufor programu w PLC wypełniony: ${fig.name}, ${count} kroków (policzone w PLC – aFigure*, iFigureNumber)`);
+}
+
 function fillFigure() {
+  if (state.mode === 'online') { plcFillFigure(); return; }
   const fig = currentFig();
   try {
     const ctx = figureContext(readGroup('figctx', FIGURE_CONTEXT_FIELDS), offlineMachine(), commonValues());
@@ -1135,7 +1203,8 @@ function writeAutoHeader(a, editable) {
   $('#autoEdit').hidden = !editable;
   $('#autoRun').hidden = !editable;
   $('#autoSaveRow').hidden = !editable;
-  $('#figBox').hidden = !editable;
+  // kreator figur: symulacja - bufor w stronie; PLC - liczy FiguresGeometricSt, bufor programu w PLC
+  $('#figBox').hidden = !editable && state.mode !== 'online';
 }
 
 function readAuto() {
@@ -2930,6 +2999,8 @@ function updatePlcWatch() {
   const keys = [];
   const paths = [];
   if (SCREEN_KEYS[tab]) keys.push(...SCREEN_KEYS[tab]);
+  // Automat w PLC: wynik kreatora figur (aFigure*, iFigureNumber, bFigureCalculated)
+  if (tab === 'auto' && state.mode === 'online') paths.push(...FIG_VARS);
   if (tab === 'service') keys.push(...serviceScreenKeys());
   if (tab === 'cut' && state.mode === 'online') paths.push(...plcFormVars(), ...depthVars(currentMode()));
   // okno Alarmy, zakladka Zaawansowane (ekran HMI 81)

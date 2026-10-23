@@ -160,6 +160,34 @@ test('historia alarmow z PLC zapisywana w SQLite (subskrypcja w tle), /api/alarm
   assert.equal((await get()).unacked, 0);
 });
 
+test('kreator figur w PLC: nazwy pol -> sciezki, FiguresGeometricSt liczy aFigure*, kopia calej tablicy do bufora programu', async () => {
+  const op = await login('Operator', 'op');
+  let r = await post('/api/plc/resolve', { names: ['fFigureLength', 'fFigureWidth', 'aPolygonX[3]', 'nieMaTakiej'] }, op);
+  const paths = await r.json();
+  assert.equal(paths.fFigureLength, 'HMI2.fFigureLength');
+  assert.equal(paths['aPolygonX[3]'], 'HMI2.aPolygonX[3]');
+  assert.ok(!('nieMaTakiej' in paths));
+  r = await post('/api/plc/write', { items: [{ v: paths.fFigureLength, value: 1200 }, { v: paths.fFigureWidth, value: 600 }] }, op);
+  assert.equal(r.status, 200, await r.text());
+  // makro HMI: iFigureType + bFigureAddToCurrent (zmienne spoza elementow HMI - lista MACRO_WRITES)
+  r = await post('/api/plc/write', { items: [{ v: 'HMI2.bFigureCalculated', value: false }] }, op);
+  r = await post('/api/plc/write', { items: [{ v: 'HMI2.iFigureType', value: 10 }, { v: 'HMI2.bFigureAddToCurrent', value: true }] }, op);
+  assert.equal(r.status, 200, await r.text());
+  assert.ok(await until(() => plc.panel['HMI2.bFigureCalculated'] === true, 5000), 'bFigureCalculated');
+  const n = plc.panel['HMI2.iFigureNumber'];
+  assert.ok(n >= 4, `prostokat - kroki ${n}`);
+  // bufor programu: cala tablica jednym zapisem (jak makro HMI / GetDemoProgram)
+  const xs = plc.panel['HMI2.aFigureXPosition'];
+  r = await post('/api/plc/write', { items: [{ v: 'HMI2.aProgramXPosition', value: xs }, { v: 'HMI2.iProgramCutNumber', value: n }] }, op);
+  assert.equal(r.status, 200, await r.text());
+  assert.deepEqual(Array.from(plc.overrides.progX).slice(0, n + 1), xs.slice(0, n + 1));
+  assert.equal(plc.overrides.progCutCount, n);
+  r = await post('/api/plc/write', { items: [{ v: 'HMI2.aProgramXPosition', value: 5 }] }, op);
+  assert.equal(r.status, 502, 'tablica - tylko lista wartosci');
+  await post('/api/plc/write', { items: [{ v: 'HMI2.bFigureCalculated', value: false }] }, op);
+  assert.equal(plc.panel['HMI2.iFigureType'], 0, 'PLC wraca do NONE');
+});
+
 test('po polaczeniu zadnego odczytu (Read) - wartosci i typy do zapisu tylko z subskrypcji', () => {
   assert.deepEqual(reads, []);
 });
