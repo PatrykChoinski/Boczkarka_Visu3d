@@ -3122,10 +3122,14 @@ function plcManualAction(act, page) {
   }
 }
 
-// Bazowanie z PLC: jak przycisk PRZYGOTUJ DO PRACY (HMI2.bBaseSaw / Mill / Drill / Polishing) - PLC robi BaseHomingST
-function plcHoming(modeId) {
+// Bazowanie z PLC: jak przycisk PRZYGOTUJ DO PRACY (HMI2.bBaseSaw / Mill / Drill / Polishing) - PLC robi BaseHomingST.
+// PLC startuje na zboczu (R_TRIG z bBase*) i kasuje bit dopiero po udanym bazowaniu - po przerwanym bazowaniu bit
+// zostaje TRUE. Dlatego jak przelacznik w HMI: najpierw wszystkie bBase* FALSE, po 0,3 s wybrany TRUE (zbocze, jeden tryb)
+async function plcHoming(modeId) {
   const m = modeById(modeId);
   if (!plcCanControl() || !m) return;
+  if (!await plcWrite(MODES.map((x) => ({ v: `HMI2.${x.base}`, value: false })))) return;
+  await new Promise((r) => { setTimeout(r, 300); });
   plcWrite([{ v: `HMI2.${m.base}`, value: true }]);
 }
 

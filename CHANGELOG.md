@@ -7,6 +7,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ## 2026-10-23
 
 ### Bazowanie i dostęp bez bazowania
+- Bazowanie w trybie PLC nie startowało: PLC startuje na zboczu `bBase*` i kasuje bit dopiero po udanym bazowaniu, a po przerwanym zostaje TRUE (na maszynie wszystkie cztery były TRUE). Przycisk jak przełącznik w HMI: najpierw wszystkie `HMI2.bBase*` FALSE, po 0,3 s wybrany TRUE.
 - Przyciski bazowania w trybie PLC przeliczane po każdej zmianie połączenia z PLC (wcześniej stan z chwili przed połączeniem – mogły zostać wyłączone mimo zalogowania).
 - Serwis / Admin: wszystkie ekrany (Manual, Automat, G-kod, Ruchy ręczne, ustawienia) także bez bazowania; Operator – jak dotąd, po bazowaniu.
 
