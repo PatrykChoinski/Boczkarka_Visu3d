@@ -6,6 +6,12 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Bazowanie w trybie PLC: odświeżanie przycisków po połączeniu i restarcie serwera
+- Zmiana połączenia z PLC (także nowy strumień SSE po restarcie serwera VizuApp) odświeża uprawnienia (`/api/plc`) i przelicza przyciski bazowania, Ruchy ręczne i zakładki. Wcześniej przyciski liczone tylko przy logowaniu i zmianie trybu maszyny – po zalogowaniu w czasie „Łączenie…” albo po zerwaniu połączenia zostawały zablokowane.
+- Serwer nie zna sesji (restart serwera – sesje w pamięci), a strona pokazuje zalogowanego: strona się wylogowuje („Niezalogowany”) zamiast cicho blokować sterowanie.
+- Uwaga: serwer serwuje zbudowany `public/app.js` – po zmianach w `src/client` start przez `npm start` (buduje stronę); sam `node src/server/main.js` daje starą stronę.
+- Sprawdzone: `npm test` 189/189; przeglądarka z testowym PLC: Operator – bazowanie aktywne, restart serwera – strona „Niezalogowany”, ponowne logowanie bez przeładowania – bazowanie aktywne.
+
 ### OPC UA tylko przez subskrypcje
 - Cała wymiana danych z PLC przez subskrypcje OPC UA zamiast cyklicznego odczytu (CODESYS na maszynie: jeden Read ~0,45 s – strona dostawała pozycje 1,6 razy na sekundę, ruchy ręczne nie były płynne; subskrypcja – zmiany co ~100 ms).
 - Subskrypcja w tle przez cały czas połączenia tylko dla `BACKGROUND_KEYS` (60 zmiennych: pozycje, prędkości osi, narzędzie, tryb, stany, stół i kamień, alarmy, STOP / PAUZA, liczniki automatu). Zmienne ekranów (`SCREEN_KEYS`: Prędkość, Automat, G-kod, Ruchy ręczne, Parametry; Serwis – zmienne otwartej strony; Manual – pola operacji) subskrybowane tylko na czas otwarcia ekranu / okna: strona zgłasza listę przy otwarciu (`POST /api/plc/watch {cid, keys, paths}`), nowy ekran zamyka subskrypcję poprzedniego, zamknięcie strony (koniec strumienia SSE `?cid=`) albo brak odświeżenia przez 15 s – koniec subskrypcji.
