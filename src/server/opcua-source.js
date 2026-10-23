@@ -13,10 +13,6 @@ import { REQUIRED, BACKGROUND_KEYS } from '../shared/config.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Limit wezlow w jednym odczycie: Server.ServerCapabilities.OperationLimits.MaxNodesPerRead (CODESYS: 100) -
-// wiekszy Read konczy sie BadTooManyOperations; bez limitu w serwerze - DEFAULT_MAX_READ
-const MAX_NODES_PER_READ = 'ns=0;i=11705';
-const DEFAULT_MAX_READ = 100;
 
 // Wartosc z DataValue do JSON: tablice LREAL (Float64Array) -> zwykle tablice, LINT / ULINT (Int64 / UInt64 - w node-opcua
 // para [starsze, mlodsze 32 bity]) -> liczba (np. licznik pracy maszyny HMI.iOverallMinutes)
@@ -51,15 +47,6 @@ export function writeVariant(dataType, value) {
   }
   if (dataType === DataType.String) return new Variant({ dataType, value: String(value ?? '') });
   throw new Error(`typ ${DataType[dataType] ?? dataType} nieobsługiwany przy zapisie`);
-}
-
-// Odczyt w porcjach po maxRead wezlow (wyniki w tej samej kolejnosci)
-export async function readChunked(session, nodes, maxRead = DEFAULT_MAX_READ) {
-  const n = Math.max(1, maxRead);
-  if (nodes.length <= n) return session.read(nodes);
-  const out = [];
-  for (let i = 0; i < nodes.length; i += n) out.push(...await session.read(nodes.slice(i, i + n)));
-  return out;
 }
 
 // Wymiana danych tylko przez subskrypcje OPC UA (CODESYS: pojedynczy Read ~0,5 s, subskrypcja - zmiany co ~100 ms):
@@ -142,9 +129,9 @@ export class OpcUaSource extends EventEmitter {
         session = await client.createSession(this.cfg.username
           ? { type: UserTokenType.UserName, userName: this.cfg.username, password: this.cfg.password || '' }
           : undefined);
-        await this.readLimits(session);
+        // bez odczytow (Read): wezly z drzewa (Browse) albo z nodePrefix, wartosci i typy - z subskrypcji
         const nodes = await this.resolve(session);
-        await this.readDataTypes(session, nodes);
+        this.dataTypes = {};
         this.session = session;
         this.nodes = nodes;
         const lost = new Promise((resolve) => {
@@ -201,8 +188,16 @@ export class OpcUaSource extends EventEmitter {
       { samplingInterval: ms, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Neither);
     group.on('changed', (item, dv, index) => {
       const it = list[index];
-      if (!it || !dv.statusCode.isGood()) return;
-      if (dv.value?.dataType) this.types.set(String(it.nodeId), dv.value.dataType);
+      if (!it) return;
+      if (!dv.statusCode.isGood()) {
+        // zmienna z nodePrefix, ktorej nie ma w OPC UA (symbol config) - brak (diagnostyka)
+        if (it.key && !this.missing.includes(it.key)) this.missing.push(it.key);
+        return;
+      }
+      if (dv.value?.dataType) {
+        this.types.set(String(it.nodeId), dv.value.dataType);
+        if (it.key) this.dataTypes[it.key] = DataType[dv.value.dataType];
+      }
       const v = plainValue(dv.value);
       if (it.key) { this.values[it.key] = v; this.pending.values[it.key] = v; } else { this.hmiValues[it.path] = v; this.pending.hmi[it.path] = v; }
       this.scheduleEmit();
@@ -282,47 +277,54 @@ export class OpcUaSource extends EventEmitter {
     for (const [cid, c] of this.clients) if (c.until < now) this.unwatch(cid);
   }
 
-  // Zapis [{v: "GVL.zmienna", value}] - typ z subskrypcji (albo jednorazowy odczyt typu); blad przerywa caly zapis
+  // Zapis [{v: "GVL.zmienna", value}] - typ z subskrypcji; bit (nazwa b...) - BOOL; inny nieznany typ - jednorazowa
+  // krotka subskrypcja (pierwsze powiadomienie) zamiast odczytu. Blad przerywa caly zapis (nic nie zapisane)
   async write(items) {
     const session = this.session;
     if (!session || !this.connected) throw new Error('brak połączenia z PLC');
     const ids = items.map((it) => this.nodeIdFor(it.v));
     if (ids.some((id) => !id)) throw new Error('nieznany przedrostek węzłów OPC UA');
-    const unknown = ids.filter((id) => !this.types.has(id));
-    if (unknown.length) {
-      const dvs = await readChunked(session, unknown.map((nodeId) => ({ nodeId, attributeId: AttributeIds.Value })), this.maxRead);
-      unknown.forEach((id, i) => {
-        const it = items[ids.indexOf(id)];
-        if (!dvs[i].statusCode.isGood()) throw new Error(`${it.v}: brak w OPC UA (${dvs[i].statusCode.name})`);
-        if (dvs[i].value.arrayType !== VariantArrayType.Scalar) throw new Error(`${it.v}: tablica – zapis tylko pojedynczych elementów`);
-        this.types.set(id, dvs[i].value.dataType);
-      });
-    }
+    items.forEach((it, i) => {
+      if (!this.types.has(ids[i]) && /^b[A-Z0-9]/.test(it.v.split('.').pop())) this.types.set(ids[i], DataType.Boolean);
+    });
+    const unknown = [...new Set(ids.filter((id) => !this.types.has(id)))];
+    if (unknown.length) await this.typesBySubscription(unknown, items, ids);
     const req = items.map((it, i) => ({ nodeId: ids[i], attributeId: AttributeIds.Value, value: { value: writeVariant(this.types.get(ids[i]), it.value) } }));
     const res = await session.write(req);
     res.forEach((sc, i) => { if (!sc.isGood()) throw new Error(`${items[i].v}: ${sc.name}`); });
   }
 
-  // Limit wezlow w odczycie z serwera (0 / brak / blad - DEFAULT_MAX_READ)
-  async readLimits(session) {
-    this.maxRead = DEFAULT_MAX_READ;
+  // Typy zmiennych z pierwszego powiadomienia jednorazowej grupy subskrypcji (potem grupa zamknieta)
+  async typesBySubscription(unknown, items, ids) {
+    if (!this.sub) throw new Error('brak subskrypcji OPC UA');
+    const group = ClientMonitoredItemGroup.create(this.sub, unknown.map((nodeId) => ({ nodeId, attributeId: AttributeIds.Value })),
+      { samplingInterval: 50, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Neither);
+    const name = (id) => items[ids.indexOf(id)].v;
     try {
-      const [dv] = await session.read([{ nodeId: MAX_NODES_PER_READ, attributeId: AttributeIds.Value }]);
-      const v = Number(dv.value?.value);
-      if (dv.statusCode.isGood() && v > 0) this.maxRead = v;
-    } catch { /* serwer bez OperationLimits */ }
+      await new Promise((resolve, reject) => {
+        const left = new Set(unknown);
+        const timer = setTimeout(() => reject(new Error(`${[...left].map(name).join(', ')}: brak odpowiedzi z OPC UA`)), 5000);
+        group.on('changed', (item, dv, index) => {
+          const id = unknown[index];
+          if (!left.has(id)) return;
+          left.delete(id);
+          if (!dv.statusCode.isGood()) { clearTimeout(timer); reject(new Error(`${name(id)}: brak w OPC UA (${dv.statusCode.name})`)); return; }
+          if (dv.value.arrayType !== VariantArrayType.Scalar) { clearTimeout(timer); reject(new Error(`${name(id)}: tablica – zapis tylko pojedynczych elementów`)); return; }
+          this.types.set(id, dv.value.dataType);
+          if (!left.size) { clearTimeout(timer); resolve(); }
+        });
+      });
+    } finally {
+      group.terminate().catch(() => {});
+    }
   }
 
   async resolve(session) {
     const variables = this.cfg.variables;
     let nodes;
     if (this.cfg.nodePrefix) {
-      nodes = {};
-      const keys = Object.keys(variables);
-      const dvs = await readChunked(session, keys.map((k) => ({ nodeId: this.cfg.nodePrefix + variables[k], attributeId: AttributeIds.Value })), this.maxRead);
-      keys.forEach((k, i) => {
-        if (dvs[i].statusCode.isGood()) nodes[k] = this.cfg.nodePrefix + variables[k];
-      });
+      // wezly z przedrostka (bez sprawdzania odczytem - zmienna spoza OPC UA: zly status w subskrypcji)
+      nodes = Object.fromEntries(Object.keys(variables).map((k) => [k, this.cfg.nodePrefix + variables[k]]));
     } else {
       nodes = await this.browseVariables(session, variables);
     }
@@ -335,21 +337,6 @@ export class OpcUaSource extends EventEmitter {
       if (id.endsWith(`.${variables[k]}`)) { this.prefix = id.slice(0, id.length - variables[k].length); break; }
     }
     return nodes;
-  }
-
-  // Typy danych wezlow (DataType) - do diagnostyki podpiecia zmiennych
-  async readDataTypes(session, nodes) {
-    const keys = Object.keys(nodes);
-    this.dataTypes = {};
-    try {
-      const dvs = await readChunked(session, keys.map((k) => ({ nodeId: nodes[k], attributeId: AttributeIds.DataType })), this.maxRead);
-      keys.forEach((k, i) => {
-        if (!dvs[i].statusCode.isGood()) return;
-        // typ wbudowany (ns=0;i=11 -> Double), typy uzytkownika (enumy, struktury PLC) - NodeId
-        const id = dvs[i].value.value;
-        this.dataTypes[k] = id?.namespace === 0 && DataType[id.value] ? DataType[id.value] : id?.toString();
-      });
-    } catch { /* bez typow - diagnostyka tylko z wartosci */ }
   }
 
   // Diagnostyka (/api/variables): kazda zmienna z konfiguracji - wezel OPC UA, typ, ostatnia wartosc

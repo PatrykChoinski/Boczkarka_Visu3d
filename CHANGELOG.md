@@ -9,7 +9,8 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ### OPC UA tylko przez subskrypcje
 - Cała wymiana danych z PLC przez subskrypcje OPC UA zamiast cyklicznego odczytu (CODESYS na maszynie: jeden Read ~0,45 s – strona dostawała pozycje 1,6 razy na sekundę, ruchy ręczne nie były płynne; subskrypcja – zmiany co ~100 ms).
 - Subskrypcja w tle przez cały czas połączenia tylko dla `BACKGROUND_KEYS` (60 zmiennych: pozycje, prędkości osi, narzędzie, tryb, stany, stół i kamień, alarmy, STOP / PAUZA, liczniki automatu). Zmienne ekranów (`SCREEN_KEYS`: Prędkość, Automat, G-kod, Ruchy ręczne, Parametry; Serwis – zmienne otwartej strony; Manual – pola operacji) subskrybowane tylko na czas otwarcia ekranu / okna: strona zgłasza listę przy otwarciu (`POST /api/plc/watch {cid, keys, paths}`), nowy ekran zamyka subskrypcję poprzedniego, zamknięcie strony (koniec strumienia SSE `?cid=`) albo brak odświeżenia przez 15 s – koniec subskrypcji.
-- SSE: pełny stan na początku, potem tylko zmienione wartości (wcześniej ~20 kB co odczyt). Zapis do PLC bez dodatkowego odczytu (typ z subskrypcji).
+- SSE: pełny stan na początku, potem tylko zmienione wartości (wcześniej ~20 kB co odczyt). Po połączeniu żadnego Read: węzły z drzewa (Browse) albo `nodePrefix`, typy z subskrypcji; zapis – typ z subskrypcji, bit (`b…`) BOOL, inny nieznany typ z jednorazowej krótkiej subskrypcji (test liczy wywołania Read – 0).
+- Sprawdzone w przeglądarce (testowy PLC): Manual – 104 pola, okno Ruchy ręczne dokłada swoje zmienne, jog X+ trzymany i puszczony, zamknięcie okna i zmiana ekranu zamykają subskrypcje.
 - Sprawdzone: `npm test` 189/189 (subskrypcja ekranu: otwarcie, zmiana, zamknięcie), na PLC maszyny: wartości ekranu 0,3–0,4 s po otwarciu, po zmianie ekranu i zamknięciu strony subskrypcja zamknięta.
 
 ### Sterowanie maszyną z Visu3D w trybie PLC (tablet)

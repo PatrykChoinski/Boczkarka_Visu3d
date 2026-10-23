@@ -31,7 +31,11 @@ before(async () => {
   server = createServer(cfg, source, new Auth(users), HMI);
   await new Promise((r) => server.listen(HTTP, '127.0.0.1', r));
   assert.ok(await until(() => source.connected && source.session), `PLC: ${source.status}`);
+  // wymiana danych tylko przez subskrypcje: kazdy Read po polaczeniu liczony (na koncu musi byc 0)
+  const read = source.session.read.bind(source.session);
+  source.session.read = (...a) => { reads.push(JSON.stringify(a[0]).slice(0, 120)); return read(...a); };
 });
+const reads = [];
 
 after(async () => {
   server.close();
@@ -130,6 +134,10 @@ test('odczyt zmiennych formularza (watch) - wartosci w strumieniu SSE {hmi}', as
   assert.ok(hmi, 'brak {hmi} w SSE');
   assert.equal(hmi['HMI.fManualXEndPosition'], 777);
   assert.equal(hmi['HMI2.bManualXJogRight'], false);
+});
+
+test('po polaczeniu zadnego odczytu (Read) - wartosci i typy do zapisu tylko z subskrypcji', () => {
+  assert.deepEqual(reads, []);
 });
 
 test('GET /api/plc: poziom dostepu - logowanie, bez tokenu podglad', async () => {
