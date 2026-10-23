@@ -127,6 +127,9 @@ export const VARIABLES = {
   profileJump: 'HMI.fProfileJump',
   smoothingJump: 'HMI.fSmoothingJump',
   smoothingArrays: 'HMI.bServiceSmoothingArrays',
+  // sterowanie z panelu HMI w trybie PLC: STOP i PAUZA (stan przyciskow w gornym pasku)
+  stopMachine: 'HMI.bStopMachine',
+  pauseMachine: 'HMI2.bPauseMachine',
   // #155 alarmy jak w HMI: tablica bitow, alarm n = aAlarms[n - 1] (alarms.js)
   alarms: 'HMI2.aAlarms',
 };

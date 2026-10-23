@@ -11,7 +11,7 @@ import { VARIABLES } from '../src/shared/config.js';
 import { SERVICE_SCREEN_VARS } from '../src/shared/servicescreens.js';
 
 // Oczekiwany rodzaj wartosci w aplikacji: bool, array albo liczba (num, w tym enumy i WORD)
-const BOOL_KEYS = /^(mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays|advancedDesktop)/;
+const BOOL_KEYS = /^(mode|systemBased|cutStart|sawRunning|sawFwd|sawRev|water|laser|prog(Mill|Cut|Prof)Start|progOuterInner|smoothingArrays|advancedDesktop|stopMachine|pauseMachine)/;
 const ARRAY_KEYS = /^(alarms|board[XYZ]|rock[XYZ]|prog(X|Y|Step|Radius|Angle|Depth|DepthEnd|Length|OutIn))$/;
 const svcKind = (t) => (/^ARRAY/.test(t ?? '') ? 'array' : t === 'BOOL' ? 'bool' : 'num');
 const expected = (k) => (k.startsWith('hmi:') ? (/^hmi:HMI\.bService/.test(k) && !SERVICE_SCREEN_VARS[VARIABLES[k]] ? 'bool' : svcKind(SERVICE_SCREEN_VARS[VARIABLES[k]]))

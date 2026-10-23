@@ -6,6 +6,13 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Sterowanie maszyną z Visu3D w trybie PLC (tablet)
+- Zapis do PLC przez serwer VizuApp (`src/server/plcwrite.js`, `POST /api/plc/write`, `/hold`, `/watch`): tylko zmienne zapisywane przez ekrany HMI (`src/server/hmiwrites.json` z `scripts/gen-hmi-writes.py` – 956 zmiennych, poziom ekranu, rodzaj przycisku wg SubType DIAScreen), po zalogowaniu (Operator / Serwis); bez `users.json` – tylko komputer z VizuApp, z sieci STOP / PAUZA. Typ zapisu z bieżącej wartości w PLC (BOOL, INT w zakresie, REAL, STRING).
+- Przyciski chwilowe (jog, skosy, ruch wzdłuż wychylonej tarczy, +/- prędkości): potwierdzane co 200 ms, serwer sam zapisuje FALSE po 0,7 s bez potwierdzenia.
+- Ekrany Visu3D w trybie PLC: STOP / PAUZA w górnym pasku, bazowanie (`HMI2.bBase…`), Manual – pola = zmienne PLC (`src/shared/plcforms.js`, wszystkie operacje piły, frezu, wiercenia, polerowania i parametry wspólne), START z potwierdzeniem; okno Ruchy ręczne, Prędkość, Serwis, START / STOP piły. Formularze w trybie PLC nie nadpisują zapisanych formularzy symulacji.
+- Testowy PLC: zmienne HMI w pamięci, zapisywalne. Test OPC UA sprawdza ruch całej pozycji (X / Y / Z / A / B) – sama X w przebiegu testowym stoi do ~10 s (przyczyna dawnych sporadycznych błędów).
+- Sprawdzone: `npm test` 188/188 (`test/plccontrol.test.js`, `test/plcforms.test.js`), przeglądarka bez okna na testowym PLC: logowanie Operator, zapis pola, START cięcia (wartości + `HMI2.bCutStart`), jog X+ trzymany i puszczony, tryb ciągły.
+
 ### Testy z prawdziwym CODESYS (OPC UA localhost) – poprawki
 - Odczyt OPC UA w porcjach według `MaxNodesPerRead` serwera (CODESYS SoftMotion Win 3.5.18: 100). Wcześniej wszystkie 438 zmiennych jednym `Read` – z prawdziwym PLC `BadTooManyOperations` i brak jakichkolwiek wartości. Testowy PLC ma teraz limit 100 jak CODESYS.
 - LINT / ULINT (Int64 – w node-opcua para [starsze, młodsze 32 bity]) zamieniane na liczbę – licznik pracy maszyny (`HMI.iOverallDays/Hours/Minutes`) zamiast „–”.

@@ -16,6 +16,8 @@
 // GET /api/connection  adres PLC (OPC UA), domyslny adres, adresy strony w sieci (#148)
 // POST /api/connection {endpoint} - nowy adres PLC: zapis w connection.json i laczenie od razu (Serwis / Admin;
 //                    bez logowania - tylko z tego komputera)
+// GET /api/plc       poziom dostepu do sterowania (panel HMI w trybie PLC)
+// POST /api/plc/write, /api/plc/hold, /api/plc/watch - sterowanie maszyna z ekranow Visu3D (zmienne jak w HMI, plcwrite.js)
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -26,6 +28,7 @@ import { parseArgs } from 'node:util';
 import { VARIABLES, CUT_STEPS, DEFAULTS, validEndpoint } from '../shared/config.js';
 import { OpcUaSource } from './opcua-source.js';
 import { Auth, USERS_FILE, loadUsers, bearer } from './auth.js';
+import { PlcControl, loadHmiWrites } from './plcwrite.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
@@ -90,6 +93,35 @@ export function pageUrls(host, port) {
 
 const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 
+// Poziom dostepu do sterowania: z logowania; bez users.json - pelny na komputerze z VizuApp, z sieci tylko STOP / PAUZA
+function controlAccess(auth, req) {
+  if (auth?.enabled) {
+    const s = auth.session(bearer(req));
+    return { level: s?.level ?? 0, who: s?.user ?? `niezalogowany ${req.socket.remoteAddress}` };
+  }
+  return isLocal(req) ? { level: 3, who: 'panel (lokalnie)' } : { level: 0, who: req.socket.remoteAddress };
+}
+
+async function handlePlc(control, source, auth, req, res, pathname) {
+  const acc = controlAccess(auth, req);
+  if (pathname === '/api/plc') {
+    return json(res, 200, { level: acc.level, user: acc.who, control: Boolean(control), connected: Boolean(source?.connected),
+      local: !auth?.enabled && isLocal(req), auth: Boolean(auth?.enabled) });
+  }
+  if (req.method !== 'POST') return json(res, 405, { error: 'Metoda niedozwolona' });
+  if (!control) return json(res, 409, { error: 'Serwer uruchomiony bez PLC (--no-plc)' });
+  const body = await readJson(req, 65536);
+  try {
+    if (pathname === '/api/plc/watch') return json(res, 200, { watched: control.watch(body.vars) });
+    if (pathname === '/api/plc/write') await control.write(body.items, acc.who, acc.level);
+    else if (pathname === '/api/plc/hold') await control.hold(String(body.v || ''), Boolean(body.on), acc.who, acc.level);
+    else return json(res, 404, { error: 'Nieznana operacja' });
+    return json(res, 200, { ok: true });
+  } catch (err) {
+    return json(res, err.code === 403 || err.code === 400 ? err.code : 502, { error: err.message || String(err) });
+  }
+}
+
 async function handleConnection(cfg, source, auth, req, res) {
   const info = () => ({
     endpoint: cfg.endpoint, defaultEndpoint: cfg.defaultEndpoint, plc: Boolean(source),
@@ -119,11 +151,11 @@ async function handleConnection(cfg, source, auth, req, res) {
 
 const json = (res, code, obj) => res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(obj));
 
-// Tresc zadania JSON (najwyzej 4 kB)
-function readJson(req) {
+// Tresc zadania JSON (domyslnie najwyzej 4 kB)
+function readJson(req, max = 4096) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
+    req.on('data', (c) => { body += c; if (body.length > max) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { resolve({}); } });
     req.on('error', () => resolve({}));
   });
@@ -149,8 +181,9 @@ async function handleAuth(auth, req, res, pathname) {
   return json(res, 405, { error: 'Metoda niedozwolona' });
 }
 
-export function createServer(cfg, source, auth = null) {
+export function createServer(cfg, source, auth = null, hmiWrites = null) {
   const clients = new Set();
+  const control = source ? new PlcControl(source, hmiWrites ?? loadHmiWrites(path.join(APP_DIR, 'src', 'server', 'hmiwrites.json'))) : null;
   const send = (obj) => {
     const msg = `data: ${JSON.stringify(obj)}\n\n`;
     for (const res of clients) res.write(msg);
@@ -159,6 +192,7 @@ export function createServer(cfg, source, auth = null) {
     source.active = false;
     source.on('status', send);
     source.on('values', (values) => send({ values }));
+    source.on('hmi', (hmi) => send({ hmi }));
   }
 
   const server = http.createServer((req, res) => {
@@ -173,6 +207,8 @@ export function createServer(cfg, source, auth = null) {
         variables: source ? source.variablesReport() : [] });
     } else if (url.pathname === '/api/connection') {
       handleConnection(cfg, source, auth, req, res);
+    } else if (url.pathname === '/api/plc' || url.pathname.startsWith('/api/plc/')) {
+      handlePlc(control, source, auth, req, res, url.pathname);
     } else if (['/api/login', '/api/logout', '/api/session'].includes(url.pathname)) {
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
@@ -192,7 +228,7 @@ export function createServer(cfg, source, auth = null) {
   });
   // podtrzymanie strumienia SSE (proxy / przegladarka nie zamkna bezczynnego polaczenia)
   const keepAlive = setInterval(() => { for (const res of clients) res.write(': ping\n\n'); }, 15000);
-  server.on('close', () => clearInterval(keepAlive));
+  server.on('close', () => { clearInterval(keepAlive); control?.close(); });
   return server;
 }
 

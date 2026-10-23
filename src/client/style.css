@@ -380,3 +380,11 @@ table.plcVars tr.bad td { color: var(--bad); background: #fdecea; }
 
 /* opisy zmiennych PLC (nazwy w nawiasach, <code>, dopiski naglowkow) - tylko dla Admina (body.admin) */
 body:not(.admin) .plcName { display: none !important; }
+
+/* --- sterowanie w trybie PLC: STOP i PAUZA w gornym pasku ---------------------------------------------- */
+.plcStop { background: var(--bad); color: #fff; border-color: var(--bad); font-weight: 700; }
+.plcStop:hover { background: #a31f1f; }
+.plcStop .ic, .plcStop:hover .ic { color: #fff; }
+#plcPause.active { background: #f9a825; color: #000; }
+.plcToast { position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); z-index: 50; max-width: min(90vw, 640px);
+  background: var(--bad); color: #fff; padding: 10px 16px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .3); font-weight: 600; }

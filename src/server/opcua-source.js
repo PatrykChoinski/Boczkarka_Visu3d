@@ -6,7 +6,7 @@
 
 import { EventEmitter } from 'node:events';
 import {
-  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType, VariantArrayType,
+  OPCUAClient, MessageSecurityMode, SecurityPolicy, AttributeIds, NodeClass, BrowseDirection, UserTokenType, DataType, VariantArrayType, Variant,
 } from 'node-opcua-client';
 import { REQUIRED, SLOW_KEYS } from '../shared/config.js';
 
@@ -27,6 +27,29 @@ export function plainValue(variant) {
     return variant.arrayType === VariantArrayType.Scalar ? int64(v) : Array.from(v ?? [], int64);
   }
   return ArrayBuffer.isView(v) ? Array.from(v) : v;
+}
+
+// Wartosc do zapisu w typie wezla (typ z biezacej wartosci w PLC): BOOL, liczby calkowite (zaokraglone, w zakresie typu),
+// REAL / LREAL, STRING. Inne typy (LINT, struktury) - blad
+const INT_RANGE = {
+  [DataType.SByte]: [-128, 127], [DataType.Byte]: [0, 255], [DataType.Int16]: [-32768, 32767], [DataType.UInt16]: [0, 65535],
+  [DataType.Int32]: [-2147483648, 2147483647], [DataType.UInt32]: [0, 4294967295],
+};
+export function writeVariant(dataType, value) {
+  if (dataType === DataType.Boolean) return new Variant({ dataType, value: value === true || value === 1 || value === 'true' || value === '1' });
+  if (dataType === DataType.Float || dataType === DataType.Double) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) throw new Error(`zła liczba: ${value}`);
+    return new Variant({ dataType, value: n });
+  }
+  if (INT_RANGE[dataType]) {
+    const n = Math.round(Number(value));
+    const [lo, hi] = INT_RANGE[dataType];
+    if (!Number.isFinite(n) || n < lo || n > hi) throw new Error(`liczba poza zakresem typu ${DataType[dataType]}: ${value}`);
+    return new Variant({ dataType, value: n });
+  }
+  if (dataType === DataType.String) return new Variant({ dataType, value: String(value ?? '') });
+  throw new Error(`typ ${DataType[dataType] ?? dataType} nieobsługiwany przy zapisie`);
 }
 
 // Odczyt w porcjach po maxRead wezlow (wyniki w tej samej kolejnosci)
@@ -50,6 +73,12 @@ export class OpcUaSource extends EventEmitter {
     this.dataTypes = {};      // klucz -> typ danych z serwera OPC UA (diagnostyka /api/variables)
     this.active = true;       // czytanie tylko, gdy ktos oglada strone
     this.stopped = false;
+    // panel HMI (tryb PLC): zmienne otwartych ekranow - sciezka -> czas wygasniecia; wartosci, zmienne bez wezla
+    this.watch = new Map();
+    this.hmiValues = {};
+    this.hmiBad = new Set();
+    this.session = null;
+    this.prefix = null;       // przedrostek NodeId zmiennych ("ns=4;s=|var|<urzadzenie>.Application.")
   }
 
   setStatus(status, connected) {
@@ -98,6 +127,7 @@ export class OpcUaSource extends EventEmitter {
         await this.readLimits(session);
         const nodes = await this.resolve(session);
         await this.readDataTypes(session, nodes);
+        this.session = session;
         const total = Object.keys(this.cfg.variables).length;
         const miss = this.missing.map((k) => this.cfg.variables[k]);
         this.setStatus(`Połączono (${this.cfg.endpoint}), zmienne ${total - miss.length}/${total}`
@@ -106,6 +136,7 @@ export class OpcUaSource extends EventEmitter {
       } catch (err) {
         if (!this.restart) this.setStatus(`Brak połączenia: ${err.message || err}`, false);
       } finally {
+        this.session = null;
         try { if (session) await session.close(); } catch { /* polaczenie juz zerwane */ }
         try { await client.disconnect(); } catch { /* jw. */ }
       }
@@ -140,9 +171,55 @@ export class OpcUaSource extends EventEmitter {
         if (withSlow) slowValues = Object.fromEntries(slowKeys.filter((k) => k in values).map((k) => [k, values[k]]));
         this.values = { ...values, ...slowValues };
         this.emit('values', this.values);
+        if (n % 4 === 1) await this.readWatched(session);
       }
       await sleep(Math.max(0, period - (Date.now() - t0)));
     }
+  }
+
+  // --- panel HMI (tryb PLC) ---------------------------------------------------------------------
+  // NodeId dowolnej zmiennej "GVL.zmienna" / "GVL.tablica[3]" / "GVL.struktura.pole": nodePrefix z configu albo przedrostek
+  // wziety z podpietej zmiennej (CODESYS publikuje symbole jako "ns=N;s=|var|<urzadzenie>.Application.<sciezka>")
+  nodeIdFor(path) {
+    if (this.cfg.nodePrefix) return this.cfg.nodePrefix + path;
+    return this.prefix ? this.prefix + path : null;
+  }
+
+  // Zmienne otwartego ekranu: czytane co 4 cykle odczytu, dopoki strona je odswieza (ttl)
+  watchVars(paths, ttlMs = 5000) {
+    const until = Date.now() + ttlMs;
+    for (const p of paths) this.watch.set(p, until);
+  }
+
+  async readWatched(session) {
+    const now = Date.now();
+    for (const [p, until] of this.watch) if (until < now) { this.watch.delete(p); delete this.hmiValues[p]; }
+    const paths = [...this.watch.keys()].filter((p) => !this.hmiBad.has(p));
+    if (!paths.length || !this.nodeIdFor('')) return;
+    const dvs = await readChunked(session, paths.map((p) => ({ nodeId: this.nodeIdFor(p), attributeId: AttributeIds.Value })), this.maxRead);
+    const out = {};
+    paths.forEach((p, i) => {
+      if (dvs[i].statusCode.isGood()) out[p] = plainValue(dvs[i].value);
+      else this.hmiBad.add(p);
+    });
+    this.hmiValues = out;
+    this.emit('hmi', out);
+  }
+
+  // Zapis [{v: "GVL.zmienna", value}] - typ z biezacej wartosci w PLC; blad przerywa caly zapis (nic nie zapisane)
+  async write(items) {
+    const session = this.session;
+    if (!session || !this.connected) throw new Error('brak połączenia z PLC');
+    const ids = items.map((it) => this.nodeIdFor(it.v));
+    if (ids.some((id) => !id)) throw new Error('nieznany przedrostek węzłów OPC UA');
+    const cur = await readChunked(session, ids.map((nodeId) => ({ nodeId, attributeId: AttributeIds.Value })), this.maxRead);
+    const req = items.map((it, i) => {
+      if (!cur[i].statusCode.isGood()) throw new Error(`${it.v}: brak w OPC UA (${cur[i].statusCode.name})`);
+      if (cur[i].value.arrayType !== VariantArrayType.Scalar) throw new Error(`${it.v}: tablica – zapis tylko pojedynczych elementów`);
+      return { nodeId: ids[i], attributeId: AttributeIds.Value, value: { value: writeVariant(cur[i].value.dataType, it.value) } };
+    });
+    const res = await session.write(req);
+    res.forEach((sc, i) => { if (!sc.isGood()) throw new Error(`${items[i].v}: ${sc.name}`); });
   }
 
   // Limit wezlow w odczycie z serwera (0 / brak / blad - DEFAULT_MAX_READ)
@@ -172,6 +249,11 @@ export class OpcUaSource extends EventEmitter {
     const missing = REQUIRED.filter((k) => !(k in nodes));
     if (missing.length) throw new Error('brak zmiennych w OPC UA: ' + missing.map((k) => variables[k]).join(', '));
     this.resolved = Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, n.toString()]));
+    this.prefix = null;
+    for (const [k, id] of Object.entries(this.resolved)) {
+      if (id.endsWith(`.${variables[k]}`)) { this.prefix = id.slice(0, id.length - variables[k].length); break; }
+    }
+    this.hmiBad.clear();
     return nodes;
   }
 

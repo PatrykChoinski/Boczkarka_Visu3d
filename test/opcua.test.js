@@ -24,7 +24,8 @@ function collect(source, n, timeoutMs = 30000) {
     let count = 0;
     const timer = setTimeout(() => reject(new Error(`timeout, status: ${source.status}`)), timeoutMs);
     source.on('values', (v) => {
-      xs.add(Math.round(v.x * 1000));
+      // pozycja osi (X / Y / Z / A / B) - w przebiegu testowego PLC sama X potrafi stac ~10 s (zjazd w Z)
+      xs.add([v.x, v.y, v.z, v.a, v.b].map((q) => Math.round(q * 1000)).join());
       if (++count >= n) { clearTimeout(timer); resolve({ values: v, xs }); }
     });
   });
@@ -35,7 +36,7 @@ test('wyszukiwanie wezlow w drzewie OPC UA, odczyt wszystkich zmiennych', async 
   try {
     const { values, xs } = await collect(source, 30);
     assert.deepEqual(Object.keys(values).sort(), Object.keys(VARIABLES).sort());
-    assert.ok(xs.size > 5, 'pozycja X sie nie zmienia');
+    assert.ok(xs.size > 5, 'pozycja osi sie nie zmienia');
     assert.equal(typeof values.cutStep, 'number');
     assert.equal(typeof values.cutStart, 'boolean');
     // tablice punktow stolu / kamienia jako zwykle tablice (JSON), liczba wierzcholkow

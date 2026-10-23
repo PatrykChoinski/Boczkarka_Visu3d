@@ -8,11 +8,12 @@
 //   cnc - frez wykonuje program G-kodu CNC_GCODE od punktu G54 (HMI.G54_X / Y / Z) jak modul CNC w PLC (#124)
 //   w petli wykonuje operacje narzedzia (shared/tools.js) zamiast ciec pila
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { OPCUAServer } from 'node-opcua-server';
-import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy } from 'node-opcua-client';
+import { Variant, VariantArrayType, DataType, MessageSecurityMode, SecurityPolicy, StatusCodes } from 'node-opcua-client';
 import { VARIABLES, DEFAULTS, dynamicsToInternal } from '../src/shared/config.js';
 import { SERVICE_PAGES, SERVICE_SCREEN_VARS } from '../src/shared/servicescreens.js';
 
@@ -46,9 +47,28 @@ import { MODES, toolOpsFor } from '../src/shared/tools.js';
 import { defaults } from '../src/shared/ops.js';
 import { MAX_APEX, rectangle } from '../src/shared/area.js';
 
+// Sterowanie z Visu3D (tryb PLC): zmienne zapisywane / czytane przez HMI (src/server/hmiwrites.json) spoza konfiguracji -
+// w pamieci, zapisywalne jak w PLC.
+// Typ wg przedrostka nazwy (b - BOOL, i / e / n / w - INT, s - STRING, inne - LREAL)
+const HMI_WRITES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'server', 'hmiwrites.json');
+export function panelVars() {
+  try {
+    const d = JSON.parse(fs.readFileSync(HMI_WRITES, 'utf8'));
+    return new Set([...Object.keys(d.write), ...d.read]);
+  } catch { return new Set(); }
+}
+export function panelType(p) {
+  const name = p.split('.').pop().replace(/\[\d+\]$/, '');
+  if (/^b[A-Z]/.test(name)) return DataType.Boolean;
+  if (/^[iewn][A-Z]/.test(name)) return DataType.Int16;
+  if (/^s[A-Z]/.test(name)) return DataType.String;
+  return DataType.Double;
+}
+const panelDefault = (t) => (t === DataType.Boolean ? false : t === DataType.String ? '' : 0);
+
 export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'AX-8';
-const BOOLS = new Set(['alarms', 'advancedDesktop', 'cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
+const BOOLS = new Set(['stopMachine', 'pauseMachine', 'alarms', 'advancedDesktop', 'cutStart', 'sawRunning', 'waterCut', 'waterMill', 'laser', 'sawFwd', 'sawRev', 'progCutStart', 'progProfStart', 'progOuterInner', 'smoothingArrays',
   'progMillStart', 'systemBased', 'modeSaw', 'modeMill', 'modeDrill', 'modePolishing']);
 const INTS = new Set(['cutStep', 'boardCount', 'rockCount', 'sawFreq', 'progCutCount', 'progProfCount', 'progCutIndex', 'progProfIndex', 'progStep', 'progOutIn',
   'progMillCount', 'progMillIndex']);
@@ -185,6 +205,9 @@ export async function startFakePlc(port, mode = 'saw') {
     return cache.values;
   };
   const gvls = {};
+  // zapis z OPC UA (panel HMI): wartosc zapisana zastepuje wartosc z przebiegu
+  const overrides = {};
+  const panel = {};
   for (const [key, varPath] of Object.entries(VARIABLES)) {
     // "GVL.zmienna" albo "GVL.struktura.pole" - struktura jako obiekt (jak w CODESYS)
     const parts = varPath.split('.');
@@ -200,7 +223,7 @@ export async function startFakePlc(port, mode = 'saw') {
       : BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16 : DataType.Double;
     const array = ARRAYS[key] ?? HMI_ARRAY_LEN[svcType];
     const value = () => {
-      const v = values()[key];
+      const v = key in overrides ? overrides[key] : values()[key];
       if (type === DataType.String) {
         return array ? new Variant({ dataType: type, arrayType: VariantArrayType.Array, value: v.map(String) }) : new Variant({ dataType: type, value: String(v ?? '') });
       }
@@ -215,11 +238,28 @@ export async function startFakePlc(port, mode = 'saw') {
       dataType: type,
       ...(array ? { valueRank: 1, arrayDimensions: [array] } : {}),
       minimumSamplingInterval: 50,
-      value: { get: value },
+      value: { get: value, set: (variant) => { overrides[key] = variant.value; return StatusCodes.Good; } },
+    });
+  }
+  const known = new Set(Object.values(VARIABLES));
+  for (const p of panelVars()) {
+    if (known.has(p)) continue;
+    const type = panelType(p);
+    panel[p] = panelDefault(type);
+    ns.addVariable({
+      componentOf: globalVars,
+      browseName: p,
+      nodeId: `s=|var|${DEVICE}.Application.${p}`,
+      dataType: type,
+      minimumSamplingInterval: 50,
+      value: {
+        get: () => new Variant({ dataType: type, value: panel[p] }),
+        set: (variant) => { panel[p] = variant.value; return StatusCodes.Good; },
+      },
     });
   }
   await server.start();
-  return { server, nsIndex: ns.index, stop: () => server.shutdown(0) };
+  return { server, nsIndex: ns.index, panel, overrides, stop: () => server.shutdown(0) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
