@@ -174,10 +174,10 @@ serwer VizuApp przez OPC UA (`src/server/plcwrite.js`).
 - **STOP / PAUZA** w górnym pasku (`HMI.bStopMachine`, `HMI2.bPauseMachine` –
   przełącznik PAUZA / WZNÓW) – zawsze, także bez logowania.
 - **Bazowanie:** przycisk trybu = PRZYGOTUJ DO PRACY (`HMI2.bBaseSaw` / `Mill` /
-  `Drill` / `Polishing`), po potwierdzeniu; resztę robi PLC (BaseHomingST).
+  `Drill` / `Polishing`), bez okna potwierdzenia (jak przycisk HMI); resztę robi PLC (BaseHomingST).
 - **Manual:** formularz pokazuje wartości z PLC, zmiana pola zapisuje zmienną
   (`src/shared/plcforms.js` – pole → zmienna, przeliczenia, bit START). START
-  (po potwierdzeniu) zapisuje wartości formularza i polecenie przeliczenia tablicy
+  (bez okna potwierdzenia, jak przycisk HMI) zapisuje wartości formularza i polecenie przeliczenia tablicy
   głębokości, po 0,3 s bit startu operacji (np. `HMI2.bCutStart`, `HMI2.bMillStart`,
   `PolishingGVL.bStart`). Zmienne wspólne kilku operacji (np. `HMI.iManualInternal`,
   `HMI.bManualToLaser`) mają jedną wartość – jak w HMI. Profil nie ma ręcznego startu

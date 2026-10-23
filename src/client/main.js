@@ -2978,7 +2978,6 @@ async function plcOpStart() {
   }
   const v = readGroup('op', op.fields);
   for (const [k, m] of Object.entries(spec.fields)) if (op.fields.some((f) => f.k === k && !f.svc)) items.push(...fieldWrites(m, v[k]));
-  if (!confirm(`START na maszynie: ${op.name} (${op.plc}). Kontynuować?`)) return;
   if (!await plcWrite(items)) return;
   for (const [k, m] of Object.entries(spec.fields)) if (m?.pulse && !await plcPulse(m, v[k])) return;
   await new Promise((r) => { setTimeout(r, 300); });
@@ -3048,7 +3047,6 @@ function plcManualAction(act, page) {
 function plcHoming(modeId) {
   const m = modeById(modeId);
   if (!plcCanControl() || !m) return;
-  if (!confirm(`Bazowanie maszyny – ${m.name}: Z do 0, A na 0, B na ${m.homeB}°. Maszyna wykona ruch. Kontynuować?`)) return;
   plcWrite([{ v: `HMI2.${m.base}`, value: true }]);
 }
 

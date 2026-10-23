@@ -6,6 +6,9 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Bez okien potwierdzenia ruchu w trybie PLC
+- Bazowanie i START operacji Manual działają od razu, jak przyciski HMI (usunięte okna „Maszyna wykona ruch. Kontynuować?”).
+
 ### OPC UA tylko przez subskrypcje
 - Cała wymiana danych z PLC przez subskrypcje OPC UA zamiast cyklicznego odczytu (CODESYS na maszynie: jeden Read ~0,45 s – strona dostawała pozycje 1,6 razy na sekundę, ruchy ręczne nie były płynne; subskrypcja – zmiany co ~100 ms).
 - Subskrypcja w tle przez cały czas połączenia tylko dla `BACKGROUND_KEYS` (60 zmiennych: pozycje, prędkości osi, narzędzie, tryb, stany, stół i kamień, alarmy, STOP / PAUZA, liczniki automatu). Zmienne ekranów (`SCREEN_KEYS`: Prędkość, Automat, G-kod, Ruchy ręczne, Parametry; Serwis – zmienne otwartej strony; Manual – pola operacji) subskrybowane tylko na czas otwarcia ekranu / okna: strona zgłasza listę przy otwarciu (`POST /api/plc/watch {cid, keys, paths}`), nowy ekran zamyka subskrypcję poprzedniego, zamknięcie strony (koniec strumienia SSE `?cid=`) albo brak odświeżenia przez 15 s – koniec subskrypcji.
