@@ -6,6 +6,10 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Bazowanie i dostęp bez bazowania
+- Przyciski bazowania w trybie PLC przeliczane po każdej zmianie połączenia z PLC (wcześniej stan z chwili przed połączeniem – mogły zostać wyłączone mimo zalogowania).
+- Serwis / Admin: wszystkie ekrany (Manual, Automat, G-kod, Ruchy ręczne, ustawienia) także bez bazowania; Operator – jak dotąd, po bazowaniu.
+
 ### Głębokość, wyjazd – tablica głębokości i przyciski jak w PLC
 - Bez pola „Korekta cięcia wewn.”. Tryb tablicy przyciskami „Równe głębokości” / „Skok cięcia” / „Cięcie na raz” (jak ekran HMI glebokosci_ciecia; frez – glebokosci_frez) zamiast listy; parametry zawsze widoczne. Tablica pod przyciskami: piła – podstawowa i alternatywna (`HMI.aCutDepthPrimary` / `Secondary`), frez – `HMI.aMillDepthPrimary`. PLC: przycisk zapisuje parametry i bit przeliczenia (Depths), tablica z PLC (subskrypcja przy otwartym Manual), komórki do poprawienia jak w HMI; symulacja – tablica liczona jak w PLC.
 - Poprawka: wartości z PLC do pól wspólnych frezu (grupa pól `common`).

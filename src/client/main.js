@@ -658,6 +658,8 @@ function connectEvents() {
     // nowy wpis / ustapienie / kwitowanie alarmu w bazie serwera
     if ('alarmsVersion' in msg && !$('#alarmWin').hidden) fetchAlarmHistory();
     if ('status' in msg || msg.values) updatePlcControls();
+    // polaczenie z PLC zmienione - aktywnosc przyciskow bazowania i ekranow (stan liczony przed polaczeniem)
+    if ('status' in msg && state.forms) { renderHoming(); updateTabs(); }
     if ('status' in msg && state.conn && !$('#connWin').hidden) connInfo(state.conn);
     $('#fromPlc').disabled = !hasPlcDynamics();
     requestDraw();
@@ -2797,17 +2799,18 @@ function updateTabs() {
   for (const t of $$('.tabs button')) {
     const name = t.dataset.tab;
     let show = state.mode === 'offline' || !('offline' in t.dataset);
-    if (['cut', 'auto', 'cnc'].includes(name)) show = show && based && mode.tabs.includes(name);
+    // Serwis / Admin - ekrany trybu takze bez bazowania; Operator - po bazowaniu
+    if (['cut', 'auto', 'cnc'].includes(name)) show = show && (based || level >= 2) && mode.tabs.includes(name);
     // automat offline (edycja bufora) od Operatora, online - podglad PLC
     const need = name === 'auto' ? (state.mode === 'offline' ? 1 : 0) : (TAB_LEVEL[name] ?? 0);
     t.hidden = !show || level < need;
   }
-  const manOk = based && mode.tabs.includes('man') && (state.mode === 'offline' ? level >= 1 : plcCanControl());
+  const manOk = (based || level >= 2) && mode.tabs.includes('man') && (state.mode === 'offline' ? level >= 1 : plcCanControl());
   $('#manOpen').disabled = !manOk;
   $('#manOpen').title = manOk ? 'Ruchy ręczne (jak ekran ruchów ręcznych w HMI) – okno, które można przesuwać i zamknąć'
     : !based ? 'Ruchy ręczne – dopiero po bazowaniu' : 'Ruchy ręczne – zaloguj się (sterowanie maszyną z PLC)';
   if (!manOk) showManWin(false);
-  const locked = !based || level < 1;
+  const locked = (!based && level < 2) || level < 1;
   $('#lockInfo').hidden = !locked;
   $('#lockInfo').innerHTML = level < 1
     ? 'Niezalogowany – tylko podgląd. Zaloguj się (przycisk <b>Zaloguj</b> u góry), żeby wykonywać ruchy i zmieniać ustawienia.'
