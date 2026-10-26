@@ -649,7 +649,10 @@ function connectEvents() {
   const es = new EventSource(`api/events?cid=${plcCtl().cid}`);
   es.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    if ('status' in msg) { state.online.status = msg.status; state.online.connected = msg.connected; }
+    // zmiana polaczenia z PLC (tez nowy strumien po restarcie serwera): uprawnienia od nowa - bazowanie, Ruchy reczne
+    const reconnected = 'status' in msg && Boolean(msg.connected) !== state.online.connected;
+    if ('status' in msg) { state.online.status = msg.status; state.online.connected = Boolean(msg.connected); }
+    if (reconnected) refreshPlcAccess();
     // pelny stan na poczatku, potem tylko zmiany z subskrypcji OPC UA
     if (msg.values) onlineValues(msg.full ? msg.values : { ...state.online.values, ...msg.values });
     if (msg.hmi) plcFormValues(msg.full ? msg.hmi : { ...state.plcVals, ...msg.hmi });
@@ -2961,6 +2964,9 @@ async function refreshPlcAccess() {
   if (!state.cfg.plc || state.cfg.static) return;
   const r = await fetch('api/plc', { headers: authHeaders() }).catch(() => null);
   if (r?.ok) state.plc = await r.json();
+  // serwer nie zna sesji (restart serwera - sesje w pamieci): wylogowanie zamiast cicho zablokowanych przyciskow
+  const a = state.auth;
+  if (r?.ok && state.plc.auth && a.enabled && !a.demo && a.user && state.plc.level < 1) { setSession(null); return; }
   updatePlcControls();
   if (state.forms) { renderHoming(); updateTabs(); updatePlcOpForm(); }
 }

@@ -6,6 +6,12 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ## 2026-10-23
 
+### Bazowanie w trybie PLC: odświeżanie przycisków po połączeniu i restarcie serwera
+- Zmiana połączenia z PLC (także nowy strumień SSE po restarcie serwera VizuApp) odświeża uprawnienia (`/api/plc`) i przelicza przyciski bazowania, Ruchy ręczne i zakładki. Wcześniej przyciski liczone tylko przy logowaniu i zmianie trybu maszyny – po zalogowaniu w czasie „Łączenie…” albo po zerwaniu połączenia zostawały zablokowane.
+- Serwer nie zna sesji (restart serwera – sesje w pamięci), a strona pokazuje zalogowanego: strona się wylogowuje („Niezalogowany”) zamiast cicho blokować sterowanie.
+- Uwaga: serwer serwuje zbudowany `public/app.js` – po zmianach w `src/client` start przez `npm start` (buduje stronę); sam `node src/server/main.js` daje starą stronę.
+- Sprawdzone: `npm test` 189/189; przeglądarka z testowym PLC: Operator – bazowanie aktywne, restart serwera – strona „Niezalogowany”, ponowne logowanie bez przeładowania – bazowanie aktywne.
+
 ### Bez opisów „jak to działa”
 - Ukryte wszystkie akapity z opisem działania (Automat, Manual, figury, Serwis, Prędkość, Stół i kamień, G-kod, Pozycja, Parametry, logowanie) i podpis rysunku figury; tytuł sekcji „Figura”. Zostały stany i błędy (logowanie, połączenie z PLC, lista zmiennych PLC) oraz nazwy zmiennych dla Admina.
 
