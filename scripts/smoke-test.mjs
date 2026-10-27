@@ -76,6 +76,7 @@ async function launchBrowser() {
 async function openPage(browser, url) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
+  page.setDefaultTimeout(90000);  // runner CI bez GPU
   const errors = [];
   const requests = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -112,9 +113,9 @@ async function checkOfflineCycle(page) {
     document.getElementById('simStart').click();
   });
   await page.waitForFunction(() => window.vizu.sim.cycles > 0, null, { timeout: 120000, polling: 500 });
-  const c = await page.evaluate(() => { const x = window.vizu.current(); return { done: x.cut.done, passes: x.passes.length }; });
+  const c = await page.evaluate(() => { const x = window.vizu.current(); return { done: x.cut.done, passes: x.passes.length, count: document.getElementById('sCount').textContent }; });
   if (c.done !== 1 || c.passes !== 1) throw new Error(`cykl offline: ${JSON.stringify(c)}`);
-  return `cykl offline: ${c.done}/${c.passes} przejść, ${await page.textContent('#sCount')}`;
+  return `cykl offline: ${c.done}/${c.passes} przejść, ${c.count}`;
 }
 
 function assertNoErrors(name, errors) {

@@ -254,18 +254,23 @@ function updatePanel(c) {
 
 // ---------------------------------------------------------------- petla
 let last = performance.now();
+let lastRender = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (app.mode === 'offline') sim.tick(dt * Number($('speed').value));
   const c = current();
-  view.update(c.state, c.profile, c.passes, c.cut, dt);
-  if (app.follow) {
-    const dx = c.state.x - view.controls.target.x;
-    view.controls.target.x += dx * 0.08;
-    view.camera.position.x += dx * 0.08;
+  // lite: scena co 200 ms (renderowanie programowe zajmuje watek strony), symulator i panel bez zmian
+  if (!view.lite || now - lastRender > 200) {
+    view.update(c.state, c.profile, c.passes, c.cut, view.lite ? (now - lastRender) / 1000 : dt);
+    lastRender = now;
+    if (app.follow) {
+      const dx = c.state.x - view.controls.target.x;
+      view.controls.target.x += dx * 0.08;
+      view.camera.position.x += dx * 0.08;
+    }
+    view.render();
   }
-  view.render();
   if (now - lastPanel > 100) { lastPanel = now; updatePanel(c); }
   requestAnimationFrame(frame);
 }
