@@ -74,7 +74,7 @@ async function launchBrowser() {
 
 // Strona w nowym kontekscie (czysty localStorage); bledy JS i konsoli zbierane do errors
 async function openPage(browser, url) {
-  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
   const errors = [];
   const requests = [];
@@ -84,7 +84,7 @@ async function openPage(browser, url) {
   page.on('response', (r) => { if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) errors.push(`HTTP ${r.status()}: ${r.url()}`); });
   page.on('requestfailed', (r) => { if (!r.url().endsWith('/favicon.ico')) errors.push(`request failed: ${r.url()} ${r.failure()?.errorText}`); });
   page.on('request', (r) => requests.push(r.url()));
-  await page.goto(url, { waitUntil: 'load' });
+  await page.goto(url + (url.includes('?') ? '&' : '?') + 'lite', { waitUntil: 'load' });  // bez cieni: runner CI renderuje programowo
   await page.waitForFunction(() => window.vizu?.app && window.vizu.view, null, { timeout: 20000 });
   return { page, context, errors, requests };
 }
@@ -151,7 +151,7 @@ async function main() {
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_ONLINE}/`);
       await page.waitForFunction(() => window.vizu.app.mode === 'online' && window.vizu.app.connected
-        && Number.isFinite(window.vizu.app.values.x) && window.vizu.app.values.step > 0, null, { timeout: 60000 });
+        && Number.isFinite(window.vizu.app.values.x) && window.vizu.app.values.step > 0, null, { timeout: 120000, polling: 500 });
       await checkView(page);
       const conn = await page.textContent('#connChip');
       await page.screenshot({ path: path.join(OUT, 'online.png') });

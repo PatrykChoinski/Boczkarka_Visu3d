@@ -30,6 +30,8 @@ npm run offline                # bez PLC
 node test/fake-plc-server.js --port 4850 --auto     # testowy PLC (udaje CODESYS), potem na stronie: localhost, port 4850
 ```
 
+Strona z `?lite` w adresie: bez cieni i wygładzania (słaby tablet, przeglądarka bez GPU).
+
 Opcje serwera: `--port`, `--host 0.0.0.0` (tablet w sieci), `--endpoint opc.tcp://IP:4840`, `--no-plc`,
 `--config`, `--users` (logowanie, `scripts/users.mjs`), `--alarms-db`.
 Na maszynie: `build.ps1` → `dist\VizuApp` (node.exe + aplikacja), start przez `vizu.ps1`.

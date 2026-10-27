@@ -18,9 +18,11 @@ export class EdgeView {
     this.cfg = cfg;
     this.m = cfg.machine;
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
+    // lite (?lite w adresie): bez cieni i wygladzania - slabe tablety, przegladarka bez GPU
+    this.lite = new URLSearchParams(location.search).has('lite');
+    this.renderer = new THREE.WebGLRenderer({ antialias: !this.lite });
+    this.renderer.setPixelRatio(this.lite ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = !this.lite;
     container.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xdde3ea);
@@ -42,7 +44,7 @@ export class EdgeView {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 1.1));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(-1500, 4000, 3000);
-    sun.castShadow = true;
+    sun.castShadow = !this.lite;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -3000, right: 3000, top: 3000, bottom: -3000, near: 100, far: 10000 });
     sun.target.position.set(1200, 0, 0);
