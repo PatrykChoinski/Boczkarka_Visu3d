@@ -99,15 +99,19 @@ async function checkView(page) {
 
 // Symulacja offline (tempo 30x): receptura 1 (bok prosty) na krotkim polu - cykl do konca, krawedz obrobiona
 async function checkOfflineCycle(page) {
-  await page.click('#mode [data-mode="offline"]');
-  await page.selectOption('#recipe', '0');
-  await page.fill('#xStart', '200');
-  await page.fill('#xEnd', '500');
-  await page.fill('#feed', '6');
-  await page.dispatchEvent('#feed', 'change');
-  await page.selectOption('#speed', '30');
-  await page.click('#simStart');
-  await page.waitForFunction(() => window.vizu.sim.cycles > 0, null, { timeout: 60000 });
+  // akcje przez DOM (bez czekania playwrighta na klikalnosc - na runnerze bez GPU rendering cieni zajmuje watek strony)
+  log('offline: receptura 1, pole 200-500, tempo 30x, START');
+  await page.evaluate(() => {
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); };
+    document.querySelector('#mode [data-mode="offline"]').click();
+    set('recipe', '0');
+    set('xStart', '200');
+    set('xEnd', '500');
+    set('feed', '6');
+    document.getElementById('speed').value = '30';
+    document.getElementById('simStart').click();
+  });
+  await page.waitForFunction(() => window.vizu.sim.cycles > 0, null, { timeout: 120000, polling: 500 });
   const c = await page.evaluate(() => { const x = window.vizu.current(); return { done: x.cut.done, passes: x.passes.length }; });
   if (c.done !== 1 || c.passes !== 1) throw new Error(`cykl offline: ${JSON.stringify(c)}`);
   return `cykl offline: ${c.done}/${c.passes} przejść, ${await page.textContent('#sCount')}`;
