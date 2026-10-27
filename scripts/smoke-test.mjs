@@ -1,7 +1,7 @@
 // Test uruchomienia strony w przegladarce (CI na Windows, lokalnie tez): buduje strone, odpala ja i sprawdza w Chrome / Edge
 // (headless, przegladarka z systemu przez playwright-core):
-//   1. serwer VizuApp bez PLC (--no-plc): strona, widok 3D, symulacja ciecia offline,
-//   2. serwer VizuApp z testowym PLC (test/fake-plc-server.js, OPC UA): tryb online - polaczenie i pozycje osi,
+//   1. serwer VizuApp bez PLC (--no-plc): strona, widok 3D, symulacja cyklu boczkarki offline,
+//   2. serwer VizuApp z testowym PLC (test/fake-plc-server.js --auto, OPC UA): tryb online - polaczenie, pozycje, zmienne,
 //   3. wersja statyczna GitHub Pages (scripts/build-pages.js -> site/) pod podkatalogiem jak na github.io.
 // Kazdy blad JS / konsoli na stronie = blad testu. Zrzuty ekranu w test-results/.
 //
@@ -43,7 +43,7 @@ async function waitHttp(url, ms = 20000) {
   throw new Error(`brak odpowiedzi: ${url}`);
 }
 
-// Statyczny serwer plikow site/ pod /Promasz-Visu3D/ (jak GitHub Pages)
+// Statyczny serwer plikow site/ pod /Boczkarka_Visu3d/ (jak GitHub Pages)
 function staticServer(dir, prefix, port) {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' };
   const server = http.createServer((req, res) => {
@@ -85,7 +85,7 @@ async function openPage(browser, url) {
   page.on('requestfailed', (r) => { if (!r.url().endsWith('/favicon.ico')) errors.push(`request failed: ${r.url()} ${r.failure()?.errorText}`); });
   page.on('request', (r) => requests.push(r.url()));
   await page.goto(url, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.vizu?.state?.cfg && window.vizu.state.forms, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.vizu?.app && window.vizu.view, null, { timeout: 20000 });
   return { page, context, errors, requests };
 }
 
@@ -97,17 +97,20 @@ async function checkView(page) {
   if (!box || box.w < 100 || box.h < 100) throw new Error(`brak widoku 3D: ${JSON.stringify(box)}`);
 }
 
-// Symulacja ciecia prostego offline (tempo 100x): ciecie zapisane, napis "Cięcie: ..."
-async function checkOfflineCut(page) {
+// Symulacja offline (tempo 30x): receptura 1 (bok prosty) na krotkim polu - cykl do konca, krawedz obrobiona
+async function checkOfflineCycle(page) {
   await page.click('#mode [data-mode="offline"]');
-  await page.selectOption('#speed', '100');
-  await page.click('.tabs [data-tab="cut"]');
-  await page.selectOption('#op', 'cut');
-  await page.click('#cutStart');
-  await page.waitForFunction(() => window.vizu.state.recorder.cuts.length > 0 && !window.vizu.state.sim.running, null, { timeout: 60000 });
-  const hud = await page.textContent('#hudCut');
-  if (!/^Cięcie: długość \d+/.test(hud)) throw new Error(`napis ciecia: ${hud}`);
-  return hud;
+  await page.selectOption('#recipe', '0');
+  await page.fill('#xStart', '200');
+  await page.fill('#xEnd', '500');
+  await page.fill('#feed', '6');
+  await page.dispatchEvent('#feed', 'change');
+  await page.selectOption('#speed', '30');
+  await page.click('#simStart');
+  await page.waitForFunction(() => window.vizu.sim.cycles > 0, null, { timeout: 60000 });
+  const c = await page.evaluate(() => { const x = window.vizu.current(); return { done: x.cut.done, passes: x.passes.length }; });
+  if (c.done !== 1 || c.passes !== 1) throw new Error(`cykl offline: ${JSON.stringify(c)}`);
+  return `cykl offline: ${c.done}/${c.passes} przejść, ${await page.textContent('#sCount')}`;
 }
 
 function assertNoErrors(name, errors) {
@@ -128,7 +131,7 @@ async function main() {
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_OFFLINE}/`);
       await checkView(page);
-      const hud = await checkOfflineCut(page);
+      const hud = await checkOfflineCycle(page);
       await page.screenshot({ path: path.join(OUT, 'offline.png') });
       assertNoErrors('serwer offline', errors);
       log(`OK serwer offline: ${hud}`);
@@ -136,31 +139,25 @@ async function main() {
     }
 
     // 2. serwer z testowym PLC (OPC UA)
-    run(['test/fake-plc-server.js', '--port', String(PORT_PLC)], 'fake-plc');
+    run(['test/fake-plc-server.js', '--port', String(PORT_PLC), '--auto'], 'fake-plc');
     // osobna baza historii alarmow (nie alarms.db maszyny obok config.json)
     run(['src/server/main.js', '--users', 'brak-users.json', '--port', String(PORT_ONLINE), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`,
       '--alarms-db', path.join(os.tmpdir(), `vizu-smoke-alarms-${process.pid}.db`)], 'serwer-online');
     await waitHttp(`http://127.0.0.1:${PORT_ONLINE}/api/health`);
     {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_ONLINE}/`);
-      await page.waitForFunction(() => window.vizu.state.mode === 'online' && window.vizu.state.online.connected
-        && Number.isFinite(window.vizu.state.pose?.x), null, { timeout: 60000 });
+      await page.waitForFunction(() => window.vizu.app.mode === 'online' && window.vizu.app.connected
+        && Number.isFinite(window.vizu.app.values.x) && window.vizu.app.values.step > 0, null, { timeout: 60000 });
       await checkView(page);
-      const conn = await page.textContent('#conn');
+      const conn = await page.textContent('#connChip');
       await page.screenshot({ path: path.join(OUT, 'online.png') });
       assertNoErrors('serwer online', errors);
-      log(`OK serwer online: ${conn}, pozycja ${await page.textContent('#pos')}`);
-      // podpiecie zmiennych: kazda zmienna z konfiguracji znaleziona w OPC UA; typ i wartosc - z subskrypcji: zmienne
-      // w tle od razu, pozostale po zgloszeniu jako ekran (POST /api/plc/watch) - tu wszystkie naraz
+      log(`OK serwer online: ${conn}, X ${await page.textContent('#sX')}, krok ${await page.textContent('#sStep')}`);
+      // podpiecie zmiennych: kazda zmienna z konfiguracji znaleziona w OPC UA; typ i wartosc - z subskrypcji w tle
       const api = `http://127.0.0.1:${PORT_ONLINE}/api`;
       const all = (await (await fetch(`${api}/variables`)).json()).variables;
       const noNode = all.filter((v) => !v.found).map((v) => v.name);
       if (noNode.length) throw new Error(`zmienne PLC bez wezla OPC UA: ${noNode.join(', ')}`);
-      // jeden ekran - najwyzej 400 zmiennych: wszystkie jako kilka stron (cid)
-      for (let i = 0; i < all.length; i += 200) {
-        await fetch(`${api}/plc/watch`, { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ cid: `smoke${i}`, keys: all.slice(i, i + 200).map((v) => v.key) }) });
-      }
       let missing = [];
       for (let i = 0; i < 40; i++) {
         const vars = (await (await fetch(`${api}/variables`)).json()).variables;
@@ -174,27 +171,19 @@ async function main() {
     }
 
     // 3. wersja statyczna (GitHub Pages)
-    const st = await staticServer(path.join(ROOT, 'site'), '/Promasz-Visu3D/', PORT_STATIC);
+    const st = await staticServer(path.join(ROOT, 'site'), '/Boczkarka_Visu3d/', PORT_STATIC);
     try {
-      const { page, context, errors, requests } = await openPage(browser, `http://127.0.0.1:${PORT_STATIC}/Promasz-Visu3D/`);
+      const { page, context, errors, requests } = await openPage(browser, `http://127.0.0.1:${PORT_STATIC}/Boczkarka_Visu3d/`);
       const info = await page.evaluate(() => ({
-        isStatic: window.vizu.state.cfg.static, mode: window.vizu.state.mode,
-        onlineHidden: document.querySelector('#mode [data-mode="online"]').hidden,
+        isStatic: Boolean(window.vizu.app && document.querySelector('#mode [data-mode="online"]').disabled), mode: window.vizu.app.mode,
       }));
-      if (!info.isStatic || info.mode !== 'offline' || !info.onlineHidden) throw new Error(`wersja statyczna: ${JSON.stringify(info)}`);
+      if (!info.isStatic || info.mode !== 'offline') throw new Error(`wersja statyczna: ${JSON.stringify(info)}`);
       if (requests.some((u) => u.includes('api/events'))) throw new Error('wersja statyczna laczy sie z api/events');
       await checkView(page);
-      // logowanie demonstracyjne (bez hasla): niezalogowany - bez ekranu Manual, Operator - Manual widoczny
-      const hiddenBefore = await page.evaluate(() => document.querySelector('.tabs [data-tab="cut"]').hidden);
-      if (!hiddenBefore) throw new Error('wersja statyczna: Manual widoczny bez logowania');
-      await page.click('#loginBtn');
-      await page.selectOption('#loginUser', 'Operator');
-      await page.click('#loginForm button[type="submit"]');
-      await page.waitForFunction(() => window.vizu.state.auth.user === 'Operator' && !document.querySelector('.tabs [data-tab="cut"]').hidden);
-      const hud = await checkOfflineCut(page);
+      const hud = await checkOfflineCycle(page);
       await page.screenshot({ path: path.join(OUT, 'pages.png') });
       assertNoErrors('wersja statyczna', errors);
-      log(`OK wersja statyczna (GitHub Pages): logowanie demo (Operator), ${hud}`);
+      log(`OK wersja statyczna (GitHub Pages): ${hud}`);
       await context.close();
     } finally {
       st.close();

@@ -3,393 +3,104 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VizuApp</title>
+  <title>Boczkarka Visu3D</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="bar">
-    <div class="brand" title="VizuApp – wizualizacja piły mostowej Promasz"><svg class="ic" aria-hidden="true"><use href="#i-blade"/></svg><span>VizuApp</span></div>
+    <div class="brand">Boczkarka profilowa <span class="muted">Visu3D</span></div>
     <div class="seg" id="mode">
-      <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span class="lbl">PLC</span></button>
-      <button data-mode="offline" title="Offline – symulacja bez PLC"><svg class="ic" aria-hidden="true"><use href="#i-sim"/></svg><span class="lbl">SIM</span></button>
+      <button data-mode="offline" title="Offline – symulacja cyklu bez PLC">Offline</button>
+      <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)">Online</button>
     </div>
-    <button id="connOpen" class="tool" title="Połączenie z PLC – adres OPC UA (np. tablet)" hidden><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
-    <!-- #155 alarmy jak w HMI: liczba aktywnych, okno z lista -->
-    <button id="alarmOpen" class="tool" title="Alarmy"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span class="alarmCount" id="alarmCount" hidden></span></button>
-    <button id="manOpen" class="tool" title="Ruchy ręczne – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
-    <!-- tryb PLC: STOP i PAUZA maszyny jak na ekranach HMI (HMI.bStopMachine, HMI2.bPauseMachine) - bez logowania -->
-    <button id="plcStop" class="tool plcStop" title="STOP maszyny (HMI.bStopMachine)" hidden><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">STOP</span></button>
-    <button id="plcPause" class="tool" title="PAUZA / WZNÓW (HMI2.bPauseMachine)" hidden><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="lbl">PAUZA</span></button>
+    <span class="chip" id="connChip" title="Połączenie z serwerem OPC UA">—</span>
     <div class="spacer"></div>
-    <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
-      <select id="speed">
-        <option value="1">1×</option>
-        <option value="2">2×</option>
-        <option value="5">5×</option>
-        <option value="10">10×</option>
-        <option value="30">30×</option>
-        <option value="100">100×</option>
-        <option value="500">500×</option>
-        <option value="1000">1000×</option>
-      </select>
-    </label>
-    <div class="chip" id="authBox" hidden>
-      <svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span id="authUser" class="authUser"></span>
-      <button id="loginBtn" class="tool" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button>
+    <div class="seg" id="views">
+      <button data-view="iso" title="Widok ogólny">Izo</button>
+      <button data-view="front" title="Wzdłuż krawędzi">Przód</button>
+      <button data-view="side" title="Przekrój profilu">Bok</button>
+      <button data-view="top" title="Z góry">Góra</button>
+      <button data-view="follow" title="Kamera podąża za głowicą">Śledź</button>
     </div>
   </header>
-
-  <div id="plcToast" class="plcToast" role="alert" hidden></div>
   <main>
-    <!-- przyciski ekranow po lewej stronie jak menu HMI (Menu_Lewo) -->
-    <!-- przyciski ekranow po lewej stronie w kolejnosci menu HMI (Menu_Lewo): tryb automatyczny, CNC, manualny,
-         bazowanie, serwis (Parametry), ustawienia (stol i kamien, bity serwisowe); Pozycja - na koncu -->
-    <nav class="tabs side" id="screens">
-      <button data-tab="auto" title="Automat"><svg class="ic big" aria-hidden="true"><use href="#i-auto"/></svg></button>
-      <button data-tab="cnc" title="G-kod (CNC)"><svg class="ic big" aria-hidden="true"><use href="#i-gcode"/></svg></button>
-      <button data-tab="cut" title="Manual"><svg class="ic big" aria-hidden="true"><use href="#i-cut"/></svg></button>
-      <button data-tab="home" title="Bazowanie"><svg class="ic big" aria-hidden="true"><use href="#i-homing"/></svg></button>
-      <button data-tab="service" title="Serwis"><svg class="ic big" aria-hidden="true"><use href="#i-wrench"/></svg></button>
-      <button data-tab="par" data-offline title="Parametry"><svg class="ic big" aria-hidden="true"><use href="#i-par"/></svg></button>
-      <button data-tab="speed" title="Prędkość"><svg class="ic big" aria-hidden="true"><use href="#i-speed"/></svg></button>
-      <button data-tab="stone" class="active" title="Ustawienia"><svg class="ic big" aria-hidden="true"><use href="#i-settings"/></svg></button>
-      <button data-tab="pos" data-offline title="Pozycja"><svg class="ic big" aria-hidden="true"><use href="#i-pos"/></svg></button>
-    </nav>
-    <section id="viewWrap">
-      <div id="view"></div>
-      <div id="hud"><div id="hudCut"></div><div id="hudTable"></div><div id="hudMachine"></div></div>
-      <div class="vtools" id="viewTools">
-        <button data-view="iso" title="Izometria"><svg class="ic" aria-hidden="true"><use href="#i-iso"/></svg></button>
-        <button data-view="top" title="Widok z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
-        <button data-view="front" title="Widok z przodu"><svg class="ic" aria-hidden="true"><use href="#i-front"/></svg></button>
-        <button data-view="side" title="Widok z boku"><svg class="ic" aria-hidden="true"><use href="#i-side"/></svg></button>
-        <button id="fit" title="Dopasuj widok"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg></button>
-        <button id="zoomIn" title="Przybliż"><svg class="ic" aria-hidden="true"><use href="#i-zoomIn"/></svg></button>
-        <button id="zoomOut" title="Oddal"><svg class="ic" aria-hidden="true"><use href="#i-zoomOut"/></svg></button>
-      </div>
-      <div class="vtools" id="layerTools">
-        <label class="tog" title="Głowica"><input type="checkbox" id="showBlade" checked><svg class="ic" aria-hidden="true"><use href="#i-blade"/></svg></label>
-        <label class="tog" title="Suport (most, ściany)"><input type="checkbox" id="showFrame" checked><svg class="ic" aria-hidden="true"><use href="#i-frame"/></svg></label>
-        <label class="tog" title="Plan – tor operacji / automatu"><input type="checkbox" id="showPlan" checked><svg class="ic" aria-hidden="true"><use href="#i-plan"/></svg></label>
-        <label class="tog" title="XY – znaczniki początku i końca kolejnych akcji z wartościami X / Y"><input type="checkbox" id="showMarks" checked><svg class="ic" aria-hidden="true"><use href="#i-marks"/></svg></label>
-        <label class="tog" title="Odległości między punktem początkowym i końcowym kolejnych akcji"><input type="checkbox" id="showDist" checked><svg class="ic" aria-hidden="true"><use href="#i-ruler"/></svg></label>
-        <label class="tog" title="Laser (offline: włączony; online: z PLC – yLaser)"><input type="checkbox" id="showLaser" checked><svg class="ic" aria-hidden="true"><use href="#i-laser"/></svg></label>
-        <!-- #150 przezroczysty kamien: ciecia wewnatrz materialu widoczne -->
-        <label class="tog" title="Przezroczysty kamień – widać cięcia wewnątrz materiału"><input type="checkbox" id="showGlass"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg></label>
-        <!-- #156 ukrywanie wycietych elementow (kawalki oddzielone cieciami przez cala grubosc) -->
-        <label class="tog" title="Ukryj wycięte elementy – kamień bez kawałków oddzielonych cięciami przez całą grubość"><input type="checkbox" id="hideCutout"><svg class="ic" aria-hidden="true"><use href="#i-fill"/></svg></label>
-        <span class="sep"></span>
-        <button id="clear" title="Wyczyść ślady cięcia"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
-      </div>
-    </section>
+    <div id="view"></div>
+    <aside class="panel">
+      <section class="card status">
+        <h2>Stan</h2>
+        <div class="kv"><span>Krok</span><b id="sStep">—</b></div>
+        <div class="kv"><span>Przejście</span><b id="sPass">—</b></div>
+        <div class="kv"><span>X</span><b id="sX">—</b></div>
+        <div class="kv"><span>B</span><b id="sB">—</b></div>
+        <div class="kv"><span>Wrzeciono</span><b id="sSpindle">—</b></div>
+        <div class="kv"><span>Docisk / woda</span><b id="sMedia">—</b></div>
+        <div class="kv"><span>Czas</span><b id="sTime">—</b></div>
+        <div class="kv"><span>Licznik</span><b id="sCount">—</b></div>
+        <div id="alarms" class="alarms"></div>
+      </section>
 
-    <aside id="panel">
-      <div class="panelTitle" id="panelTitle"></div>
-      <p class="lockInfo" id="lockInfo" hidden>Maszyna niezbazowana – ruchy i ustawienia zablokowane. Zbazuj maszynę w zakładce <b>Bazowanie</b>.</p>
+      <section class="card">
+        <h2>Przekrój krawędzi</h2>
+        <svg id="section" viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet"></svg>
+        <div id="passes" class="passes"></div>
+        <div class="row"><button id="newStone" title="Nowa, nieobrobiona płyta na widoku">Nowy kamień</button></div>
+      </section>
 
-      <!-- #147 Serwis jak ekrany HMI serwis (70), serwis_2 (71), serwis_3 (75): zmienne i bity w grupach z HMI -->
-      <div class="tab" data-tab="service" hidden>
-        <div class="seg sub" id="servicePages">
-          <button type="button" data-spage="main" class="active" title="Serwis – ustawienia (HMI serwis)"><svg class="ic" aria-hidden="true"><use href="#i-wrench"/></svg><span>Serwis</span></button>
-          <button type="button" data-spage="area" title="Obszar pracy maszyny (HMI serwis_2)"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span>Obszar pracy</span></button>
-          <button type="button" data-spage="settings" title="Ustawienia serwisowe (HMI serwis_3)"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>Ustawienia</span></button>
-          <button type="button" data-spage="plcvars" data-online title="Zmienne PLC – węzeł OPC UA, typ, wartość (tryb PLC)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Zmienne PLC</span></button>
+      <section class="card" id="offlineCard">
+        <h2>Symulacja (offline)</h2>
+        <label>Receptura <select id="recipe"></select></label>
+        <label>Rodzaj <select id="kind"></select></label>
+        <div class="grid2">
+          <label>X start [mm]<input id="xStart" type="number" step="10"></label>
+          <label>X koniec [mm]<input id="xEnd" type="number" step="10"></label>
+          <label>Naddatek [mm]<input id="overtravel" type="number" step="5"></label>
+          <label>Posuw [m/min]<input id="feed" type="number" step="0.1"></label>
+          <label>Obroty [Hz]<input id="spindleFrequency" type="number" step="1"></label>
+          <label>Powtórzenia<input id="repeats" type="number" min="1" step="1"></label>
+          <label class="chamfer">Kąt fazy [°]<input id="angle" type="number" step="5"></label>
+          <label class="round">Kąt od [°]<input id="angleStart" type="number" step="5"></label>
+          <label class="round">Kąt do [°]<input id="angleEnd" type="number" step="5"></label>
+          <label class="round">Krok kąta [°]<input id="angleStep" type="number" step="1"></label>
         </div>
-        <select id="serviceMore" class="serviceMore" title="Pozostałe ekrany serwisowe HMI"></select>
-        <p class="hint howto" id="serviceHint"></p>
-        <div id="servicePage" data-lock></div>
-        <!-- diagnostyka podpiecia zmiennych PLC (OPC UA, /api/variables) - strona Serwisu w trybie PLC -->
-        <div id="plcVarsBox" hidden>
-          <p class="hint" id="plcVarsInfo"></p>
-          <div class="tableWrap"><table class="plcVars" id="plcVars"></table></div>
-        </div>
-      </div>
-
-      <!-- #146 Predkosc jak ekran HMI predkosc: pozycje (jak HMI) i glowne predkosci z paskiem %, polem i +/- -->
-      <div class="tab" data-tab="speed" hidden>
-        <p class="hint howto" id="speedHint"></p>
-        <div class="speedPos" id="speedPos"></div>
-        <div id="speedGroups" data-lock></div>
-      </div>
-
-      <div class="tab" data-tab="stone">
-        <p class="hint howto">Jak w PLC (Ustawienia - obszar stołu / kamienia): wierzchołki jako pozycje osi X, Y, Z, do 8 punktów. Przycisk z pinezką wpisuje aktualną pozycję osi.</p>
-        <h3>Stół <span class="muted">aCuttingBoardX/Y/Z</span></h3>
-        <label class="inline" data-lock>Liczba punktów <input id="boardCount" data-count="board" type="number" min="0" max="8" step="1"></label>
-        <table class="pts" data-pts="board" data-lock></table>
-        <h3>Kamień <span class="muted">aCuttingRockX/Y/Z</span></h3>
-        <label class="inline" data-lock>Liczba punktów <input id="rockCount" data-count="rock" type="number" min="0" max="8" step="1"></label>
-        <table class="pts" data-pts="rock" data-lock></table>
-        <div class="grid2" id="stoneOffline" data-lock>
-          <label>Grubość kamienia [mm] <input data-m="materialThickness" type="number" step="any" min="0"></label>
-        </div>
-        <p class="hint howto" id="stonePlc" hidden></p>
+        <label class="check"><input id="bothDirections" type="checkbox"> Przejścia w obie strony</label>
         <div class="row">
-          <button id="stoneShow" title="Pokaż stół i kamień z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
+          <label class="inline">Tempo <select id="speed"><option>1</option><option>2</option><option selected>5</option><option>10</option><option>30</option></select>×</label>
         </div>
-        <div id="stoneInfo" class="info"></div>
-      </div>
+        <div class="row buttons">
+          <button id="simStart" class="go">START</button>
+          <button id="simPause">PAUZA</button>
+          <button id="simStop" class="stop">STOP</button>
+          <button id="simAck" title="Potwierdzenie po STOP / błędzie receptury">Kasuj</button>
+        </div>
+        <div id="simMsg" class="msg"></div>
+      </section>
 
-      <div class="tab" data-tab="cut" hidden>
-        <label>Program <select id="op"></select></label>
-        <p class="hint howto" id="opHint"></p>
-        <div class="grid2" id="opFields"></div>
-        <details id="commonBox">
-          <summary>Głębokość, wyjazd</summary>
-          <div class="grid2" id="commonFields"></div>
-          <!-- tablica glebokosci jak HMI glebokosci_ciecia / glebokosci_frez: przyciski przeliczenia (Depths) i tablica -->
-          <div class="row depthBtns" id="depthBtns">
-            <button type="button" data-depth="same">Równe głębokości</button>
-            <button type="button" data-depth="step">Skok cięcia</button>
-            <button type="button" data-depth="one">Cięcie na raz</button>
+      <section class="card" id="onlineCard">
+        <h2>PLC (online)</h2>
+        <form id="connForm" class="conn">
+          <label>Adres IP serwera OPC UA<input id="plcHost" placeholder="192.168.1.10" autocomplete="off"></label>
+          <label>Port<input id="plcPort" type="number" value="4840"></label>
+          <div class="row buttons">
+            <button type="submit" class="go">Połącz</button>
+            <button type="button" id="connDefault" title="Adres z config.json">Domyślny</button>
           </div>
-          <div class="tableWrap"><table class="depthTable" id="depthTable"></table></div>
-        </details>
-        <div id="cutInfo" class="info"></div>
-        <div class="row">
-          <button id="cutStart" class="primary" title="Start"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-          <button class="pauseBtn" title="Pauza"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
-          <button class="stopBtn" title="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
+        </form>
+        <div id="connInfo" class="msg"></div>
+        <div id="plcControls" class="row buttons" hidden>
+          <button data-write="EdgeProfile.Start" class="go">START</button>
+          <button data-write="EdgeProfile.Pause">PAUZA</button>
+          <button data-write="EdgeProfile.Stop" class="stop">STOP</button>
+          <button data-write="Alarms.Reset">Reset alarmów</button>
         </div>
-
-      </div>
-
-      <div class="tab" data-tab="auto" hidden>
-        <p class="hint howto" id="autoHint">Bufor kroków jak lista programu w HMI: krok wiersza i działa od punktu i do punktu i+1 (łuk – promień R, okrąg – punkt i to góra albo środek, skos – kąt B). Punkty względem punktu startowego.</p>
-        <div class="grid2">
-          <label>Program <select id="autoKind">
-            <option value="cut">Piła (ProgramAutoCutST)</option>
-            <option value="profile">Profile (ProgramAutoProfileST)</option>
-            <option value="mill">Frez (ProgramAutoMillST)</option>
-          </select></label>
-          <label>Start od kroku <input id="autoFrom" type="number" min="1" step="1" value="1"></label>
-          <label>Punkt startowy X <input id="autoOX" type="number" step="any"></label>
-          <label>Punkt startowy Y <input id="autoOY" type="number" step="any"></label>
-          <div class="saveRow wide" id="autoSaveRow"><button id="autoSaveStart" title="Zapisz punkt startowy – aktualna pozycja osi X / Y (jak w PLC: bProgramSaveStartPosition, frez: bProgramMillStartPointSave)"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg></button></div>
-          <label data-prof>Skok profilu [mm] <input id="autoPJump" type="number" step="any" min="0.1"></label>
-          <label data-prof>Skok wygładzania [mm] <input id="autoSJump" type="number" step="any" min="1"></label>
-          <label class="cb wide" data-modes="mill"><input type="checkbox" id="autoRepeatOver"> Zamknięte kształty w całości na każdej głębokości (bProgramReapitingOver)</label>
+        <div id="plcModes" class="seg wide" hidden>
+          <button data-modereq="0">Ręczny</button>
+          <button data-modereq="1">Bazowanie</button>
+          <button data-modereq="2">Automat</button>
         </div>
-        <details id="figBox" open>
-          <summary>Figura</summary>
-          <label>Figura <select id="fig"></select></label>
-          <p class="hint howto" id="figHint"></p>
-          <div id="figPic" class="figPic"></div>
-          <div class="grid2" id="figFields"></div>
-          <details id="figCtxBox" data-level="3">
-            <summary>Parametry figury (zmienne PLC)</summary>
-            <div class="grid2" id="figCtx"></div>
-          </details>
-          <div class="row"><button id="figFill" class="primary" title="Wypełnij bufor figurą"><svg class="ic" aria-hidden="true"><use href="#i-fill"/></svg></button></div>
-          <div id="figInfo" class="info"></div>
-        </details>
-        <div class="tableWrap"><table class="prog" id="autoTable"></table></div>
-        <div class="row" id="autoEdit">
-          <button id="autoAdd" title="Dodaj wiersz"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
-          <button id="autoDel" title="Usuń ostatni wiersz"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button>
-          <button id="autoDemo" title="Przykładowy program"><svg class="ic" aria-hidden="true"><use href="#i-demo"/></svg></button>
-        </div>
-        <div id="autoInfo" class="info"></div>
-        <div class="row" id="autoRun">
-          <button id="autoStart" class="primary" title="Start"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-          <button class="pauseBtn" title="Pauza"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
-          <button class="stopBtn" title="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
-        </div>
-      </div>
-
-      <div class="tab" data-tab="cnc" hidden>
-        <p class="hint howto">Jak moduł CNC w PLC (tylko tryb frezu): plik G-kodu, punkt początkowy G54 = pozycja osi X / Y / Z
-          (X osi = G54_X + X, Y osi = G54_Y − Y, Z osi = G54_Z + Z, Z w głąb). A i B bez zmian.</p>
-        <div class="row">
-          <label class="filebtn">Wczytaj plik .nc<input type="file" id="cncFile" accept=".nc,.gcode,.ngc,.tap,.cnc,.txt"></label>
-          <button id="cncExample" title="Przykład: examples/madonna_frez_fi25mm_fixed.nc – płaskorzeźba, frez Ø25"><svg class="ic" aria-hidden="true"><use href="#i-demo"/></svg></button>
-        </div>
-        <div id="cncName" class="info"></div>
-        <h3>Punkt początkowy G54 <span class="muted">HMI.G54_X / G54_Y / G54_Z</span></h3>
-        <div class="grid2">
-          <label>G54 X [mm] <input id="cncX" data-cnc="x" type="number" step="any"></label>
-          <label>G54 Y [mm] <input id="cncY" data-cnc="y" type="number" step="any"></label>
-          <label>G54 Z [mm] <input id="cncZ" data-cnc="z" type="number" step="any"></label>
-        </div>
-        <div class="row" id="cncSet">
-          <button data-g54="x" title="bSetG54_X: G54_X := aktualna pozycja X"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg>X</button>
-          <button data-g54="y" title="bSetG54_Y"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg>Y</button>
-          <button data-g54="z" title="bSetG54_Z"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg>Z</button>
-          <button data-g54="xr" title="bSetG54_X_No_Radius: + fParameterMillWidth / 2"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg>X+r</button>
-          <button data-g54="yr" title="bSetG54_Y_No_Radius: + fParameterMillWidth / 2"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg>Y+r</button>
-        </div>
-        <label class="check"><input type="checkbox" id="cncShowPath" checked> Tor programu (G1 pomarańczowy, G0 niebieski)</label>
-        <div id="cncInfo" class="info"></div>
-        <h3>Podgląd z góry <span class="muted">cieniowanie jak płaskorzeźba, czerwona kropka – frez</span></h3>
-        <canvas id="cncPreview" class="cncPreview" hidden></canvas>
-        <p class="hint howto" id="cncPreviewHint">Podgląd pojawi się po „Wynik od razu” albo w trakcie animacji.</p>
-        <div class="row" id="cncRun">
-          <button id="cncStart" class="primary" title="Start"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-          <button class="pauseBtn" title="Pauza"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
-          <button class="stopBtn" title="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
-        </div>
-        <div class="row">
-          <button id="cncInstant" title="Wynik od razu – cały program na materiale, bez animacji"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
-          <button id="cncClear" title="Wyczyść materiał"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
-        </div>
-      </div>
-
-      <div class="tab" data-tab="home" hidden>
-        <div class="row presets" id="homeModes"></div>
-        <div class="row">
-          <button id="homeStart" class="primary" title="Bazuj"><svg class="ic" aria-hidden="true"><use href="#i-homing"/></svg><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-          <button class="stopBtn" id="homeStop" title="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
-        </div>
-        <div id="homeInfo" class="info"></div>
-      </div>
-
-      <div class="tab" data-tab="pos" data-lock hidden>
-        <p class="hint howto">Pozycje osi jak w PLC (Z w dół). „Jedź” – ruch z prędkościami i przyspieszeniami z Parametrów.</p>
-        <h3>Aktualne</h3>
-        <div class="grid2 actual">
-          <label>X [mm] <output data-act="x"></output></label>
-          <label>Y [mm] <output data-act="y"></output></label>
-          <label>Z [mm] <output data-act="z"></output></label>
-          <label>A [°] <output data-act="a"></output></label>
-          <label>B [°] <output data-act="b"></output></label>
-        </div>
-        <h3>Zadane</h3>
-        <div class="grid2">
-          <label>X [mm] <input data-pos="x" type="number" step="any"></label>
-          <label>Y [mm] <input data-pos="y" type="number" step="any"></label>
-          <label>Z [mm] <input data-pos="z" type="number" step="any"></label>
-          <label>A [°] <input data-pos="a" type="number" step="any"></label>
-          <label>B [°] <input data-pos="b" type="number" step="any"></label>
-        </div>
-        <div class="row">
-          <button id="posGo" class="primary" title="Jedź na zadaną pozycję"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-          <button id="posActual" title="Wstaw aktualną pozycję"><svg class="ic" aria-hidden="true"><use href="#i-here"/></svg></button>
-        </div>
-        <h3>Punkty ręczne A, B, C <span class="muted">jak Zapisane_Pozycje w HMI – przyciski A / B / C w oknie Ruchy ręczne</span></h3>
-        <table class="manPts">
-          <tr><td><b>A</b></td><td data-point-val="A"></td><td><button data-savepoint="A" class="icbtn" title="Zapisz punkt A: Zapisz aktualną pozycję jako punkt A (bManualSavePointA)"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button></td></tr>
-          <tr><td><b>B</b></td><td data-point-val="B"></td><td><button data-savepoint="B" class="icbtn" title="Zapisz punkt B: bManualSavePointB"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button></td></tr>
-          <tr><td><b>C</b></td><td data-point-val="C"></td><td><button data-savepoint="C" class="icbtn" title="Zapisz punkt C: bManualSavePointC"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button></td></tr>
-        </table>
-      </div>
-
-      <div class="tab" data-tab="par" data-lock hidden>
-        <!-- #131-#133: parametry tylko trybu (data-modes) - w pile bez parametrow narzedzi, w trybach narzedzi bez tarczy -->
-        <h3 data-modes="saw">Tarcza i głowica</h3>
-        <h3 data-modes="mill drill polishing">Głowica</h3>
-        <div class="grid2">
-          <label data-modes="saw">Średnica tarczy [mm] <input data-m="discDiameter" type="number" step="any" min="1"></label>
-          <label data-modes="saw">Szerokość tarczy [mm] <input data-m="bladeWidth" type="number" step="any" min="0"></label>
-          <label>Średnica wychyłu [mm] (fParameterCutTiltDiameter) <input data-m="cutTiltDiameter" type="number" step="any"></label>
-          <label data-modes="saw">Średnica obrotu głowicy [mm] (fParameterHeadRotationDiameter) <input data-m="headRotationDiameter" type="number" step="any"></label>
-          <label data-modes="mill drill polishing">Średnica wychyłu frezu [mm] (fParameterMillTiltDiameter) <input data-m="millTiltDiameter" type="number" step="any"></label>
-        </div>
-        <h3 data-modes="mill">Frez <span class="muted">B 90°</span></h3>
-        <h3 data-modes="drill">Wiertło <span class="muted">B 90°</span></h3>
-        <h3 data-modes="polishing">Narzędzie polerskie <span class="muted">B 90°</span></h3>
-        <div class="grid2" data-modes="mill drill polishing">
-          <label data-modes="mill drill">Średnica frezu / wiertła [mm] (fParameterMillWidth) <input data-m="millWidth" type="number" step="any" min="1"></label>
-          <label data-modes="mill">Długość frezu [mm] (fParameterMillLength) <input data-m="millLength" type="number" step="any" min="0"></label>
-          <label data-modes="drill">Długość wiertła [mm] (fParameterDrillLength) <input data-m="drillLength" type="number" step="any" min="0"></label>
-          <label>Korekta długości [mm] (fParameterMillCorrection) <input data-m="millCorrection" type="number" step="any"></label>
-          <label data-modes="polishing">Średnica polerki [mm] (brak w PLC) <input data-m="polishDiameter" type="number" step="any" min="1"></label>
-          <label data-modes="polishing">Wysokość polerki [mm] (ActiveTool.Height) <input data-m="polishHeight" type="number" step="any"></label>
-        </div>
-        <h3>Dynamika</h3>
-        <table class="dyn">
-          <tr><th></th><th>prędkość<br><small>m/min</small></th><th>przyspieszenie<br><small>m/s²</small></th><th>hamowanie<br><small>m/s²</small></th></tr>
-          <tr><td><span data-modes="saw">Cięcie XY</span><span data-modes="mill drill polishing">Praca XY</span></td><td><input data-d="cutVel" type="number" step="any" min="0.001"></td><td><input data-d="cutAcc" type="number" step="any" min="0.001"></td><td><input data-d="cutDec" type="number" step="any" min="0.001"></td></tr>
-          <tr><td>Dojazd X/Y</td><td><input data-d="fastVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="fastAcc" type="number" step="any" min="0.001"></td></tr>
-          <tr><td>Oś Z</td><td><input data-d="zVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="zAcc" type="number" step="any" min="0.001"></td></tr>
-          <tr><td>Z wyjazd</td><td><input data-d="zUpVel" type="number" step="any" min="0.001"></td><td colspan="2"></td></tr>
-          <tr><td>Jog X</td><td><input data-d="jogXVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak dojazd X/Y</td></tr>
-          <tr><td>Jog Y</td><td><input data-d="jogYVel" type="number" step="any" min="0.001"></td><td colspan="2"></td></tr>
-          <tr><td>Jog Z</td><td><input data-d="jogZVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś Z</td></tr>
-          <tr><th></th><th><small>°/s</small></th><th colspan="2"><small>°/s²</small></th></tr>
-          <tr><td>Oś A</td><td><input data-d="aVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="aAcc" type="number" step="any" min="0.001"></td></tr>
-          <tr><td>Oś B</td><td><input data-d="bVel" type="number" step="any" min="0.001"></td><td colspan="2"><input data-d="bAcc" type="number" step="any" min="0.001"></td></tr>
-          <tr><td>Jog A</td><td><input data-d="jogAVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś A</td></tr>
-          <tr><td>Jog B</td><td><input data-d="jogBVel" type="number" step="any" min="0.001"></td><td colspan="2" class="muted">rampa jak oś B</td></tr>
-        </table>
-        <div class="row">
-          <button id="fromPlc" title="Pobierz parametry z PLC"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg></button>
-          <button id="defaults" title="Wartości domyślne"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg></button>
-        </div>
-        <p class="hint howto">Z PLC: prędkości i przyspieszenia (w PLC mm/s i mm/s² – przeliczane na m/min i m/s²) oraz parametry tarczy, narzędzi i kamienia (fVelocitySawMode, Acc, Dec – cięcie; fVelocityFast, DecX, fVelocityAxisZWork, DecZ, fVelocityAxisZApproach, VelA, DecA, VelB, DecB).</p>
-      </div>
+        <div id="pageUrls" class="msg muted"></div>
+      </section>
     </aside>
   </main>
-
-  <!-- #143 ruchy reczne jak ekrany HMI: MPG (sterowanie reczne) i MANUAL INTERPOLATION (ruchy interpolowane);
-       elementy ekranow z src/client/manualpanel.js -->
-  <div id="manWin" class="win hmiWin" hidden role="dialog" aria-label="Ruchy ręczne">
-    <div class="winHead" id="manHead">
-      <div class="seg" id="manPages">
-        <button type="button" data-page="mpg" class="active" title="Sterowanie ręczne"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
-        <button type="button" data-page="interp" title="Ruchy interpolowane (względem lasera, z wychyłem)"><svg class="ic" aria-hidden="true"><use href="#i-alongLaser"/></svg></button>
-      </div>
-      <button id="manClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
-    </div>
-    <div class="winBody">
-      <div class="hmiScreen" data-page="mpg" id="manScreen_mpg"></div>
-      <div class="hmiScreen" data-page="interp" id="manScreen_interp" hidden></div>
-      <div class="hmiSaw">
-        <span class="hmiSawTitle" id="sawTitle" title="Piła"><svg class="ic big" aria-hidden="true"><use href="#i-saw"/></svg></span>
-        <button type="button" id="sawStart" class="sawStart" title="Start piły (bManualMainDriveOn)"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
-        <button type="button" id="sawStop" class="sawStop" title="Stop piły (bManualMainDriveOff)"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
-        <label class="inline" title="Kierunek obrotów" hidden><svg class="ic" aria-hidden="true"><use href="#i-fwd"/></svg><select id="sawDir"><option value="FWD">FWD</option><option value="REV">REV</option></select></label>
-        <label class="inline" title="Częstotliwość [Hz]" hidden><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><input id="sawFreq" type="number" step="any" min="0" max="120"></label>
-      </div>
-      <div id="manInfo" class="info"></div>
-    </div>
-  </div>
-
-  <!-- #145 logowanie: uzytkownik i haslo, sprawdzane przez serwer (users.json) -->
-  <div id="loginWin" class="win modal" hidden role="dialog" aria-label="Logowanie">
-    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span><button id="loginClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-    <form class="winBody" id="loginForm">
-      <label class="inline" title="Użytkownik"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><select id="loginUser"></select></label>
-      <label class="inline" id="loginPassRow" title="Hasło"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><input type="password" id="loginPass" autocomplete="current-password"></label>
-      <p class="hint howto" id="loginDemo" hidden>Wersja demonstracyjna (GitHub Pages): wybór użytkownika bez hasła – pokazuje i ukrywa funkcje jak na maszynie. Hasła sprawdza tylko serwer VizuApp na maszynie.</p>
-      <p class="hint" id="loginErr"></p>
-      <div class="row"><button type="submit" class="primary" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button><button type="button" id="loginCancel" title="Anuluj"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-      <p class="hint howto">Operator – praca (Manual, Automat, G-kod, Ruchy ręczne, Pozycja, Bazowanie, Ustawienia – stół i kamień). Serwis – dodatkowo ekrany serwisowe (Serwis) i Parametry. Admin – dodatkowo parametry figur (zmienne PLC).</p>
-    </form>
-  </div>
-
-  <!-- #155 alarmy (przepisane z HMI): aktywne, historia, lista wszystkich -->
-  <div id="alarmWin" class="win alarmWin" hidden role="dialog" aria-label="Alarmy">
-    <div class="winHead" id="alarmHead"><span><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>Alarmy</span><button id="alarmClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-    <div class="winBody">
-      <div class="seg sub" id="alarmPages">
-        <button type="button" data-apage="active" class="active">Aktywne</button>
-        <button type="button" data-apage="log">Historia</button>
-        <button type="button" data-apage="all">Wszystkie</button>
-        <button type="button" data-apage="adv">Zaawansowane</button>
-      </div>
-      <div class="tableWrap"><table class="alarmTable" id="alarmTable"></table></div>
-      <div class="row"><button type="button" id="alarmAck" title="Reset alarmów jak w HMI (PLC: HMI2.bAlarmReset; symulacja: kasuje alarmy symulacji)"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Reset alarmów</span></button></div>
-    </div>
-  </div>
-
-  <!-- #148 polaczenie z PLC: adres serwera OPC UA (domyslnie localhost na maszynie; tablet - adres sterownika) -->
-  <div id="connWin" class="win modal" hidden role="dialog" aria-label="Połączenie z PLC">
-    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Połączenie z PLC</span><button id="connClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-    <form class="winBody" id="connForm">
-      <label title="Adres serwera OPC UA sterownika">Adres PLC (OPC UA)
-        <input type="text" id="connEndpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="opc.tcp://192.168.1.10:4840"></label>
-      <p class="hint" id="connStatus"></p>
-      <p class="hint" id="connErr"></p>
-      <div class="row"><button type="submit" class="primary" id="connSave" title="Połącz z tym adresem (zapisany na serwerze VizuApp)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Połącz</span></button><button type="button" id="connDefault" title="Adres domyślny"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Domyślny</span></button></div>
-      <p class="hint" id="connUrls"></p>
-    </form>
-  </div>
-
-  <footer>
-    <div id="pos" class="mono"></div>
-    <div id="vel" class="mono vel" title="Aktualne prędkości osi: X, Y, Z [m/min], A, B [°/s]"></div>
-    <div class="statusline"><span id="conn"></span><span id="step"></span></div>
-  </footer>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

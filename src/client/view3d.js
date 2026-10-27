@@ -1,795 +1,263 @@
-// Widok 3D (three.js): material, tarcza z obrotem A i wychylem B (obroty tarczy), wyciety rzaz
-// (w kamieniu i w stole - na czerwono), laser; w trybach frez / wiercenie / polerowanie narzedzie na wrzecionie
-// i jego slad (rowki, otwory, polerowana powierzchnia).
-// Uklad swiata: x = X, y = Y, z = -Z (do gory), jak w shared/geometry.js.
-
+// Scena 3D boczkarki (jak B1PK-14.0-2000.2): stol z plyta kamienia, belka na slupach, wozek osi X, ramie
+// i glowica wychylna B (silnik wrzecionowy + tarcza garnkowa), krawedz plyty obrabiana kolejnymi przejsciami.
+//
+// Uklad (mm): three x = os X maszyny (wzdluz stolu), y - w gore, z - w poprzek: krawedz plyty z = 0, plyta z < 0,
+// glowica po stronie z > 0. Przekroj krawedzi (u, v) z edgeshape.js: u -> z, v -> y (od wierzchu stolu).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { bladeFrame, toolFrame, isToolMode, topZ } from '../shared/geometry.js';
-import { MachineModel } from './machine3d.js';
-import { planMarks, planDistances } from '../shared/planmarks.js';
-import { waterDrops, waterSpray } from '../shared/water.js';
-import { toolSpinMarks } from '../shared/toolspin.js';
+import { edgeSection, passPlane, normal } from '../shared/edgeshape.js';
+import { PROFILE_TYPE } from '../shared/edgeprofile.js';
 
-const COLORS = {
-  background: 0xeef1f4,
-  material: 0xcdc6b8,
-  materialEdge: 0x8d877a,
-  wall: 0x5b4636,
-  kerf: 0x2a211b,
-  blade: 0x8fa6c1,
-  bladeEdge: 0x1f5fa8,
-  lowest: 0xd62728,
-  axis: 0x555555,
-  grid: 0xc9d0d8,
-  plan: 0xe07b00,
-  planActive: 0xd62728,
-  markStart: 0x2e7d32,
-  tableWall: 0xc62828,
-  tableKerf: 0x7f0000,
-  laser: 0xffd400,
-  spoke: 0x16365f,
-  tooth: 0xd62728,
-  toolMark: 0xf4f7fb,
-  mill: 0x9aa4ad,
-  millEdge: 0x1f5fa8,
-  drill: 0x8fa6c1,
-  polish: 0x3a3f44,
-  polished: 0xf3f6f9,
-  holder: 0x5c6670,
-};
+const BAND = 60;			// szerokosc pasa krawedzi liczonego przekrojem [mm]
+const RETRACT = 18;			// odsuniecie glowicy bez docisku [mm]
 
-const v3 = (p) => new THREE.Vector3(p[0], p[1], p[2]);
-const dist2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
+const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.15, ...extra });
 
-export class View3D {
-  constructor(container) {
+export class EdgeView {
+  constructor(container, cfg) {
+    this.cfg = cfg;
+    this.m = cfg.machine;
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
     container.appendChild(this.renderer.domElement);
-
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.background);
-    this.camera = new THREE.PerspectiveCamera(35, 1, 5, 200000);
-    this.camera.up.set(0, 0, 1);
+    this.scene.background = new THREE.Color(0xdde3ea);
+    this.camera = new THREE.PerspectiveCamera(40, 1, 10, 40000);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = false;
-    this.controls.addEventListener('change', () => this.render());
-
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(-1500, -2500, 4000);
-    this.scene.add(sun);
-
-    this.materialGroup = new THREE.Group();
-    this.cutsGroup = new THREE.Group();
-    this.bladeGroup = this.buildBlade();
-    this.toolGroup = this.buildTool();
-    this.machineModel = new MachineModel();
-    this.planGroup = new THREE.Group();
-    this.laserGroup = new THREE.Group();
-    this.scene.add(this.materialGroup, this.cutsGroup, this.bladeGroup, this.toolGroup, this.machineModel.group, this.planGroup, this.laserGroup);
-    this.laserMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4 });
-    // wiazka lasera (wachlarz od modulu na oslonie do linii na materiale)
-    this.laserFanMat = new THREE.MeshBasicMaterial({ color: COLORS.laser, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false });
-    // woda z dysz na tarcze (krople)
-    this.water = new THREE.Group();
-    const dropTex = roundTexture();
-    this.waterDrops = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x3f93e8, size: 16, map: dropTex, alphaTest: 0.05,
-      transparent: true, opacity: 0.9, depthWrite: false }));
-    this.waterDrops.frustumCulled = false;
-    // mgla wodna przy rozbryzgu (duze, prawie przezroczyste punkty)
-    this.waterMist = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x9fd0ff, size: 110, map: dropTex, transparent: true, opacity: 0.22, depthWrite: false }));
-    this.waterMist.frustumCulled = false;
-    // mokra plama na materiale wzdluz ciecia (polysk)
-    this.waterWet = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x9fb3c4, roughness: 0.08, metalness: 0.35,
-      transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-    this.waterWet.frustumCulled = false;
-    // strumien: polprzezroczysta struga od dyszy do tarczy (przebudowa przy zmianie polozenia)
-    const streamMat = new THREE.MeshBasicMaterial({ color: 0x6fb4f5, transparent: true, opacity: 0.45, depthWrite: false });
-    this.waterStreams = [0, 1, 2].map(() => new THREE.Mesh(new THREE.BufferGeometry(), streamMat));
-    this.waterKey = '';
-    this.water.add(this.waterDrops, this.waterMist, this.waterWet, ...this.waterStreams);
-    this.water.visible = false;
-    this.scene.add(this.water);
-    this.laserKey = '';
-    this.planMat = new THREE.LineDashedMaterial({ color: COLORS.plan, dashSize: 14, gapSize: 8, depthTest: false, transparent: true, opacity: 0.85 });
-    this.planActiveMat = new THREE.LineBasicMaterial({ color: COLORS.planActive, depthTest: false });
-    this.planKey = '';
-    // CNC 3D (#124): powierzchnia mapy wysokosci materialu i tor programu G-kodu
-    this.cncGroup = new THREE.Group();
-    this.scene.add(this.cncGroup);
-    this.hmMesh = null;
-    this.hmVersion = -1;
-    this.cncPathKey = null;
-
-    // warstwy ciec: kamien i stol (ciecie w stol - innym kolorem)
-    const kerf = (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
-    this.cutSlots = {
-      stone: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.wall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.kerf) },
-      table: { wallMat: new THREE.MeshStandardMaterial({ color: COLORS.tableWall, side: THREE.DoubleSide, roughness: 1 }), kerfMat: kerf(COLORS.tableKerf) },
-    };
-    this.polishMat = new THREE.MeshStandardMaterial({ color: COLORS.polished, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.75,
-      side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 });
-    this.extentKey = '';
-    this.bladeKey = '';
-    this.viewName = 'iso';
+    this.controls.enableDamping = true;
+    this.lights();
+    this.buildMachine();
+    this.stone = new THREE.Group();
+    this.scene.add(this.stone);
+    this.stoneKey = '';
+    this.spin = 0;
+    this.view('iso');
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
   }
 
+  lights() {
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 1.1));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(-1500, 4000, 3000);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -3000, right: 3000, top: 3000, bottom: -3000, near: 100, far: 10000 });
+    sun.target.position.set(1200, 0, 0);
+    this.scene.add(sun, sun.target);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(12000, 9000), mat(0xb9bec5, { roughness: 0.9 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(1200, 0, 0);
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+    const grid = new THREE.GridHelper(12000, 24, 0x9aa1aa, 0xa9b0b8);
+    grid.position.set(1200, 1, 0);
+    this.scene.add(grid);
+  }
+
+  box(w, h, d, color, x, y, z, parent = this.scene) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof color === 'number' ? mat(color) : color);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  cylinder(r, h, color, parent) {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 40), typeof color === 'number' ? mat(color) : color);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  buildMachine() {
+    const m = this.m;
+    const x0 = m.travelX[0] - 150;
+    const len = m.tableLength;
+    const th = m.tableHeight;
+    const front = -m.stoneOverhang;			// przednia krawedz blatu
+    // stol: blat z rowkami, nogi, rama
+    this.box(len, 40, m.tableWidth, 0x6c7480, x0 + len / 2, th - 20, front - m.tableWidth / 2);
+    for (let i = 0; i < 8; i++) this.box(len, 4, 12, 0x3d434b, x0 + len / 2, th + 1, front - 60 - i * ((m.tableWidth - 120) / 7));
+    for (const lx of [x0 + 80, x0 + len - 80]) {
+      for (const lz of [front - 80, front - m.tableWidth + 80]) this.box(90, th - 40, 90, 0x2f343b, lx, (th - 40) / 2, lz);
+    }
+    this.box(len - 160, 70, 70, 0x2f343b, x0 + len / 2, 260, front - 80);
+    this.box(len - 160, 70, 70, 0x2f343b, x0 + len / 2, 260, front - m.tableWidth + 80);
+    // konstrukcja nosna: slupy po obu koncach i belka osi X po stronie glowicy (kolor Promasz)
+    const railZ = 560;
+    const steel = mat(0xf2b134, { metalness: 0.25, roughness: 0.45 });
+    for (const px of [x0 - 120, x0 + len + 120]) this.box(160, m.railHeight + 120, 160, steel, px, (m.railHeight + 120) / 2, railZ);
+    this.box(len + 400, 180, 200, steel, x0 + len / 2, m.railHeight + 60, railZ);
+    this.box(len + 380, 18, 40, mat(0xc9ced6, { metalness: 0.7, roughness: 0.25 }), x0 + len / 2, m.railHeight - 38, railZ - 80);
+    // wozek osi X i ramie
+    this.carriage = new THREE.Group();
+    this.scene.add(this.carriage);
+    this.box(320, 260, 300, 0xe9ecef, 0, m.railHeight + 60, railZ, this.carriage);
+    this.box(260, 80, 20, 0x1f6fb2, 0, m.railHeight + 60, railZ + 160, this.carriage);
+    this.column = this.box(150, 1, 150, 0xe9ecef, 0, 0, railZ - 40, this.carriage);
+    // przegub B: piasta na koncu ramienia
+    this.hub = new THREE.Group();
+    this.carriage.add(this.hub);
+    const hubDisc = this.cylinder(110, 120, 0x9aa3ad, this.hub);
+    hubDisc.rotation.z = Math.PI / 2;
+    // lacznik piasta -> silnik (dlugosc ustawiana w update)
+    this.link = this.box(70, 70, 1, 0xd5dae0, 0, 0, 0, this.carriage);
+    // glowica: uklad, w ktorym +z = normalna szlifowanej plaszczyzny (od kamienia do silnika)
+    this.head = new THREE.Group();
+    this.carriage.add(this.head);
+    this.tool = new THREE.Group();
+    this.head.add(this.tool);
+    const wheel = new THREE.Group();
+    const cup = this.cylinder(m.wheelDiameter / 2, m.wheelHeight, mat(0xc0612b, { roughness: 0.8 }), wheel);
+    cup.rotation.x = Math.PI / 2;
+    const seg = this.cylinder(m.wheelDiameter / 2 - 6, 4, mat(0x4a4d52, { metalness: 0.5 }), wheel);
+    seg.rotation.x = Math.PI / 2;
+    seg.position.z = -m.wheelHeight / 2 - 2;
+    // znaczniki obrotow na tarczy
+    for (let i = 0; i < 6; i++) {
+      const mk = this.box(10, 6, m.wheelHeight + 2, 0xf6d2b5, 0, 0, 0, wheel);
+      const a = (i / 6) * Math.PI * 2;
+      mk.position.set(Math.cos(a) * (m.wheelDiameter / 2 - 4), Math.sin(a) * (m.wheelDiameter / 2 - 4), 0);
+    }
+    wheel.position.z = m.wheelHeight / 2;
+    this.wheel = wheel;
+    this.tool.add(wheel);
+    const shaft = this.cylinder(28, 60, 0x8d949c, this.tool);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.z = m.wheelHeight + 30;
+    const motor = this.cylinder(m.motorDiameter / 2, m.motorLength, mat(0xf4f5f6, { roughness: 0.35 }), this.tool);
+    motor.rotation.x = Math.PI / 2;
+    motor.position.z = m.wheelHeight + 60 + m.motorLength / 2;
+    const box = this.box(110, 120, 140, 0x1f6fb2, 0, m.motorDiameter / 2 + 40, m.wheelHeight + 60 + m.motorLength * 0.55, this.tool);
+    box.castShadow = true;
+    const fan = this.cylinder(m.motorDiameter / 2 - 8, 40, 0x3a3f46, this.tool);
+    fan.rotation.x = Math.PI / 2;
+    fan.position.z = m.wheelHeight + 60 + m.motorLength + 20;
+    this.motorRear = m.wheelHeight + 60 + m.motorLength + 40;
+    // oslona tarczy i woda
+    const guard = new THREE.Mesh(new THREE.CylinderGeometry(m.wheelDiameter / 2 + 18, m.wheelDiameter / 2 + 18, m.wheelHeight + 30, 40, 1, true, 0, Math.PI * 1.3),
+      mat(0x1f6fb2, { side: THREE.DoubleSide, transparent: true, opacity: 0.55 }));
+    guard.rotation.x = Math.PI / 2;
+    guard.position.z = m.wheelHeight / 2 + 12;
+    this.tool.add(guard);
+    this.water = new THREE.Mesh(new THREE.ConeGeometry(m.wheelDiameter * 0.55, 140, 24, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x5fb3ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+    this.water.rotation.x = -Math.PI / 2;
+    this.water.position.z = -20;
+    this.tool.add(this.water);
+    // znacznik docisku (pierscien przy silniku)
+    this.clampRing = new THREE.Mesh(new THREE.TorusGeometry(m.motorDiameter / 2 + 8, 7, 12, 40), mat(0x2ecc71, { emissive: 0x0b5d2a }));
+    this.clampRing.position.z = m.wheelHeight + 70;
+    this.tool.add(this.clampRing);
+  }
+
   resize() {
-    const w = this.container.clientWidth || 1;
-    const h = this.container.clientHeight || 1;
-    this.renderer.setSize(w, h, false);
+    const w = this.container.clientWidth || 800;
+    const h = this.container.clientHeight || 600;
+    this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.render();
+  }
+
+  // Widoki: iso, przod (wzdluz krawedzi), bok (przekroj profilu), gora
+  view(name, centerX = 1000) {
+    const th = this.m.tableHeight;
+    const t = new THREE.Vector3(centerX, th, 0);
+    // kamera od strony operatora, pod belka osi X (widac krawedz plyty i glowice)
+    const p = {
+      iso: [centerX - 1300, th + 650, 2300], front: [centerX, th + 380, 2600],
+      side: [this.m.travelX[0] - 900, th + 120, 260], top: [centerX, th + 4200, 400],
+    }[name] ?? [centerX - 1300, th + 650, 2300];
+    if (name === 'side') t.set(this.m.travelX[0] + 200, th + 15, 0);
+    this.camera.position.set(...p);
+    this.controls.target.copy(t);
+    this.controls.update();
+  }
+
+  // Plyta i krawedz: odbudowa tylko przy zmianie przekroju / odcinkow
+  updateStone(profile, passes, cut) {
+    const m = this.m;
+    const T = m.stoneThickness;
+    const x0 = Math.min(profile.xStart, profile.xEnd);
+    const x1 = Math.max(profile.xStart, profile.xEnd);
+    const angles = passes.slice(0, cut.done).map((p) => p.angleB);
+    const part = cut.partial ? { ...cut.partial, from: Math.max(x0, cut.partial.from), to: Math.min(x1, cut.partial.to) } : null;
+    const key = JSON.stringify([profile.kind, x0, x1, angles, part && [part.angle, Math.round(part.from / 4), Math.round(part.to / 4)]]);
+    if (key === this.stoneKey) return;
+    this.stoneKey = key;
+    for (const c of [...this.stone.children]) { c.geometry?.dispose(); this.stone.remove(c); }
+    if (x1 - x0 < 1) return;
+    const granite = mat(0x8f8a86, { roughness: 0.5, metalness: 0.05, flatShading: true });
+    const polished = mat(0xa9a39d, { roughness: 0.25, metalness: 0.1, flatShading: true });
+    // plyta poza pasem krawedzi
+    const body = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, T, m.stoneWidth - BAND), granite);
+    body.position.set((x0 + x1) / 2, m.tableHeight + T / 2, -BAND - (m.stoneWidth - BAND) / 2);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    this.stone.add(body);
+    // pas krawedzi: odcinki X z wlasnym przekrojem (biezacy przejazd zeszlifowal juz czesc dlugosci)
+    const done = edgeSection(profile.kind, angles, T, this.cfg.shape, BAND);
+    const segs = part && part.to > part.from
+      ? [[x0, part.from, done], [part.from, part.to, edgeSection(profile.kind, [...angles, part.angle], T, this.cfg.shape, BAND)], [part.to, x1, done]]
+      : [[x0, x1, done]];
+    for (const [a, b, poly] of segs) {
+      if (b - a < 0.5 || poly.length < 3) continue;
+      const shape = new THREE.Shape(poly.map(([u, v]) => new THREE.Vector2(-u, v)));
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: b - a, bevelEnabled: false, curveSegments: 1 });
+      const mesh = new THREE.Mesh(geo, angles.length || (part && segs.length > 1 && a === part.from) ? polished : granite);
+      mesh.rotation.y = Math.PI / 2;
+      mesh.position.set(a, m.tableHeight, 0);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.stone.add(mesh);
+    }
+  }
+
+  // Polozenie glowicy z migawki maszyny (symulator lub PLC)
+  update(state, profile, passes, cut, dt) {
+    const m = this.m;
+    this.updateStone(profile, passes, cut);
+    const x = Number(state.x) || 0;
+    const b = Number(state.b) || 0;
+    this.carriage.position.x = x;
+    // punkt styku tarczy na plaszczyznie profilu dla biezacego kata B; bez docisku - odsuniecie
+    const kind = profile.kind ?? PROFILE_TYPE.StraightEdge;
+    const plane = passPlane(kind, b, m.stoneThickness, this.cfg.shape);
+    const n = normal(b);
+    const off = state.clamp ? 0 : RETRACT;
+    const cu = plane.contact[0] + n[0] * off;
+    const cv = plane.contact[1] + n[1] * off;
+    this.head.position.set(0, m.tableHeight + cv, cu);
+    this.head.rotation.x = -b * Math.PI / 180;
+    // piasta przegubu nad krawedzia, ramie z wozka do piasty, lacznik piasta -> tyl silnika
+    const hubY = m.tableHeight + 420;
+    const hubZ = 380;
+    this.hub.position.set(0, hubY, hubZ);
+    const colTop = m.railHeight - 40;
+    this.column.scale.y = colTop - hubY;
+    this.column.position.set(0, (colTop + hubY) / 2, hubZ);
+    const rear = new THREE.Vector3(0, m.tableHeight + cv + n[1] * this.motorRear * 0.7, cu + n[0] * this.motorRear * 0.7);
+    const hub = new THREE.Vector3(0, hubY, hubZ);
+    const len = rear.distanceTo(hub);
+    this.link.scale.z = Math.max(1, len);
+    this.link.position.copy(rear.clone().add(hub).multiplyScalar(0.5));
+    // os z prostopadloscianu wzdluz odcinka tyl silnika -> piasta (obrot wokol X: z -> (0, -sin, cos))
+    this.link.rotation.set(Math.atan2(-(hub.y - rear.y), hub.z - rear.z), 0, 0);
+    // obroty tarczy i woda
+    const rps = Math.min(Number(state.spindleFrequency) || 0, 120) / 10;
+    this.spin += rps * Math.PI * 2 * dt;
+    this.wheel.rotation.z = this.spin;
+    this.water.visible = Boolean(state.water);
+    this.water.material.opacity = 0.2 + 0.1 * Math.sin(performance.now() / 70);
+    this.clampRing.visible = Boolean(state.clamp);
   }
 
   render() {
+    this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
-
-  // --- material ---------------------------------------------------------------
-
-  // Kamien: wielokat z punktow (aCuttingRock) wyciagniety na grubosc, albo prostokat extent (bez punktow)
-  // shapes (#156) - kamien bez wycietych elementow: [{outer, holes}] zamiast wielokata
-  setMaterial(extent, m, polygon = null, shapes = null) {
-    const key = JSON.stringify([extent, polygon, m.materialHeight, m.materialThickness, shapes]);
-    if (key === this.extentKey) return;
-    this.extentKey = key;
-    disposeGroup(this.materialGroup);
-    if (!extent) return;
-    const [x0, y0, x1, y1] = extent;
-    const top = topZ(m);
-    const thick = Math.max(m.materialThickness, 1);
-    const pts = polygon || [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-    const geo = shapes ? shapesGeometry(shapes, top - thick, thick) : prismGeometry(pts, top - thick, thick);
-    const box = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-      color: COLORS.material, roughness: 0.9, transparent: true, opacity: 0.72, depthWrite: false,
-    }));
-    box.renderOrder = 2;
-    this.materialBox = box;
-    if (this.materialOpacity !== undefined) box.material.opacity = this.materialOpacity;
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: COLORS.materialEdge }));
-    const size = Math.max(x1 - x0, y1 - y0) * 1.4;
-    const grid = new THREE.GridHelper(size, Math.max(4, Math.round(size / 100)), COLORS.grid, COLORS.grid);
-    grid.rotation.x = Math.PI / 2;
-    grid.position.set((x0 + x1) / 2, (y0 + y1) / 2, top - thick - 1);
-    this.grid = grid;
-    this.materialGroup.add(grid, box, edges);
-  }
-
-  // --- ciecia -----------------------------------------------------------------
-
-  // Siatki kazdego ciecia trzymane osobno - przebudowa tylko ciec, ktore sie zmienily (Cut.rev);
-  // slot - warstwa 'stone' (kamien) albo 'table' (ciecie w stol, czerwone)
-  setCuts(recorder, slot = 'stone') {
-    const sl = this.cutSlots[slot];
-    if (recorder.version === sl.version) return;
-    sl.version = recorder.version;
-    sl.meshes ??= new Map();
-    const alive = new Set(recorder.cuts);
-    for (const [cut, entry] of sl.meshes) {
-      if (!alive.has(cut)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); sl.meshes.delete(cut); }
-    }
-    const { wallMat, kerfMat } = sl;
-    for (const cut of recorder.cuts) {
-      let entry = sl.meshes.get(cut);
-      if (entry && entry.rev === cut.rev) continue;
-      if (!entry) {
-        entry = { group: new THREE.Group(), rev: -1 };
-        sl.meshes.set(cut, entry);
-        this.cutsGroup.add(entry.group);
-      }
-      disposeGroup(entry.group);
-      entry.rev = cut.rev;
-      const half = cut.bladeWidth / 2;
-      for (const offset of [-half, half]) {
-        for (const strip of cut.wallStrips(offset)) entry.group.add(stripMesh(strip, wallMat));
-      }
-      for (const band of cut.topBands()) {
-        const geo = new THREE.BufferGeometry().setFromPoints(band.map((p) => v3([p[0], p[1], p[2] + 0.3])));
-        geo.setIndex([0, 1, 2, 0, 2, 3]);
-        entry.group.add(new THREE.Mesh(geo, kerfMat));
-      }
-    }
-  }
-
-  // Slad narzedzia (ToolRecorder): przejscie frezu - rowek o szerokosci srednicy (sciany, dno, pasek na gorze),
-  // otwor wiertla - walec, polerka - jasny pasek na powierzchni; slot jak w setCuts
-  setToolCuts(recorder, slot = 'stone') {
-    const sl = this.cutSlots[slot];
-    if (sl.toolVersion === recorder.version) return;
-    sl.toolVersion = recorder.version;
-    sl.toolMeshes ??= new Map();
-    const alive = new Set(recorder.passes);
-    for (const [pass, entry] of sl.toolMeshes) {
-      if (!alive.has(pass)) { disposeGroup(entry.group); this.cutsGroup.remove(entry.group); sl.toolMeshes.delete(pass); }
-    }
-    for (const pass of recorder.passes) {
-      let entry = sl.toolMeshes.get(pass);
-      if (entry && entry.rev === pass.rev) continue;
-      if (!entry) {
-        entry = { group: new THREE.Group(), rev: -1 };
-        sl.toolMeshes.set(pass, entry);
-        this.cutsGroup.add(entry.group);
-      }
-      disposeGroup(entry.group);
-      entry.rev = pass.rev;
-      buildToolPass(entry.group, pass, pass.polish ? null : sl.wallMat, pass.polish ? this.polishMat : sl.kerfMat);
-    }
-  }
-
-  // --- CNC 3D (#124): mapa wysokosci i tor G-kodu --------------------------------------------
-
-  // Powierzchnia materialu z mapy wysokosci (HeightMap): siatka nx x ny, kolor wg glebokosci (gora - kolor kamienia,
-  // najglebiej - ciemny). Geometria budowana raz na mape, potem tylko Z i kolory przy zmianie (version).
-  setHeightMap(hm) {
-    if (!hm) {
-      if (this.hmMesh) { this.cncGroup.remove(this.hmMesh); this.hmMesh.geometry.dispose(); this.hmMesh = null; }
-      this.hmVersion = -1;
-      return;
-    }
-    if (!this.hmMesh || this.hmMesh.userData.hm !== hm) {
-      if (this.hmMesh) { this.cncGroup.remove(this.hmMesh); this.hmMesh.geometry.dispose(); }
-      const { nx, ny } = hm;
-      const pos = new Float32Array(nx * ny * 3);
-      for (let j = 0; j < ny; j++) {
-        for (let i = 0; i < nx; i++) {
-          const k = (j * nx + i) * 3;
-          pos[k] = hm.x0 + i * hm.res;
-          pos[k + 1] = hm.y0 + j * hm.res;
-        }
-      }
-      const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
-      let n = 0;
-      for (let j = 0; j < ny - 1; j++) {
-        for (let i = 0; i < nx - 1; i++) {
-          const a = j * nx + i;
-          idx[n++] = a; idx[n++] = a + 1; idx[n++] = a + nx;
-          idx[n++] = a + 1; idx[n++] = a + nx + 1; idx[n++] = a + nx;
-        }
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3));
-      geo.setIndex(new THREE.BufferAttribute(idx, 1));
-      this.hmMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-        vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1,
-      }));
-      this.hmMesh.userData.hm = hm;
-      this.hmMesh.frustumCulled = false;
-      this.cncGroup.add(this.hmMesh);
-      this.hmVersion = -1;
-    }
-    if (hm.version === this.hmVersion) return;
-    // nowa siatka - cala; potem tylko prostokat zmienionych komorek (+1 na normalne sasiadow)
-    const full = this.hmVersion === -1;
-    this.hmVersion = hm.version;
-    const d = hm.takeDirty();
-    if (!full && !d) return;
-    const { nx, ny } = hm;
-    const [i0, j0, i1, j1] = full ? [0, 0, nx - 1, ny - 1]
-      : [Math.max(0, d[0] - 1), Math.max(0, d[1] - 1), Math.min(nx - 1, d[2] + 1), Math.min(ny - 1, d[3] + 1)];
-    const geo = this.hmMesh.geometry;
-    const pos = geo.attributes.position.array;
-    const col = geo.attributes.color.array;
-    if (!geo.attributes.normal) geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3));
-    const nor = geo.attributes.normal.array;
-    const depth = Math.max(1, hm.top - hm.bottom);
-    const top = new THREE.Color(COLORS.material);
-    const deep = new THREE.Color(0x4a3a2c);
-    const c = new THREE.Color();
-    const z = hm.z;
-    const two = 2 * hm.res;
-    for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) {
-        const k = j * nx + i;
-        pos[k * 3 + 2] = z[k] + 0.2;
-        c.copy(top).lerp(deep, Math.min(1, (hm.top - z[k]) / depth) ** 0.7);
-        col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
-        // normalna z roznic wysokosci sasiadow
-        const gx = (z[j * nx + Math.min(nx - 1, i + 1)] - z[j * nx + Math.max(0, i - 1)]) / two;
-        const gy = (z[Math.min(ny - 1, j + 1) * nx + i] - z[Math.max(0, j - 1) * nx + i]) / two;
-        const l = Math.hypot(gx, gy, 1);
-        nor[k * 3] = -gx / l; nor[k * 3 + 1] = -gy / l; nor[k * 3 + 2] = 1 / l;
-      }
-    }
-    for (const a of [geo.attributes.position, geo.attributes.color, geo.attributes.normal]) {
-      a.needsUpdate = true;
-      // zakresy sie sumuja do wyslania (three.js czysci je po wyslaniu do GPU); cala siatka - bez zakresu
-      if (full) a.clearUpdateRanges?.();
-      else a.addUpdateRange?.(j0 * nx * 3, ((j1 - j0 + 1) * nx) * 3);
-    }
-  }
-
-  // Krycie bryly kamienia (G-kod: prawie przezroczysta, zeby nie zakrywala reliefu z mapy wysokosci)
-  setMaterialOpacity(o) {
-    this.materialOpacity = o;
-    if (this.materialBox && this.materialBox.material.opacity !== o) this.materialBox.material.opacity = o;
-  }
-
-  // Tor programu: [{kind: 'rapid' | 'feed', pts: [[x, y, z], ...]}] (swiat, czubek narzedzia); null - brak
-  setCncPath(paths, key) {
-    if (key === this.cncPathKey) return;
-    this.cncPathKey = key;
-    for (const o of [...this.cncGroup.children]) {
-      if (o === this.hmMesh) continue;
-      this.cncGroup.remove(o);
-      o.geometry?.dispose();
-    }
-    if (!paths) return;
-    this.cncFeedMat ??= new THREE.LineBasicMaterial({ color: 0xe07b00, transparent: true, opacity: 0.55 });
-    this.cncRapidMat ??= new THREE.LineDashedMaterial({ color: 0x1f5fa8, dashSize: 10, gapSize: 8, transparent: true, opacity: 0.7 });
-    for (const p of paths) {
-      if (p.pts.length < 2) continue;
-      const arr = new Float32Array(p.pts.length * 3);
-      p.pts.forEach((q, i) => { arr[i * 3] = q[0]; arr[i * 3 + 1] = q[1]; arr[i * 3 + 2] = q[2]; });
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-      const line = new THREE.Line(geo, p.kind === 'rapid' ? this.cncRapidMat : this.cncFeedMat);
-      if (p.kind === 'rapid') line.computeLineDistances();
-      line.frustumCulled = false;
-      this.cncGroup.add(line);
-    }
-  }
-
-  // --- plan (linie / tor operacji, kroki automatu) --------------------------------
-
-  // Znaczniki XY: kropka (poczatek - zielona, koniec - czerwona, oba - pomaranczowa) i etykieta "X .. Y .." o stalej
-  // wielkosci na ekranie, nad materialem i zawsze widoczne; aktywny krok - etykieta podswietlona
-  // show {xy, dist} - znaczniki XY / odleglosci (osobne przelaczniki na gornym pasku)
-  addPlanMarks(items, z, show) {
-    for (const mk of show.xy ? planMarks(items) : []) {
-      const color = mk.start && mk.end ? COLORS.plan : mk.start ? COLORS.markStart : COLORS.planActive;
-      const dot = new THREE.Sprite(spriteMaterial(dotTexture(color)));
-      dot.scale.set(0.014, 0.014, 1);
-      dot.position.set(mk.x, mk.y, z + 2);
-      dot.renderOrder = 7;
-      const { texture, aspect } = labelTexture(mk.label, mk.active);
-      const label = new THREE.Sprite(spriteMaterial(texture));
-      const h = 0.03;
-      label.scale.set(h * aspect, h, 1);
-      // etykieta obok kropki: sam poczatek - w lewo, koniec - w prawo (bliskie punkty poczatku i konca sie nie zaslaniaja)
-      label.center.set(mk.start && !mk.end ? 1.08 : -0.08, -0.25);
-      label.position.copy(dot.position);
-      label.renderOrder = 8;
-      this.planGroup.add(dot, label);
-    }
-    // odleglosci miedzy punktami: etykieta "… mm" w polowie toru akcji (niebieska, aktywny krok - czerwona)
-    for (const ds of show.dist ? planDistances(items) : []) {
-      const { texture, aspect } = labelTexture(ds.label, ds.active, 'distance');
-      const label = new THREE.Sprite(spriteMaterial(texture));
-      const h = 0.026;
-      label.scale.set(h * aspect, h, 1);
-      label.center.set(0.5, 0.5);
-      label.position.set(ds.x, ds.y, z + 2);
-      label.renderOrder = 8;
-      this.planGroup.add(label);
-    }
-  }
-
-  // items: [{path: [[x, y] | null, ...], marks?, active}], z - wysokosc rysowania (gora materialu); null w sciezce = przerwa;
-  // marks - znaczniki poczatku / konca akcji z wartosciami XY (#137)
-  // show {xy, dist} - znaczniki XY i odleglosci miedzy punktami
-  setPlan(items, z, show = { xy: true, dist: true }) {
-    const key = JSON.stringify([items, z, show]);
-    if (key === this.planKey) return;
-    this.planKey = key;
-    disposeGroup(this.planGroup);
-    if (show.xy || show.dist) this.addPlanMarks(items, z, show);
-    for (const it of items || []) {
-      let run = [];
-      const flush = () => {
-        if (run.length >= 2) {
-          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(run.map(([x, y]) => new THREE.Vector3(x, y, z + 1))),
-            it.active ? this.planActiveMat : this.planMat);
-          line.computeLineDistances();
-          line.renderOrder = 5;
-          this.planGroup.add(line);
-        }
-        run = [];
-      };
-      for (const p of it.path || []) { if (p) run.push(p); else flush(); }
-      flush();
-    }
-  }
-
-  // --- laser -----------------------------------------------------------------
-
-  // points - linia lasera na powierzchni [[x, y, z], ...] albo null (wylaczony); rysowana jako pasek width mm;
-  // mount - polozenie modulu lasera na glowicy [x, y, z] (wiazka - wachlarz do linii) albo null
-  setLaser(points, width = 8, mount = null) {
-    const key = points ? JSON.stringify([points, mount].map((a) => a && JSON.stringify(a, (k, v) => (typeof v === 'number' ? Math.round(v * 2) / 2 : v)))) : '';
-    if (key === this.laserKey) return;
-    this.laserKey = key;
-    disposeGroup(this.laserGroup);
-    if (!points || points.length < 2) return;
-    const pos = [];
-    const idx = [];
-    points.forEach((p, i) => {
-      const q = points[Math.min(i + 1, points.length - 1)];
-      const r = points[Math.max(i - 1, 0)];
-      const dx = q[0] - r[0];
-      const dy = q[1] - r[1];
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len * width / 2;
-      const ny = dx / len * width / 2;
-      pos.push(p[0] + nx, p[1] + ny, p[2] + 0.6, p[0] - nx, p[1] - ny, p[2] + 0.6);
-      if (i > 0) { const a = 2 * (i - 1); idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-    });
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(idx);
-    const strip = new THREE.Mesh(geo, this.laserMat);
-    strip.renderOrder = 6;
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(width, 12, 8), this.laserMat);
-    dot.position.copy(v3(points[0]));
-    this.laserGroup.add(strip, dot);
-    if (mount) {
-      const fan = [];
-      for (let i = 0; i + 1 < points.length; i++) fan.push(...mount, ...points[i], ...points[i + 1]);
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(fan, 3));
-      const beam = new THREE.Mesh(g, this.laserFanMat);
-      beam.renderOrder = 6;
-      this.laserGroup.add(beam);
-    }
-  }
-
-  // --- tarcza -----------------------------------------------------------------
-
-  buildBlade() {
-    const g = new THREE.Group();
-    this.disc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 96, 1),
-      new THREE.MeshStandardMaterial({ color: COLORS.blade, metalness: 0.6, roughness: 0.35, transparent: true, opacity: 0.55, depthWrite: false }));
-    this.disc.renderOrder = 3;
-    this.discEdge = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.bladeEdge }));
-    this.hub = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32, 1), new THREE.MeshStandardMaterial({ color: 0x2f4f78, metalness: 0.5, roughness: 0.4 }));
-    this.spindle = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.bladeEdge }));
-    this.axisA = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: COLORS.axis, dashSize: 12, gapSize: 8 }));
-    this.lowest = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.lowest }));
-    // szprychy i znacznik zeba - widac obroty tarczy
-    this.spokes = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.spoke }));
-    this.tooth = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
-    // geometria linii zmienia sie co klatke - bez obcinania po starej sferze otaczajacej
-    for (const l of [this.discEdge, this.spindle, this.axisA, this.spokes, this.tooth]) l.frustumCulled = false;
-    g.add(this.disc, this.discEdge, this.hub, this.spindle, this.axisA, this.lowest, this.spokes, this.tooth);
-    return g;
-  }
-
-  // spin - kat obrotu tarczy [rad] (szprychy); w trybach narzedzi tarcza ukryta (setTool)
-  setBlade(pose, m, visible, spin = 0) {
-    this.bladeGroup.visible = Boolean(visible && pose && !isToolMode(m));
-    if (!this.bladeGroup.visible) return;
-    const f = bladeFrame(pose, m);
-    const r = f.radius;
-    // walec three.js ma os wzdluz Y - obrot do normalnej tarczy
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v3(f.normal));
-    this.disc.quaternion.copy(q);
-    this.disc.scale.set(r, Math.max(m.bladeWidth, 1), r);
-    this.disc.position.copy(v3(f.center));
-    this.hub.quaternion.copy(q);
-    this.hub.scale.set(r * 0.15, Math.max(m.bladeWidth, 1) * 6, r * 0.15);
-    this.hub.position.copy(v3(f.center));
-    const ring = [];
-    for (let i = 0; i < 96; i++) {
-      const t = (i / 96) * Math.PI * 2;
-      ring.push(v3(f.point(r * Math.cos(t), r * Math.sin(t))));
-    }
-    this.discEdge.geometry.setFromPoints(ring);
-    const spokes = [];
-    for (let k = 0; k < 6; k++) {
-      const t = spin + k * Math.PI / 3;
-      spokes.push(v3(f.point(r * 0.2 * Math.cos(t), r * 0.2 * Math.sin(t))), v3(f.point(r * 0.93 * Math.cos(t), r * 0.93 * Math.sin(t))));
-    }
-    this.spokes.geometry.setFromPoints(spokes);
-    const tooth = [];
-    for (let k = 0; k <= 8; k++) {
-      const t = spin + (k / 8 - 0.5) * 0.25;
-      tooth.push(v3(f.point(r * Math.cos(t), r * Math.sin(t))));
-    }
-    this.tooth.geometry.setFromPoints(tooth);
-    this.spindle.geometry.setFromPoints([v3(f.pivot), v3(f.center)]);
-    this.axisA.geometry.setFromPoints([v3(f.axis), v3([f.axis[0], f.axis[1], f.axis[2] + r * 0.9])]);
-    this.axisA.computeLineDistances();
-    this.lowest.position.copy(v3(f.lowest));
-    this.lowest.scale.setScalar(Math.max(4, r * 0.02));
-  }
-
-  // --- narzedzie na wrzecionie (frez, wiertlo, polerka) ---------------------------
-
-  buildTool() {
-    const g = new THREE.Group();
-    const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.4, ...extra });
-    // walce three.js maja os Y; czesci ustawiane w setTool
-    this.toolBody = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1), std(COLORS.mill));
-    this.toolShank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32, 1), std(COLORS.holder));
-    this.toolTube = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1, true), std(COLORS.drill, { side: THREE.DoubleSide }));
-    this.toolPad = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1), std(COLORS.polish, { metalness: 0.1, roughness: 0.8 }));
-    this.toolFace = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.millEdge }));
-    // znaczniki obrotu (ostrza frezu, segmenty koronki, sektory polerki) i wyrozniony znacznik
-    this.toolMarks = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.toolMark }));
-    this.toolMark = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COLORS.tooth }));
-    this.toolAxisA = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: COLORS.axis, dashSize: 12, gapSize: 8 }));
-    this.toolLowest = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: COLORS.lowest }));
-    // geometria linii zmienia sie co klatke - bez obcinania po starej sferze otaczajacej
-    for (const l of [this.toolMarks, this.toolMark, this.toolFace, this.toolAxisA]) l.frustumCulled = false;
-    g.add(this.toolBody, this.toolShank, this.toolTube, this.toolPad, this.toolFace, this.toolMarks, this.toolMark, this.toolAxisA, this.toolLowest);
-    g.visible = false;
-    return g;
-  }
-
-  // Narzedzie trybu m.mode: frez - chwyt + czesc robocza, wiertlo - koronka (rura), polerka - talerz na uchwycie;
-  // spin - kat obrotu wrzeciona [rad]: obracaja sie ostrza frezu, segmenty koronki, sektory polerki (toolSpinMarks)
-  setTool(pose, m, visible, spin = 0) {
-    this.toolGroup.visible = Boolean(visible && pose && isToolMode(m));
-    if (!this.toolGroup.visible) return;
-    const f = toolFrame(pose, m);
-    const r = Math.max(f.radius, 1);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v3(f.normal));
-    const at = (k) => v3(f.flange.map((c, i) => c + f.normal[i] * k));   // punkt na osi narzedzia k mm od kolnierza
-    const place = (mesh, k0, k1, rad) => {
-      mesh.visible = true;
-      mesh.quaternion.copy(q);
-      mesh.scale.set(rad, Math.max(k1 - k0, 0.5), rad);
-      mesh.position.copy(at((k0 + k1) / 2));
-    };
-    for (const part of [this.toolBody, this.toolShank, this.toolTube, this.toolPad]) part.visible = false;
-    const marks = toolSpinMarks(f, m.mode, spin);
-    const lay = marks.layout;
-    const work = { drill: this.toolTube, polishing: this.toolPad, mill: this.toolBody }[lay.kind];
-    place(this.toolShank, ...lay.shank);
-    place(work, ...lay.work);
-    // obwod czola i znaczniki obrotu
-    const rim = (t) => v3(f.tip.map((c, i) => c + r * (Math.cos(t) * f.d[i] + Math.sin(t) * f.u[i])));
-    this.toolFace.geometry.setFromPoints(Array.from({ length: 64 }, (_, i) => rim((i / 64) * Math.PI * 2)));
-    this.toolMarks.geometry.setFromPoints(marks.lines.map(v3));
-    this.toolMark.geometry.setFromPoints(marks.accent.map(v3));
-    this.toolAxisA.geometry.setFromPoints([v3(f.axis), v3([f.axis[0], f.axis[1], f.axis[2] + 400])]);
-    this.toolAxisA.computeLineDistances();
-    this.toolLowest.position.copy(v3(f.lowest));
-    this.toolLowest.scale.setScalar(Math.max(4, r * 0.08));
-  }
-
-  // Woda (#141): layout z waterLayout (dysze -> poczatek tarczy / narzedzie) albo null, on - woda leci (zawor + obroty),
-  // phase - czas [s] (ruch kropli); kierunek obrotu (rozbryzg) w layout.spray (waterLayout z kierunkiem obrotu)
-  setWater(layout, on, phase = 0) {
-    this.water.visible = Boolean(layout && on);
-    if (!this.water.visible) return;
-    const { drops, mist } = waterSpray(layout, phase % 1000);
-    this.waterDrops.geometry.setAttribute('position', new THREE.Float32BufferAttribute(drops, 3));
-    this.waterMist.geometry.setAttribute('position', new THREE.Float32BufferAttribute(mist, 3));
-    // mokra plama: prostokat od tarczy wzdluz ciecia w strone rozbryzgu, na gorze materialu
-    const wet = layout.spray?.wet;
-    this.waterWet.visible = Boolean(wet);
-    if (wet) {
-      const [o, dir, len, wid] = wet;
-      const z = layout.spray.top + 0.8;
-      const ax = [dir[0], dir[1]];
-      const l = Math.hypot(...ax) || 1;
-      const ux = ax[0] / l;
-      const uy = ax[1] / l;
-      const px = -uy * wid / 2;
-      const py = ux * wid / 2;
-      const a = [o[0] - ux * 0.3 * len, o[1] - uy * 0.3 * len];
-      const b = [o[0] + ux * len, o[1] + uy * len];
-      const pos = [a[0] + px, a[1] + py, z, a[0] - px, a[1] - py, z, b[0] - px * 1.6, b[1] - py * 1.6, z, b[0] + px * 1.6, b[1] + py * 1.6, z];
-      this.waterWet.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      this.waterWet.geometry.setIndex([0, 1, 2, 0, 2, 3]);
-      this.waterWet.geometry.computeVertexNormals();
-    }
-    const key = JSON.stringify([layout.nozzles, layout.targets].map((a) => a.map((p) => p.map((c) => Math.round(c)))));
-    if (key !== this.waterKey) {
-      this.waterKey = key;
-      this.waterStreams.forEach((st, i) => { st.visible = i < layout.nozzles.length; });
-      layout.nozzles.forEach((n, i) => {
-        // os strugi bez rozrzutu kropli (spread 0), rurka zwezajaca sie nie jest potrzebna - stala 6 mm
-        const axis = waterDrops(n, layout.targets[i], 16, 0, 0).sort((p, q) => dist2(p, n) - dist2(q, n));
-        axis.push(layout.targets[i]);
-        this.waterStreams[i].geometry.dispose();
-        this.waterStreams[i].geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(axis.map(v3)), 24, 9, 8, false);
-      });
-    }
-  }
-
-  // glowica i suport (pila mostowa); extra - {laser: {side, mountAngle}, laserOn}
-  setMachine(pose, m, frameCfg, board, showHead, showFrame, extra = {}) {
-    this.machineModel.update(pose, m, frameCfg, board, showHead, showFrame, extra);
-    // przy suporcie stol zastepuje siatke podlogi
-    if (this.grid) this.grid.visible = !this.machineModel.frame.visible;
-  }
-
-  // --- kamera -----------------------------------------------------------------
-
-  setView(name) {
-    this.viewName = name;
-    this.fit();
-  }
-
-  // box: [[x0, y0, z0], [x1, y1, z1]]
-  fit(box = this.lastBox) {
-    if (!box) return;
-    this.lastBox = box;
-    const lo = v3(box[0]);
-    const hi = v3(box[1]);
-    const center = lo.clone().add(hi).multiplyScalar(0.5);
-    const radius = lo.distanceTo(hi) / 2;
-    const dist = Math.max(300, radius / Math.sin((this.camera.fov * Math.PI / 180) / 2) * 1.05);
-    const dirs = {
-      iso: [-0.45, -0.75, 0.55],
-      top: [0, -0.001, 1],
-      front: [0, -1, 0.02],
-      side: [1, 0, 0.02],
-    };
-    const dir = new THREE.Vector3(...dirs[this.viewName]).normalize();
-    this.controls.target.copy(center);
-    this.camera.position.copy(center.clone().add(dir.multiplyScalar(dist)));
-    this.controls.update();
-    this.render();
-  }
-
-  zoom(factor) {
-    const t = this.controls.target;
-    this.camera.position.sub(t).multiplyScalar(factor).add(t);
-    this.controls.update();
-    this.render();
-  }
-}
-
-// Graniastoslup: wielokat [[x, y], ...] w XY od wysokosci z0, wysokosc h
-export function prismGeometry(points, z0, h) {
-  const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
-  geo.translate(0, 0, z0);
-  return geo;
-}
-
-// #156 ksztalty z otworami [{outer, holes}] wyciagniete na wysokosc h od z0
-export function shapesGeometry(shapes, z0, h) {
-  const toShape = (pts) => pts.map(([x, y]) => new THREE.Vector2(x, y));
-  const list = shapes.map(({ outer, holes }) => {
-    const s = new THREE.Shape(toShape(outer));
-    for (const hole of holes) s.holes.push(new THREE.Path(toShape(hole)));
-    return s;
-  });
-  const geo = new THREE.ExtrudeGeometry(list, { depth: h, bevelEnabled: false });
-  geo.translate(0, 0, z0);
-  return geo;
-}
-
-// Przejscie narzedzia: punkty [x, y, glebokosc] pod gora pass.top; wallMat null - tylko slad na powierzchni (polerka)
-function buildToolPass(group, pass, wallMat, topMat) {
-  const r = pass.radius;
-  const pts = pass.points;
-  const zTop = pass.top + (pass.polish ? 0.4 : 0.3);
-  const bottom = (p) => pass.top - p[2];
-  // konce przejscia i otwor (jeden punkt): krazek na gorze, sciana walca, dno
-  const caps = pts.length === 1 ? [pts[0]] : [pts[0], pts[pts.length - 1]];
-  for (const p of caps) {
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 40), topMat);
-    disc.position.set(p[0], p[1], zTop);
-    group.add(disc);
-    if (wallMat && p[2] > 0.05) {
-      const wall = new THREE.Mesh(new THREE.CylinderGeometry(r, r, p[2], 40, 1, true), wallMat);
-      wall.rotation.x = Math.PI / 2;
-      wall.position.set(p[0], p[1], pass.top - p[2] / 2);
-      const floor = new THREE.Mesh(new THREE.CircleGeometry(r, 40), wallMat);
-      floor.position.set(p[0], p[1], bottom(p) + 0.05);
-      group.add(wall, floor);
-    }
-  }
-  if (pts.length < 2) return;
-  // przesuniecie w lewo od toru o promien (w kazdym punkcie)
-  const side = pts.map((p, i) => {
-    const q = pts[Math.min(i + 1, pts.length - 1)];
-    const o = pts[Math.max(i - 1, 0)];
-    const l = Math.hypot(q[0] - o[0], q[1] - o[1]) || 1;
-    return [-(q[1] - o[1]) / l * r, (q[0] - o[0]) / l * r];
-  });
-  const ribbon = (z, mat) => group.add(stripMesh(pts.map((p, i) => [
-    [p[0] + side[i][0], p[1] + side[i][1], z(p)], [p[0] - side[i][0], p[1] - side[i][1], z(p)]]), mat));
-  ribbon(() => zTop, topMat);
-  if (!wallMat) return;
-  ribbon((p) => bottom(p) + 0.05, wallMat);
-  for (const sign of [1, -1]) {
-    group.add(stripMesh(pts.map((p, i) => {
-      const x = p[0] + sign * side[i][0];
-      const y = p[1] + sign * side[i][1];
-      return [[x, y, pass.top], [x, y, bottom(p)]];
-    }), wallMat));
-  }
-}
-
-function stripMesh(strip, material) {
-  const pos = [];
-  const idx = [];
-  strip.forEach(([top, bottom], i) => {
-    pos.push(...top, ...bottom);
-    if (i > 0) {
-      const a = 2 * (i - 1);
-      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-    }
-  });
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
-  return new THREE.Mesh(geo, material);
-}
-
-function disposeGroup(group) {
-  for (const obj of [...group.children]) {
-    group.remove(obj);
-    obj.geometry?.dispose();
-    // wlasny material sprite'a znacznika (tekstura z canvas)
-    if (obj.isSprite) { obj.material.map?.dispose(); obj.material.dispose(); }
-  }
-}
-
-// Okragla, miekka kropla (tekstura punktow wody i mgly - bez kwadratow)
-function roundTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.6, 'rgba(255,255,255,0.75)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(c);
-}
-
-// --- znaczniki planu: tekstury z canvas ----------------------------------------
-
-// Material sprite'a o stalej wielkosci na ekranie (scale = ulamek wysokosci widoku), zawsze na wierzchu
-function spriteMaterial(map) {
-  return new THREE.SpriteMaterial({ map, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true });
-}
-
-function dotTexture(color) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 32;
-  const g = c.getContext('2d');
-  g.beginPath();
-  g.arc(16, 16, 12, 0, Math.PI * 2);
-  g.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-  g.fill();
-  g.lineWidth = 3;
-  g.strokeStyle = '#ffffff';
-  g.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-// Etykieta "X .. Y ..": ciemny tekst na jasnym tle (aktywny krok - czerwone tlo, bialy tekst);
-// kind 'distance' - odleglosc: niebieski tekst i ramka
-function labelTexture(text, active, kind = 'xy') {
-  const dist = kind === 'distance';
-  const c = document.createElement('canvas');
-  const g = c.getContext('2d');
-  const font = '600 28px system-ui, Segoe UI, sans-serif';
-  g.font = font;
-  const w = Math.ceil(g.measureText(text).width) + 20;
-  c.width = w;
-  c.height = 40;
-  g.font = font;
-  g.fillStyle = active ? 'rgba(214, 39, 40, 0.92)' : 'rgba(255, 255, 255, 0.88)';
-  g.strokeStyle = active ? '#8b1a1a' : dist ? '#1f5fa8' : '#8d877a';
-  g.lineWidth = 2;
-  g.beginPath();
-  g.roundRect(1, 1, w - 2, 38, 8);
-  g.fill();
-  g.stroke();
-  g.fillStyle = active ? '#ffffff' : dist ? '#1f5fa8' : '#1f2933';
-  g.textBaseline = 'middle';
-  g.fillText(text, 10, 21);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return { texture: t, aspect: w / 40 };
 }

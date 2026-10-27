@@ -1,4 +1,4 @@
-// Budowa strony: src/client -> public/ (app.js z three.js w jednym pliku, index.html, style.css, img/)
+// Budowa strony: src/client -> public/ (app.js z three.js w jednym pliku - modul ES, index.html, style.css)
 import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,15 +12,12 @@ await build({
   entryPoints: [path.join(root, 'src/client/main.js')],
   outfile: path.join(out, 'app.js'),
   bundle: true,
-  format: 'iife',
-  target: 'es2020',
+  format: 'esm',
+  target: 'es2022',
   minify: true,
   sourcemap: false,
   legalComments: 'none',
 });
 for (const f of ['index.html', 'style.css']) fs.copyFileSync(path.join(root, 'src/client', f), path.join(out, f));
-// obrazki (rysunki figur z HMI - #138)
-fs.cpSync(path.join(root, 'src/client/img'), path.join(out, 'img'), { recursive: true });
-// przykladowe programy G-kodu (#124)
-fs.cpSync(path.join(root, 'examples'), path.join(out, 'examples'), { recursive: true });
+
 console.log('public/ gotowe');

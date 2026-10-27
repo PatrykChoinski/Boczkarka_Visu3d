@@ -1,4 +1,4 @@
-// VizuApp - serwer: czyta zmienne PLC przez OPC UA i podaje je stronie (http://localhost:8128).
+// VizuApp boczkarki - serwer: czyta zmienne PLC przez OPC UA i podaje je stronie (http://localhost:8128).
 //
 //   node src/server/main.js [--config plik.json] [--users users.json] [--port 8128] [--host 127.0.0.1]
 //                           [--endpoint opc.tcp://...] [--no-plc] [--alarms-db alarms.db]
@@ -8,7 +8,7 @@
 // adres PLC do wpisania na stronie (okno Polaczenie z PLC), zapisany w connection.json obok config.json.
 //
 // GET /              strona (public/, budowana przez scripts/build-client.js)
-// GET /api/config    konfiguracja dla strony (zmienne, kroki CutStep, wartosci poczatkowe offline)
+// GET /api/config    konfiguracja dla strony (zmienne, geometria maszyny, dynamika trybu offline)
 // GET /api/events?cid=  strumien SSE: {status, connected}, pelny stan {values, hmi, full}, potem zmiany z subskrypcji
 // GET /api/health    "ok" (vizu.ps1 sprawdza, czy serwer juz dziala)
 // POST /api/login, POST /api/logout, GET /api/session - logowanie (#145, auth.js; uzytkownicy z users.json)
@@ -18,7 +18,7 @@
 //                    bez logowania - tylko z tego komputera)
 // GET /api/alarms, POST /api/alarms/ack - historia alarmow PLC w SQLite (alarms.db obok config.json, alarmdb.js)
 // GET /api/plc       poziom dostepu do sterowania (panel HMI w trybie PLC)
-// POST /api/plc/write, /api/plc/hold, /api/plc/watch - sterowanie maszyna z ekranow Visu3D (zmienne jak w HMI, plcwrite.js)
+// POST /api/plc/write, /api/plc/hold, /api/plc/watch - sterowanie z Visu3D (lista PLC_WRITES, plcwrite.js)
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -26,10 +26,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { VARIABLES, CUT_STEPS, DEFAULTS, validEndpoint } from '../shared/config.js';
+import { VARIABLES, DEFAULTS, EDGE_STEPS, validEndpoint } from '../shared/config.js';
 import { OpcUaSource } from './opcua-source.js';
 import { Auth, USERS_FILE, loadUsers, bearer } from './auth.js';
-import { PlcControl, loadHmiWrites } from './plcwrite.js';
+import { PlcControl } from './plcwrite.js';
 import { AlarmDb, ALARMS_DB } from './alarmdb.js';
 import { activeFromValues } from '../shared/alarms.js';
 
@@ -59,20 +59,9 @@ export function loadConfig(file) {
   } catch { /* brak pliku - adres z config.json */ }
   cfg.auth = { ...DEFAULTS.auth, ...(user.auth || {}) };
   cfg.variables = { ...VARIABLES, ...(user.variables || {}) };
-  cfg.frame = { ...DEFAULTS.frame, ...(user.frame || {}) };
-  cfg.laser = { ...DEFAULTS.laser, ...(user.laser || {}) };
-  cfg.saw = { ...DEFAULTS.saw, ...(user.saw || {}) };
-  cfg.offline = {
-    machine: { ...DEFAULTS.offline.machine, ...(user.offline?.machine || {}) },
-    dynamics: { ...DEFAULTS.offline.dynamics, ...(user.offline?.dynamics || {}) },
-    cut: { ...DEFAULTS.offline.cut, ...(user.offline?.cut || {}) },
-    start: { ...DEFAULTS.offline.start, ...(user.offline?.start || {}) },
-    board: { ...DEFAULTS.offline.board, ...(user.offline?.board || {}) },
-    rock: { ...DEFAULTS.offline.rock, ...(user.offline?.rock || {}) },
-    saw: { ...DEFAULTS.offline.saw, ...(user.offline?.saw || {}) },
-    mode: user.offline?.mode || DEFAULTS.offline.mode,
-    speedMax: { ...DEFAULTS.offline.speedMax, ...(user.offline?.speedMax || {}) },
-  };
+  cfg.machine = { ...DEFAULTS.machine, ...(user.machine || {}) };
+  cfg.shape = { ...DEFAULTS.shape, ...(user.shape || {}) };
+  cfg.offline = { ...DEFAULTS.offline, ...(user.offline || {}) };
   return cfg;
 }
 
@@ -81,10 +70,8 @@ export function loadConfig(file) {
 // scripts/build-pages.js zapisuje ja jako plik api/config wersji statycznej (static: true)
 export function clientConfig(cfg, plc, auth = null) {
   return {
-    plc: Boolean(plc), endpoint: cfg.endpoint, variables: cfg.variables, cutSteps: CUT_STEPS,
-    autoClearOnStart: cfg.autoClearOnStart, materialMargin: cfg.materialMargin,
-    materialMinSize: cfg.materialMinSize, frame: cfg.frame, offline: cfg.offline,
-    tableThickness: cfg.tableThickness, laser: cfg.laser, saw: cfg.saw,
+    plc: Boolean(plc), endpoint: cfg.endpoint, variables: cfg.variables, steps: EDGE_STEPS,
+    machine: cfg.machine, shape: cfg.shape, offline: cfg.offline,
     auth: { enabled: Boolean(auth?.enabled), users: auth?.enabled ? auth.names() : [], timeoutMin: cfg.auth?.timeoutMin ?? 30 },
   };
 }
@@ -130,7 +117,6 @@ async function handlePlc(control, source, auth, req, res, pathname) {
   const body = await readJson(req, 65536);
   try {
     if (pathname === '/api/plc/watch') return json(res, 200, { watched: control.watch(body.cid, body.keys, body.paths) });
-    if (pathname === '/api/plc/resolve') return json(res, 200, control.resolve(body.names));
     if (pathname === '/api/plc/write') await control.write(body.items, acc.who, acc.level);
     else if (pathname === '/api/plc/hold') await control.hold(String(body.v || ''), Boolean(body.on), acc.who, acc.level);
     else return json(res, 404, { error: 'Nieznana operacja' });
@@ -199,9 +185,9 @@ async function handleAuth(auth, req, res, pathname) {
   return json(res, 405, { error: 'Metoda niedozwolona' });
 }
 
-export function createServer(cfg, source, auth = null, hmiWrites = null, alarmDb = null) {
+export function createServer(cfg, source, auth = null, writes = undefined, alarmDb = null) {
   const clients = new Set();
-  const control = source ? new PlcControl(source, hmiWrites ?? loadHmiWrites(path.join(APP_DIR, 'src', 'server', 'hmiwrites.json'))) : null;
+  const control = source ? new PlcControl(source, writes) : null;
   const send = (obj) => {
     const msg = `data: ${JSON.stringify(obj)}\n\n`;
     for (const res of clients) res.write(msg);
@@ -210,7 +196,7 @@ export function createServer(cfg, source, auth = null, hmiWrites = null, alarmDb
     // zmiany z subskrypcji OPC UA (tylko zmienione wartosci; strona je laczy)
     source.on('status', send);
     source.on('delta', send);
-    // historia alarmow: kazda zmiana tablicy HMI2.aAlarms (subskrypcja w tle) - zapis w SQLite, strony odswiezaja liste
+    // historia alarmow: kazda zmiana tablicy Alarms.Active (subskrypcja w tle) - zapis w SQLite, strony odswiezaja liste
     if (alarmDb) {
       source.on('delta', (d) => {
         if (!d.values || !('alarms' in d.values)) return;
@@ -241,7 +227,7 @@ export function createServer(cfg, source, auth = null, hmiWrites = null, alarmDb
       handleAuth(auth, req, res, url.pathname);
     } else if (url.pathname === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-      // na poczatek pelny stan; cid - identyfikator strony (zamkniecie strony konczy subskrypcje jej ekranow)
+      // na poczatek pelny stan; cid - identyfikator strony
       res.write(`data: ${JSON.stringify(source
         ? { status: source.status, connected: source.connected, values: source.values, hmi: source.hmiValues, full: true }
         : { status: 'Bez PLC (--no-plc)', connected: false })}\n\n`);

@@ -1,8 +1,18 @@
 # Changelog
 
-Zmiany w Promasz Visu3D (VizuApp) – wizualizacji cięcia piły mostowej Promasz
+Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) – z Promasz Visu3D piły mostowej
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
+
+## 2026-10-27 (2)
+
+### Wizualizacja boczkarki profilowej
+- Nowa strona dla boczkarki (zamiast piły): model 3D jak B1PK (stół z płytą, belka, wózek X, ramię, głowica B z silnikiem i tarczą garnkową), krawędź płyty obrabiana przejście po przejściu, przekrój 2D, kamera za głowicą.
+- Tryb offline: symulator cyklu (`src/shared/simulator.js`) jak `EdgeProfileControl` w PLC; receptury i lista przejść jak w PLC (`src/shared/edgeprofile.js`).
+- Tryb online: zmienne GVL dziedzin PLC (`VARIABLES`), adres IP + port serwera OPC UA na stronie (`/api/connection`, `connection.json`), sterowanie z listy `PLC_WRITES`.
+- Testowy PLC boczkarki (`test/fake-plc-server.js`, `--auto`), testy: receptury, symulator, przekrój, OPC UA (zmiana adresu, sterowanie), smoke test w Chrome.
+- Usunięte moduły piły (cięcia, figury, CNC, frezowanie, ekrany serwisowe HMI, `hmiwrites.json`).
+- Sprawdzone z programem PLC na lokalnym SoftMotion: 48/48 zmiennych, START / Automat ze strony.
 
 ## 2026-10-27
 

@@ -1,5 +1,5 @@
 # CI Visu3D: przy kazdym pushu i pull requescie testy na Windows (jak na maszynie):
-#   npm test (geometria, ruch, operacje, OPC UA z testowym PLC, ...) i test uruchomienia strony w przegladarce
+#   npm test (receptury, symulator, przekroj, OPC UA z testowym PLC, ...) i test uruchomienia strony w przegladarce
 #   (scripts/smoke-test.mjs: serwer bez PLC, serwer z testowym PLC przez OPC UA, wersja statyczna GitHub Pages).
 # Po udanych testach push do main publikuje wersje statyczna na GitHub Pages (https://<konto>.github.io/<repo>/).
 name: CI
