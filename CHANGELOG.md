@@ -4,6 +4,12 @@ Zmiany w Promasz Visu3D (VizuApp) – wizualizacji cięcia piły mostowej Promas
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-27
+
+### Boczkarka: repo utworzone z Promasz-Visu3D
+- Kopia `Promasz-Visu3D` (gałąź `master` z historią) jako `PatrykChoinski/Boczkarka_Visu3d`, gałąź `main`; submoduł `Visu3D` w `Promasz_Boczkarka`.
+- CI: publikacja GitHub Pages po pushu do `main` (zamiast `master`).
+
 ## 2026-10-23
 
 ### Bazowanie w trybie PLC: odświeżanie przycisków po połączeniu i restarcie serwera

@@ -1,3 +1,12 @@
+# Boczkarka Visu3D – wizualizacja boczkarki profilowej (VizuApp)
+
+> **Repo boczkarki profilowej Promasz**, submoduł `Visu3D` w
+> [PatrykChoinski/Promasz_Boczkarka](https://github.com/PatrykChoinski/Promasz_Boczkarka) (obok `PLC` i `HMI`).
+> Bazą jest kopia [Promasz-Visu3D](https://github.com/PatrykChoinski/Promasz-Visu3D) (piła jednosuportowa) z pełną historią.
+> Opis poniżej dotyczy jeszcze piły. Plan przeróbki (tydzień 3 w `PLAN.md` repo głównego): zostają serwer, OPC UA, auth, alarmy i build;
+> nowe są model maszyny (oś X + wychył B), kinematyka, generator przejść profilu, fake PLC `--mode edge`,
+> `nodePrefix` dla CODESYS Control Win V3 x64.
+
 # Promasz Visu3D – wizualizacja cięcia (VizuApp)
 
 Wizualizacja 3D piły mostowej **Promasz – Piła Jednosuportowa** (zgłoszenie
