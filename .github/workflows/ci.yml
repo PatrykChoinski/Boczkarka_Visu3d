@@ -43,7 +43,8 @@ jobs:
   deploy-pages:
     name: Publikacja GitHub Pages
     needs: test-windows
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Pages wlaczane recznie (Settings > Pages > GitHub Actions) + zmienna repo PAGES_ENABLED=true
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

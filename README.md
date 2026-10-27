@@ -14,7 +14,7 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
 - **Offline** – symulator cyklu w przeglądarce (`src/shared/simulator.js`): ta sama sekwencja co
   `EdgeProfileControl` w PLC (kroki `EdgeStep`), osie X i B z profilem trapezowym, rozruch wrzeciona, docisk,
   pauza / wznowienie, stop, autopowrót. Receptura z formularza (7 receptur startowych jak w PLC, rodzaj profilu,
-  pole X, posuw, obroty, kąty), tempo 1–30×. Działa też bez serwera (GitHub Pages).
+  pole X, posuw, obroty, kąty), tempo 1–30×. Działa też bez serwera (wersja statyczna `npm run build:pages`; publikacja GitHub Pages po włączeniu Pages w repo i zmiennej `PAGES_ENABLED=true`).
 - **Online** – wartości z PLC przez OPC UA (serwer VizuApp, `node-opcua-client`, subskrypcje). **Adres IP serwera
   OPC UA** (sterownika) wpisywany na stronie (Adres IP + port, „Połącz”) – zapis w `connection.json` obok
   `config.json`, „Domyślny” wraca do adresu z `config.json`. Lista przejść liczona na stronie tym samym algorytmem co
