@@ -12,6 +12,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 - Okno alarmów: zakładka Historia z bazy `alarms.db` (`/api/alarms`), kwitowanie, odświeżanie przy zmianie.
 - Woda: krople z wrzeciona (środek tarczy) i z wieńca tarczy zrzucane stycznie, opadające i rozbryzgiwane na kamieniu / stole.
 - Obroty na bieżąco: zmiana obrotów w Ręcznym (`Manual.SpindleFrequency`) i w Automacie (`RecipeStore.Active.SpindleFrequency`, też w trakcie cyklu) zapisywana od razu; symulator tak samo.
+- Support niżej (`railHeight` 1400): górny koniec półksiężyca przyspawany do spodu belki, bez cięgna i bez mocowania z serwem na licu belki.
 - Oś B -90...+90 bez kolizji: bez prowadnika kabli, mechanizm B na belce odsunięty w bok, wysięg kamienia nad blat 150 mm (tarcza pod krawędzią przy B = -90).
 
 ## 2026-10-28 (5)

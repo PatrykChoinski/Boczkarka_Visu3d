@@ -18,7 +18,7 @@
     "wheelHeight": 40,
     "motorDiameter": 170,
     "motorLength": 330,
-    "railHeight": 1800
+    "railHeight": 1400
   },
   "shape": {
     "quarterRadius": 20,

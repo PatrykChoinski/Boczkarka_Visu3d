@@ -114,7 +114,7 @@ export class EdgeView {
     const th = m.tableHeight;
     const zFront = -m.stoneOverhang;			// przednia krawedz blatu (operator po stronie +z)
     const zRear = zFront - m.tableWidth;
-    const railZ = -230;					// belka X lekko cofnieta nad stol (przednie lico nad koncem polksiezyca)
+    const railZ = -250;					// belka X lekko cofnieta nad stol (lico przy gornym koncu polksiezyca)
     const beamTop = m.railHeight - 60;
     const beamH = 300;
     this.railZ = railZ;
@@ -196,14 +196,10 @@ export class EdgeView {
     const sideX = this.arcX + 28;			// strona polksiezyca od blachy C
     const endTop = new THREE.Vector3(sideX, this.arcCenterY + Ra * Math.sin(half), Ra * Math.cos(half));
     const endBottom = new THREE.Vector3(sideX, this.arcCenterY - Ra * Math.sin(half), Ra * Math.cos(half));
-    // gora: mechanizm osi B przypiety z boku belki (wozek na licu z zoltym pasem), ciegno do gornego konca polksiezyca
+    // gora: gorny koniec polksiezyca przyspawany do spodu belki (support), bez ciegna i mocowania na licu
     const frontZ = railZ + 110;
-    const mountY = beamTop - beamH / 2;
-    this.box(300, 240, 70, yellow, sideX + 110, mountY, frontZ + 35, this.carriage);	// z boku glowicy (B -90..+90 bez kolizji)
-    const mountServo = this.cylinder(45, 120, black, this.carriage, 20);
-    mountServo.rotation.x = Math.PI / 2;
-    mountServo.position.set(sideX + 190, mountY, frontZ + 130);
-    this.strut(new THREE.Vector3(sideX, mountY - 120, frontZ + 35), endTop, 70, 50, alu, this.carriage);
+    const beamBottom = beamTop - beamH;
+    this.strut(endTop, new THREE.Vector3(sideX, beamBottom + 15, frontZ - 25), 80, 60, alu, this.carriage);	// spaw / blacha do belki
     // dol: koniec polksiezyca do wozka prowadnicy liniowej na froncie stolu (pod blatem)
     const zLowRail = zBaseFront + 35;
     const yLowRail = th - 260;
