@@ -1,7 +1,7 @@
 // Sterowanie boczkarka z Visu3D (tryb online): zapis zmiennych PLC przez OPC UA.
 //
 // Dozwolone tylko zmienne z PLC_WRITES (src/shared/config.js) z poziomem dostepu: STOP / PAUZA - zawsze (0),
-// START, reset alarmow, tryb, bazowanie, jog - Operator (1). Bez users.json zapis tylko z komputera z VizuApp.
+// START, reset alarmow, tryb, reczny - Operator (1). Bez users.json zapis tylko z komputera z VizuApp.
 //
 // Przycisk chwilowy (jog): POST /api/plc/hold {v, on: true} co 200 ms, dopoki przycisk wcisniety;
 // bez odswiezenia przez HOLD_MS serwer sam zapisuje FALSE (zerwane polaczenie z tabletem nie zostawia jazdy).

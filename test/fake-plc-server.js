@@ -3,7 +3,7 @@
 // Drzewo jak w CODESYS: Objects/DeviceSet/<urzadzenie>/Resources/Application/GlobalVars/<GVL>/<zmienna>
 // (pola struktur jako obiekty), NodeId "|var|<urzadzenie>.Application.<sciezka>". Wartosci z symulatora
 // (src/shared/simulator.js) - ta sama sekwencja co PLC. Zapis zmiennych sterowania (PLC_WRITES) dziala jak w PLC:
-// EdgeProfile.Start / Pause / Stop, Alarms.Reset, Machine.ModeRequest, HomingProcess.Start, Manual.* (jog, dojazd,
+// EdgeProfile.Start / Pause / Stop, Alarms.Reset, Machine.ModeRequest, Manual.* (jog, dojazd,
 // wrzeciono, woda, docisk), parametry serwisowe (AxesConfig / SpindleConfig / EdgeProfileConfig / MachineConfig -
 // wartosci jak deklaracje w PLC, TIME w ms; te z odpowiednikiem w symulatorze zmieniaja jego dynamike).
 //
@@ -23,7 +23,7 @@ export const NAMESPACE = 'CODESYSSPV3/3S/IecVarAccess';
 export const DEVICE = 'CODESYS SoftMotion Win V3 x64';
 const MAX_ALARMS = 32;
 
-const BOOLS = new Set(['xHomed', 'bHomed', 'simulation', 'safetyOk', 'directionPositive', 'cycleBothDirections', 'spindleRunning', 'water', 'clamp', 'alarmAny']);
+const BOOLS = new Set(['simulation', 'safetyOk', 'directionPositive', 'cycleBothDirections', 'spindleRunning', 'water', 'clamp', 'alarmAny']);
 const INTS = new Set(['mode', 'step', 'passIndex', 'repeatIndex', 'passCount', 'cycleKind', 'cycleRepeats', 'activeKind', 'activeRepeats']);
 const STRINGS = new Set(['cycleName', 'activeName']);
 // typy OPC UA zmiennych z typem w PLC_WRITES (CODESYS: LREAL Double, REAL Float, INT / enum Int16, TIME UInt32 ms)
@@ -32,12 +32,12 @@ const OPC_TYPES = { lreal: DataType.Double, real: DataType.Float, int: DataType.
 export const PARAM_DEFAULTS = {
   'AxesConfig.ParamsX.SoftLimits': true, 'AxesConfig.ParamsX.SoftLimitNegative': -5, 'AxesConfig.ParamsX.SoftLimitPositive': 2300,
   'AxesConfig.ParamsX.MaxVelocity': 400, 'AxesConfig.ParamsX.MaxAcceleration': 1500, 'AxesConfig.ParamsX.StopDeceleration': 3000,
-  'AxesConfig.ParamsX.MaxJerk': 30000, 'AxesConfig.ParamsX.Homing': 0, 'AxesConfig.ParamsX.HomePosition': 0,
+  'AxesConfig.ParamsX.MaxJerk': 30000,
   'AxesConfig.ParamsB.SoftLimits': true, 'AxesConfig.ParamsB.SoftLimitNegative': -95, 'AxesConfig.ParamsB.SoftLimitPositive': 95,
   'AxesConfig.ParamsB.MaxVelocity': 90, 'AxesConfig.ParamsB.MaxAcceleration': 360, 'AxesConfig.ParamsB.StopDeceleration': 720,
-  'AxesConfig.ParamsB.MaxJerk': 7200, 'AxesConfig.ParamsB.Homing': 0, 'AxesConfig.ParamsB.HomePosition': 0,
+  'AxesConfig.ParamsB.MaxJerk': 7200,
   'AxesConfig.JogSlowX': 20, 'AxesConfig.JogFastX': 150, 'AxesConfig.JogSlowB': 5, 'AxesConfig.JogFastB': 30, 'AxesConfig.VelocityB': 45,
-  'AxesConfig.ReturnVelocityX': 300, 'AxesConfig.HomingVelocityB': 20, 'AxesConfig.LoadPositionX': 0, 'AxesConfig.ParkAngleB': 0,
+  'AxesConfig.ReturnVelocityX': 300, 'AxesConfig.LoadPositionX': 0, 'AxesConfig.ParkAngleB': 0,
   'SpindleConfig.Poles': 2, 'SpindleConfig.MinFrequency': 20, 'SpindleConfig.MaxFrequency': 100, 'SpindleConfig.AtSpeedTolerance': 3,
   'SpindleConfig.StartTimeout': 20000, 'SpindleConfig.RampHzPerSecond': 25, 'SpindleConfig.CurrentScale': 0.1,
   'SpindleConfig.RatedCurrent': 30, 'SpindleConfig.OverloadCurrent': 33, 'SpindleConfig.OverloadTime': 3000,
@@ -53,7 +53,7 @@ const SERVICE = Object.fromEntries(SERVICE_ITEMS.map((it) => [it.v, it]));
 export function createModel({ auto = false } = {}) {
   const recipes = defaultRecipes();
   const sim = new EdgeSimulator({ ...DEFAULTS.offline });
-  const m = { sim, active: { ...recipes[4], xStart: 200, xEnd: 1600 }, mode: 2, alarms: Array(MAX_ALARMS).fill(false), auto, last: Date.now() };
+  const m = { sim, active: { ...recipes[4], xStart: 200, xEnd: 1600 }, mode: 1, alarms: Array(MAX_ALARMS).fill(false), auto, last: Date.now() };
   m.manual = { JogFast: false, GotoXTarget: 0, GotoBTarget: 0, SpindleFrequency: 50 };
   m.tick = () => {
     const now = Date.now();
@@ -85,7 +85,6 @@ export function createModel({ auto = false } = {}) {
     else if (v === 'Machine.ModeRequest') m.mode = Number(value);
     else if (v === 'Recipes.Index') m.recipe = Number(value);
     else if (v === 'Recipes.Load' && value && recipes[(m.recipe || 1) - 1]) m.active = { ...recipes[m.recipe - 1], xStart: 200, xEnd: 1600 };
-    else if (v === 'HomingProcess.Start' && value) sim.home();
     else if (v.startsWith('Manual.')) m.manualWrite(v.slice(7), value);
     else if (SERVICE[v]?.sim) sim.setOption(SERVICE[v].sim, fromPlc(SERVICE[v], value));
   };

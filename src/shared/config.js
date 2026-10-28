@@ -6,8 +6,6 @@ export const VARIABLES = {
   x: 'Axes.StatusX.Position',
   b: 'Axes.StatusB.Position',
   xVelocity: 'Axes.StatusX.Velocity',
-  xHomed: 'Axes.StatusX.Homed',
-  bHomed: 'Axes.StatusB.Homed',
   // maszyna
   mode: 'Machine.Mode',
   simulation: 'Machine.Simulation',
@@ -72,7 +70,6 @@ export const PLC_WRITES = {
   'EdgeProfile.Pause': { level: 0, kind: 'set' },
   'Alarms.Reset': { level: 1, kind: 'set' },
   'Machine.ModeRequest': { level: 1, kind: 'set' },
-  'HomingProcess.Start': { level: 1, kind: 'set' },
   'Recipes.Index': { level: 1, kind: 'set' },
   'Recipes.Load': { level: 1, kind: 'set' },
   'Manual.JogXPositive': { level: 1, kind: 'mom' },
@@ -97,7 +94,6 @@ export const LEVEL_NAMES = { 0: 'Podgląd', 1: 'Operator', 2: 'Serwis', 3: 'Admi
 // time - TIME (w PLC ms, na stronie s), bool, enum (options). sim - odpowiednik w symulatorze offline (EdgeSimulator.o;
 // 'limits.xMin' - pole limits), bez sim - parametr tylko online.
 const sp = (v, label, unit, type, min, max, sim, options) => ({ v, label, unit, type, min, max, sim, options });
-const HOME_MODES = { 0: 'W napędzie (MC_Home)', 1: 'Przyjęcie pozycji' };
 export const SERVICE_PARAMS = [
   { group: 'Oś X', items: [
     sp('AxesConfig.ParamsX.SoftLimits', 'Softlimity', '', 'bool'),
@@ -107,8 +103,6 @@ export const SERVICE_PARAMS = [
     sp('AxesConfig.ParamsX.MaxAcceleration', 'Przyspieszenie', 'mm/s²', 'lreal', 10, 10000, 'xAcceleration'),
     sp('AxesConfig.ParamsX.StopDeceleration', 'Hamowanie STOP', 'mm/s²', 'lreal', 10, 20000),
     sp('AxesConfig.ParamsX.MaxJerk', 'Jerk', 'mm/s³', 'lreal', 100, 1000000),
-    sp('AxesConfig.ParamsX.Homing', 'Bazowanie', '', 'enum', 0, 1, undefined, HOME_MODES),
-    sp('AxesConfig.ParamsX.HomePosition', 'Pozycja po bazowaniu', 'mm', 'lreal', -500, 3500),
     sp('AxesConfig.JogSlowX', 'Jog wolno', 'mm/s', 'lreal', 1, 200, 'jogSlowX'),
     sp('AxesConfig.JogFastX', 'Jog szybko', 'mm/s', 'lreal', 1, 600, 'jogFastX'),
     sp('AxesConfig.ReturnVelocityX', 'Dojazdy i powrót', 'mm/s', 'lreal', 1, 1000, 'returnVelocity'),
@@ -122,12 +116,9 @@ export const SERVICE_PARAMS = [
     sp('AxesConfig.ParamsB.MaxAcceleration', 'Przyspieszenie', '°/s²', 'lreal', 1, 5000, 'bAcceleration'),
     sp('AxesConfig.ParamsB.StopDeceleration', 'Hamowanie STOP', '°/s²', 'lreal', 1, 10000),
     sp('AxesConfig.ParamsB.MaxJerk', 'Jerk', '°/s³', 'lreal', 10, 100000),
-    sp('AxesConfig.ParamsB.Homing', 'Bazowanie', '', 'enum', 0, 1, undefined, HOME_MODES),
-    sp('AxesConfig.ParamsB.HomePosition', 'Pozycja po bazowaniu', '°', 'lreal', -120, 120),
     sp('AxesConfig.VelocityB', 'Zmiana kąta', '°/s', 'lreal', 1, 360, 'bVelocity'),
     sp('AxesConfig.JogSlowB', 'Jog wolno', '°/s', 'lreal', 0.1, 60, 'jogSlowB'),
     sp('AxesConfig.JogFastB', 'Jog szybko', '°/s', 'lreal', 0.1, 180, 'jogFastB'),
-    sp('AxesConfig.HomingVelocityB', 'Dojazd do 0 po bazowaniu', '°/s', 'lreal', 0.1, 180),
     sp('AxesConfig.ParkAngleB', 'Kąt po autopowrocie', '°', 'lreal', -95, 95, 'parkAngleB'),
   ] },
   { group: 'Wrzeciono (MS300)', items: [
@@ -196,7 +187,8 @@ export const EDGE_STEPS = {
   99: ['WaitForCommand', 'Zatrzymany - skasuj alarmy'],
 };
 export const STEP = Object.fromEntries(Object.entries(EDGE_STEPS).map(([n, [name]]) => [name, Number(n)]));
-export const MODES = { 0: 'Ręczny', 1: 'Bazowanie', 2: 'Automat' };
+// MachineMode w PLC (bez bazowania - enkodery absolutne)
+export const MODES = { 0: 'Ręczny', 1: 'Automat' };
 
 export const validEndpoint = (s) => typeof s === 'string' && s.length <= 200 && /^opc\.tcp:\/\/[A-Za-z0-9.-]+(:\d{1,5})?(\/[\w./-]*)?$/.test(s);
 // Adres OPC UA z adresu IP (pole na stronie): "192.168.1.10" -> opc.tcp://192.168.1.10:4840

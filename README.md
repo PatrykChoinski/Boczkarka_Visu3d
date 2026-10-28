@@ -30,7 +30,7 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
   receptura, ręczny), Serwis (parametry, adres OPC UA), Admin. Bez `users.json`: komputer z VizuApp = Admin, z sieci
   tylko podgląd. Serwer sprawdza poziom przy każdym zapisie (403).
 - **Ręczny**: jog X± / B± (przycisk trzymany, `/api/plc/hold`, serwer puszcza po utracie strony), jog szybko,
-  dojazd do X / kąta B, bazowanie, wrzeciono z obrotami, woda, docisk – zmienne `Manual.*` w PLC. Offline: osie
+  dojazd do X / kąta B, wrzeciono z obrotami, woda, docisk – zmienne `Manual.*` w PLC. Offline: osie
   symulatora, gdy automat stoi.
 - **Serwis**: parametry trwałe PLC (`SERVICE_PARAMS` w `src/shared/config.js`: `AxesConfig`, `SpindleConfig`,
   `EdgeProfileConfig`, `MachineConfig`) z zakresem sprawdzanym na stronie i w serwerze (400), TIME na stronie w s,

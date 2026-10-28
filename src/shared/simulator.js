@@ -42,7 +42,6 @@ export class EdgeSimulator {
       jogSlowX: 20, jogFastX: 150, jogSlowB: 5, jogFastB: 30, ...opts,
     };
     this.o.limits = { bMin: -95, bMax: 95, ...(opts.limits || {}) };
-    this.homing = false;
     this.x = new Axis(this.o.loadPositionX);
     this.b = new Axis(0);
     this.profile = null;
@@ -73,7 +72,6 @@ export class EdgeSimulator {
 
   // Start / wznowienie (jak przycisk START)
   start(profile) {
-    this.homing = false;
     if (this.step === STEP.Pause) {
       this.step = this.pauseStep === STEP.PassX ? STEP.ClampOn : this.pauseStep;
       this.timer = 0;
@@ -131,7 +129,6 @@ export class EdgeSimulator {
     const a = axis === 'x' ? this.x : this.b;
     if (!dir) { a.halt(); return true; }
     if (!this.idle()) return false;
-    this.homing = false;
     const [lo, hi] = this.range(axis);
     const v = axis === 'x' ? (fast ? this.o.jogFastX : this.o.jogSlowX) : (fast ? this.o.jogFastB : this.o.jogSlowB);
     a.moveTo(dir > 0 ? hi : lo, v, axis === 'x' ? this.o.xAcceleration : this.o.bAcceleration);
@@ -145,13 +142,6 @@ export class EdgeSimulator {
     const t = Math.min(hi, Math.max(lo, Number(target)));
     if (axis === 'x') this.x.moveTo(t, this.o.returnVelocity, this.o.xAcceleration);
     else this.b.moveTo(t, this.o.bVelocity, this.o.bAcceleration);
-    return true;
-  }
-
-  // Bazowanie jak HomingControl: najpierw B do 0, potem X do pozycji zaladunku
-  home() {
-    if (!this.idle()) return false;
-    this.homing = true;
     return true;
   }
 
@@ -217,14 +207,6 @@ export class EdgeSimulator {
     const atSpeed = this.spindleRequest && Math.abs(this.spindleFrequency - this.spindleSet) < 0.5;
     if (this.water) this.waterTimer = this.o.waterOffDelay;
     else this.waterTimer = Math.max(0, this.waterTimer - dt);
-    if (this.homing) {
-      if (!this.idle()) this.homing = false;
-      else if (this.b.done && Math.abs(this.b.pos) > 1e-6) this.b.moveTo(0, this.o.bVelocity, this.o.bAcceleration);
-      else if (this.b.done && this.x.done) {
-        if (Math.abs(this.x.pos - this.o.loadPositionX) > 1e-6) this.x.moveTo(this.o.loadPositionX, this.o.returnVelocity, this.o.xAcceleration);
-        else this.homing = false;
-      }
-    }
 
     switch (this.step) {
       case STEP.SpindleStart:
@@ -291,8 +273,8 @@ export class EdgeSimulator {
   state() {
     const pass = this.passes[this.passIndex - 1];
     return {
-      x: this.x.pos, b: this.b.pos, xVelocity: this.x.vel, xHomed: true, bHomed: true, mode: 2, simulation: true, safetyOk: true,
-      homing: this.homing, spindleRequest: this.spindleRequest,
+      x: this.x.pos, b: this.b.pos, xVelocity: this.x.vel, mode: 1, simulation: true, safetyOk: true,
+      spindleRequest: this.spindleRequest,
       step: this.step, passIndex: this.passIndex, repeatIndex: this.repeatIndex, passCount: this.passes.length,
       passAngle: pass ? pass.angleB : 0, directionPositive: this.direction, passFrom: this.passFrom,
       spindleRunning: this.spindleFrequency > 0.5 || this.spindleRequest, spindleFrequency: this.spindleFrequency,

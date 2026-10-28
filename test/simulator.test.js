@@ -93,7 +93,7 @@ test('stop: zatrzymanie, WaitForCommand, potwierdzenie; zla receptura nie rusza'
   assert.equal(sim.step, STEP.WaitForCommand);
 });
 
-test('reczny: jog do softlimitu i hamowanie po puszczeniu, dojazd X / B w granicach, bazowanie B potem X', () => {
+test('reczny: jog do softlimitu i hamowanie po puszczeniu, dojazd X / B w granicach softlimitow', () => {
   const sim = new EdgeSimulator({ limits: { xMin: -5, xMax: 2300 } });
   assert.ok(sim.jog('x', 1, true));
   sim.tick(1);
@@ -107,11 +107,10 @@ test('reczny: jog do softlimitu i hamowanie po puszczeniu, dojazd X / B w granic
   assert.ok(sim.goto('x', 5000));
   sim.tick(30);
   assert.equal(sim.x.pos, 2300, 'dojazd ograniczony softlimitem');
-  assert.ok(sim.home());
+  assert.ok(sim.goto('b', 0) && sim.goto('x', 0));
   sim.tick(60);
   assert.equal(sim.b.pos, 0);
   assert.equal(sim.x.pos, 0);
-  assert.equal(sim.state().homing, false);
 });
 
 test('reczny: wrzeciono, woda, docisk tylko gdy automat stoi; parametry serwisowe zmieniaja dynamike', () => {

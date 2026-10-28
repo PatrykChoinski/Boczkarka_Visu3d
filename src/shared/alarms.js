@@ -8,14 +8,14 @@ export const ALARMS = [
   { n: 5, pl: 'Błąd serwa B' },
   { n: 6, pl: 'X: krańcówka / softlimit' },
   { n: 7, pl: 'B: krańcówka / softlimit' },
-  { n: 8, pl: 'Osie nie zbazowane przy starcie automatu' },
+  { n: 8, pl: 'Osie nie gotowe przy starcie automatu (brak załączenia / błąd)' },
   { n: 9, pl: 'Błąd falownika wrzeciona' },
   { n: 10, pl: 'Przeciążenie wrzeciona' },
   { n: 11, pl: 'Wrzeciono nie osiągnęło obrotów' },
   { n: 12, pl: 'Brak wody / powietrza' },
   { n: 13, pl: 'Błąd komunikacji EtherCAT' },
   { n: 14, pl: 'Niepoprawna receptura' },
-  { n: 15, pl: 'Przekroczony czas kroku automatu / bazowania' },
+  { n: 15, pl: 'Przekroczony czas kroku automatu' },
 ];
 
 export const alarmByNumber = (n) => ALARMS.find((a) => a.n === n) ?? null;

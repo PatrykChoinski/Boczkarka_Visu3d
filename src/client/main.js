@@ -1,6 +1,6 @@
 // Strona Visu3D boczkarki: tryb offline (symulator cyklu jak w PLC) i online (wartosci z PLC przez OPC UA,
 // serwer VizuApp; adres IP serwera OPC UA wpisywany na stronie - POST /api/connection). Panel obslugi: logowanie
-// (poziomy jak w auth.js), tryb reczny (jog / dojazd / bazowanie / wrzeciono) i parametry serwisowe - online przez PLC,
+// (poziomy jak w auth.js), tryb reczny (jog / dojazd / wrzeciono) i parametry serwisowe - online przez PLC,
 // offline na symulatorze.
 import { EdgeView } from './view3d.js';
 import {
@@ -220,7 +220,7 @@ function applyAccess() {
   chip.textContent = app.level > 0 ? (app.user === lvl ? lvl : `${app.user} · ${lvl}`) : loginOn ? 'Niezalogowany' : LEVEL_NAMES[0];
   chip.className = `chip user lvl${app.level}`;
   $('manualInfo').textContent = online
-    ? 'Online: jog i dojazdy w trybie Ręczny, bazowanie w trybie Bazowanie (przełącznik w karcie PLC).'
+    ? 'Online: jog i dojazdy w trybie Ręczny (przełącznik w karcie PLC).'
     : 'Offline: osie symulatora, gdy automat stoi.';
   $('serviceInfo').textContent = online
     ? 'Parametry trwałe PLC – zapis po zmianie pola (zakres sprawdzany na stronie i w serwerze).'
@@ -324,7 +324,6 @@ $('gotoXBtn').addEventListener('click', () => manualCommand(() => sim.goto('x', 
   [{ v: 'Manual.GotoXTarget', value: Number($('gotoX').value) }, { v: 'Manual.GotoX', value: true }]));
 $('gotoBBtn').addEventListener('click', () => manualCommand(() => sim.goto('b', Number($('gotoB').value)),
   [{ v: 'Manual.GotoBTarget', value: Number($('gotoB').value) }, { v: 'Manual.GotoB', value: true }]));
-$('homeBtn').addEventListener('click', () => manualCommand(() => sim.home(), [{ v: 'HomingProcess.Start', value: true }]));
 $('spindleBtn').addEventListener('click', () => manualCommand(() => sim.toggleSpindle(Number($('manFreq').value)),
   [{ v: 'Manual.SpindleFrequency', value: Number($('manFreq').value) }, { v: 'Manual.SpindleToggle', value: true }]));
 $('waterBtn').addEventListener('click', () => manualCommand(() => sim.toggleWater(), [{ v: 'Manual.WaterToggle', value: true }]));
@@ -334,7 +333,6 @@ function updateManual(s) {
   $('spindleBtn').classList.toggle('on', Boolean(s.spindleRunning));
   $('waterBtn').classList.toggle('on', Boolean(s.water));
   $('clampBtn').classList.toggle('on', Boolean(s.clamp));
-  $('homeBtn').classList.toggle('on', Boolean(s.homing));
 }
 
 // ---------------------------------------------------------------- parametry serwisowe

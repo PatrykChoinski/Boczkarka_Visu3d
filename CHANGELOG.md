@@ -4,6 +4,12 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (3)
+
+### Bez bazowania (maszyna z enkoderami absolutnymi)
+- Usunięte: tryb Bazowanie (`MODES`: 0 Ręczny, 1 Automat jak `MachineMode` w PLC), przycisk Bazowanie, zapis `HomingProcess.Start`, zmienne `Axes.Status*.Homed`, parametry `Homing` / `HomePosition` / `HomingVelocityB`, bazowanie w symulatorze i testowym PLC.
+- Alarm 8: osie nie gotowe przy starcie automatu.
+
 ## 2026-10-28 (2)
 
 ### Panel obsługi: logowanie, ręczny, serwis (Promasz_Boczkarka #41, #42, #43)
