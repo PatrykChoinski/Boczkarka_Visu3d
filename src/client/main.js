@@ -3,6 +3,7 @@
 // (poziomy jak w auth.js), tryb reczny (jog / dojazd / wrzeciono) i parametry serwisowe - online przez PLC,
 // offline na symulatorze.
 import { EdgeView } from './view3d.js';
+import { installIcons, icon } from './icons.js';
 import {
   DEFAULTS, EDGE_STEPS, STEP, MODES, LEVEL_NAMES, PLC_WRITES, SERVICE_PARAMS, SERVICE_ITEMS, checkParam, fromPlc, endpointFromHost,
 } from '../shared/config.js';
@@ -13,6 +14,7 @@ import {
 import { edgeSection, cutState } from '../shared/edgeshape.js';
 import { alarmText, activeFromValues } from '../shared/alarms.js';
 
+installIcons();
 const $ = (id) => document.getElementById(id);
 const fmt = (v, d = 1) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
 const store = {
@@ -61,6 +63,7 @@ const app = {
   level: 0,
   freshStone: false,	// online: "Nowy kamien" - bez obrobki do startu nastepnego cyklu
   follow: store.get('vizu.follow', '1') === '1',	// kamera za glowica (domyslnie, jak na filmach)
+  tab: store.get('vizu.tab', 'auto'),	// ekran z lewego paska
 };
 
 // ---------------------------------------------------------------- receptura (offline)
@@ -102,8 +105,6 @@ $('simStart').addEventListener('click', () => {
   $('simMsg').textContent = ok || sim.step !== STEP.WaitForCommand ? '' : `Receptura: ${VALIDATION_TEXT[sim.error] ?? sim.error}`;
   $('simMsg').classList.toggle('err', !ok && sim.step === STEP.WaitForCommand);
 });
-$('simPause').addEventListener('click', () => sim.pause());
-$('simStop').addEventListener('click', () => sim.stop());
 $('simAck').addEventListener('click', () => { sim.acknowledge(); $('simMsg').textContent = ''; });
 
 $('newStone').addEventListener('click', () => {
@@ -117,26 +118,51 @@ function setMode(mode) {
   if (mode === 'online' && !cfg.plc) mode = 'offline';
   app.mode = mode;
   store.set('vizu.mode', mode);
-  document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+  document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
   $('offlineCard').classList.toggle('hidden', mode !== 'offline');
   $('onlineCard').classList.toggle('hidden', mode !== 'online');
+  $('speedBox').hidden = mode !== 'offline';
+  $('connOpen').hidden = !cfg.plc || mode !== 'online';
   updateChip();
   applyAccess();
 }
 document.querySelectorAll('#mode button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 document.querySelector('#mode [data-mode="online"]').disabled = !cfg.plc;
-document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('#viewTools button').forEach((b) => b.addEventListener('click', () => {
   app.follow = b.dataset.view === 'follow';
   store.set('vizu.follow', app.follow ? '1' : '0');
-  document.querySelectorAll('#views button').forEach((x) => x.classList.toggle('on', x === b && app.follow));
+  document.querySelectorAll('#viewTools button').forEach((x) => x.classList.toggle('active', x === b && app.follow));
   view.view(app.follow ? 'iso' : b.dataset.view, current().state.x || 0);
 }));
 
+// Ekrany z lewego paska (jak menu HMI): Automat, Reczny, Serwis - tytul panelu z ikona i nazwa
+const TABS = { auto: ['auto', 'Automat'], manual: ['hand', 'Ręczny'], service: ['wrench', 'Serwis – parametry'] };
+function showTab(name) {
+  const btn = document.querySelector(`#screens [data-tab="${name}"]`);
+  if (!btn || btn.hidden) name = 'auto';
+  app.tab = name;
+  store.set('vizu.tab', name);
+  document.querySelectorAll('#screens button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('#panel .tab').forEach((t) => { t.hidden = t.dataset.tab !== name; });
+  $('panelTitle').innerHTML = `${icon(TABS[name][0])}<span>${TABS[name][1]}</span>`;
+}
+document.querySelectorAll('#screens button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+// Okna polaczenia i alarmow (gorny pasek)
+$('connOpen').addEventListener('click', () => { $('connWin').hidden = !$('connWin').hidden; if (!$('connWin').hidden) loadConnection(); });
+$('connClose').addEventListener('click', () => { $('connWin').hidden = true; });
+$('alarmOpen').addEventListener('click', () => { $('alarmWin').hidden = !$('alarmWin').hidden; });
+$('alarmClose').addEventListener('click', () => { $('alarmWin').hidden = true; });
+$('alarmReset').addEventListener('click', () => (app.mode === 'offline' ? sim.acknowledge() : plcWrite('Alarms.Reset', true)));
+// STOP / PAUZA na pasku: offline - symulator, online - PLC (bez logowania, jak przyciski na pulpicie)
+$('barStop').addEventListener('click', () => (app.mode === 'offline' ? sim.stop() : plcWrite('EdgeProfile.Stop', true)));
+$('barPause').addEventListener('click', () => (app.mode === 'offline' ? sim.pause() : plcWrite('EdgeProfile.Pause', true)));
+
 function updateChip() {
   const chip = $('connChip');
-  if (app.mode === 'offline') { chip.textContent = 'Symulacja offline'; chip.className = 'chip'; return; }
+  if (app.mode === 'offline') { chip.textContent = 'Symulacja offline'; chip.className = ''; return; }
   chip.textContent = app.status;
-  chip.className = `chip ${app.connected ? 'ok' : 'bad'}`;
+  chip.className = app.connected ? 'ok' : 'bad';
 }
 
 // ---------------------------------------------------------------- online: SSE i polaczenie
@@ -209,18 +235,20 @@ function applyAccess() {
   const op = app.connected && app.level >= 1;
   $('plcControls').hidden = !op;
   $('plcModes').hidden = !op;
-  $('manualCard').classList.toggle('hidden', online && app.level < 1);
-  $('serviceCard').classList.toggle('hidden', online && app.level < 2);
+  $('plcInfo').textContent = !app.connected ? '' : op ? '' : 'Sterowanie po zalogowaniu (Operator).';
+  document.querySelector('#screens [data-tab="manual"]').hidden = online && app.level < 1;
+  document.querySelector('#screens [data-tab="service"]').hidden = online && app.level < 2;
+  showTab(app.tab);
   const loginOn = Boolean(cfg.auth?.enabled);
+  const loggedIn = Boolean(session.token && app.level > 0);
+  $('authBox').hidden = !cfg.plc && !loginOn;
   $('loginBtn').hidden = !loginOn;
-  $('loginBtn').textContent = session.token && app.level > 0 ? 'Wyloguj' : 'Zaloguj';
-  const chip = $('userChip');
-  chip.hidden = !cfg.plc && !loginOn;
+  $('loginBtn').title = loggedIn ? 'Wyloguj' : 'Zaloguj';
+  $('loginBtn').innerHTML = icon(loggedIn ? 'logout' : 'login');
   const lvl = LEVEL_NAMES[app.level];
-  chip.textContent = app.level > 0 ? (app.user === lvl ? lvl : `${app.user} · ${lvl}`) : loginOn ? 'Niezalogowany' : LEVEL_NAMES[0];
-  chip.className = `chip user lvl${app.level}`;
+  $('userChip').innerHTML = app.level > 0 ? (app.user === lvl ? `<b>${lvl}</b>` : `<b>${app.user}</b> · ${lvl}`) : loginOn ? 'Niezalogowany' : LEVEL_NAMES[0];
   $('manualInfo').textContent = online
-    ? 'Online: jog i dojazdy w trybie Ręczny (przełącznik w karcie PLC).'
+    ? 'Online: jog i dojazdy w trybie Ręczny (przełącznik na ekranie Automat).'
     : 'Offline: osie symulatora, gdy automat stoi.';
   $('serviceInfo').textContent = online
     ? 'Parametry trwałe PLC – zapis po zmianie pola (zakres sprawdzany na stronie i w serwerze).'
@@ -450,8 +478,13 @@ function updatePanel(c) {
   $('sTime').textContent = app.mode === 'online' ? `${fmt(s.timeRemaining, 0)} s pozostało · ${fmt(s.progress, 0)} %` : '—';
   $('sCount').textContent = `${s.cycles ?? 0} cykli · ${fmt(s.metersTotal, 2)} m`;
   const alarms = app.mode === 'online' ? activeFromValues(app.values) : [];
+  const simAlarm = app.mode === 'offline' && s.validationError;
   $('alarms').innerHTML = alarms.map((n) => `<div>${n}. ${alarmText(n)}</div>`).join('')
-    + (app.mode === 'offline' && s.validationError ? `<div>14. ${alarmText(14)}: ${VALIDATION_TEXT[s.validationError]}</div>` : '');
+    + (simAlarm ? `<div>14. ${alarmText(14)}: ${VALIDATION_TEXT[s.validationError]}</div>` : '');
+  const count = alarms.length + (simAlarm ? 1 : 0);
+  $('alarmCount').hidden = !count;
+  $('alarmCount').textContent = count;
+  $('alarmOpen').classList.toggle('on', count > 0);
   const key = JSON.stringify([profile.kind, passes.map((p) => p.angleB), cut.done, cut.partial?.angle, s.passIndex]);
   if (key !== lastKey) {
     lastKey = key;
@@ -461,7 +494,7 @@ function updatePanel(c) {
       return `<span class="${cls}">${p.angleB > 0 ? '+' : ''}${fmt(p.angleB, 0)}°</span>`;
     }).join('');
   }
-  $('simStart').textContent = sim.step === STEP.Pause ? 'WZNÓW' : 'START';
+  $('simStartLbl').textContent = sim.step === STEP.Pause ? 'WZNÓW' : 'START';
   updateManual(s);
   updateService();
 }
@@ -490,7 +523,8 @@ function frame(now) {
 }
 
 setMode(app.mode);
-document.querySelector('#views [data-view="follow"]').classList.toggle('on', app.follow);
+document.querySelector('#viewTools [data-view="follow"]').classList.toggle('active', app.follow);
+showTab(app.tab);
 view.view('iso', current().state.x || 0);
 connectEvents();
 loadConnection();

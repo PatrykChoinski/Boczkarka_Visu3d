@@ -4,6 +4,14 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (4)
+
+### Układ strony jak VizuApp piły, model wg zdjęcia maszyny (DSCN1131)
+- Górny pasek: tryb PLC / SIM, połączenie z PLC (okno z adresem IP serwera OPC UA), alarmy z licznikiem (okno), STOP / PAUZA, tempo symulacji, logowanie w prawym górnym rogu (użytkownik, poziom, zaloguj / wyloguj).
+- Ekrany w lewym pasku (ikony jak w pile, `icons.js`): Automat (przekrój, przejścia, sterowanie PLC / receptura symulacji), Ręczny, Serwis; panel ekranu z tytułem po prawej, narzędzia widoku nad sceną.
+- Stan na dolnym pasku: X, B, wrzeciono, docisk / woda, połączenie, krok, przejście, czas, licznik.
+- Model: krawędź płyty i głowica od strony operatora (tarcza na krawędź, silnik do operatora), belka X z tyłu stołu z dwoma żółtymi pasami, wózek z ramieniem nad stołem, obudowa z szybą i silnikiem, zamknięta biała podstawa z dwiema tablicami PROMASZ, czarny blat, osłona boczna, szafa na prawym końcu; bez drugiego wrzeciona ze szczotką.
+
 ## 2026-10-28 (3)
 
 ### Bez bazowania (maszyna z enkoderami absolutnymi)

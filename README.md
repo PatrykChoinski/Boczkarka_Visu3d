@@ -23,6 +23,12 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
   PLC (`src/shared/edgeprofile.js`) z receptury cyklu `EdgeProfile.CycleProfile`. Sterowanie (START, PAUZA, STOP,
   reset alarmów, tryb) – tylko zmienne z listy `PLC_WRITES` (`src/shared/config.js`).
 
+## Układ strony (jak VizuApp piły)
+
+Górny pasek: tryb PLC / SIM, połączenie z PLC, alarmy, STOP / PAUZA, tempo symulacji, logowanie w prawym górnym
+rogu. Ekrany w lewym pasku: Automat, Ręczny, Serwis. Widok 3D z narzędziami widoku, panel ekranu po prawej,
+stan maszyny (X, B, wrzeciono, krok, przejście, czas, licznik) na dolnym pasku.
+
 ## Panel obsługi
 
 - **Logowanie** (przycisk „Zaloguj” na pasku, gdy obok `config.json` jest `users.json`; tworzenie:

@@ -1,9 +1,9 @@
-// Scena 3D boczkarki (wyglad jak B1PK-14.0-2000.2S): rama stolu, blat z rolkami kulowymi, belka osi X z tylu
-// stolu, wozek, glowica wychylna B (tarcza w oslonie + motoreduktor), drugie wrzeciono ze szczotka, szafa;
-// krawedz plyty obrabiana kolejnymi przejsciami.
+// Scena 3D boczkarki (wyglad jak Promasz B1PK): podstawa z blatem, belka osi X z tylu stolu, wozek z ramieniem
+// nad stolem, glowica wychylna B przed krawedzia plyty (tarcza w oslonie + motoreduktor), szafa; krawedz plyty
+// obrabiana kolejnymi przejsciami.
 //
-// Uklad (mm): three x = os X maszyny (wzdluz stolu), y - w gore, z - w poprzek: krawedz plyty z = 0, plyta z < 0,
-// glowica po stronie z > 0. Przekroj krawedzi (u, v) z edgeshape.js: u -> z, v -> y (od wierzchu stolu).
+// Uklad (mm): three x = os X maszyny (wzdluz stolu), y - w gore, z - w poprzek: krawedz plyty z = 0 (od strony
+// operatora), plyta z < 0 (w glab stolu, belka z tylu), glowica i operator po stronie z > 0. Przekroj krawedzi (u, v) z edgeshape.js: u -> z, v -> y (od wierzchu stolu).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { edgeSection, passPlane, normal } from '../shared/edgeshape.js';
@@ -44,7 +44,7 @@ export class EdgeView {
   lights() {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9da0, 1.2), new THREE.AmbientLight(0xffffff, 0.55));
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    sun.position.set(2400, 4200, -3200);
+    sun.position.set(2400, 4200, 3200);
     sun.castShadow = !this.lite;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -3000, right: 3000, top: 3000, bottom: -3000, near: 100, far: 10000 });
@@ -91,152 +91,112 @@ export class EdgeView {
     return t;
   }
 
-  // Wyglad jak B1PK-14.0-2000.2S (zdjecia Promasz): rama stolu z profili malowana na jasnoszaro, blat czarny
-  // z rolkami kulowymi, belka osi X z tylu stolu (jasnoszara, zolty pas, tabliczka PROMASZ), wozek z zoltymi
-  // obudowami, glowica z tarcza w polkolistej oslonie aluminiowej, drugie wrzeciono ze szczotka, prowadnik
-  // kabli, oslona z poliweglanu, szafa sterownicza na prawym koncu.
+  // Wyglad jak boczkarka Promasz B1PK (zdjecie DSCN1131): zamknieta biala podstawa z dwiema zoltymi tablicami
+  // PROMASZ, czarny blat; krawedz plyty od strony operatora, glowica przed krawedzia (tarcza skierowana na
+  // krawedz, silnik do operatora); belka osi X z tylu stolu na slupach (zolte pasy), wozek z ramieniem nad
+  // stolem, obudowa z szybka i silnikiem, prowadnik kabli do glowicy, oslona boczna i szafa na prawym koncu.
   buildMachine() {
     const m = this.m;
     const x0 = m.travelX[0] - 250;
     const len = m.tableLength;
     const th = m.tableHeight;
-    const zFront = -m.stoneOverhang - m.tableWidth;	// strona operatora
-    const zTable = -m.stoneOverhang;			// tylna krawedz blatu (krawedz plyty wystaje za nia)
-    const railZ = 680;					// os belki X
-    const zBack = railZ + 120;
+    const zFront = -m.stoneOverhang;			// przednia krawedz blatu (operator po stronie +z)
+    const zRear = zFront - m.tableWidth;
+    const railZ = zRear - 80;				// os belki X z tylu stolu
     const beamTop = m.railHeight - 60;
     const beamH = 300;
     this.railZ = railZ;
     this.beamTop = beamTop;
-    const frame = mat(0xe4e6e8, { roughness: 0.7 });	// lakier strukturalny jasnoszary
+    const white = mat(0xeceeef, { roughness: 0.75 });	// lakier strukturalny
     const yellow = mat(0xf7b733, { roughness: 0.5, emissive: 0x3d2a00 });
     const alu = mat(0xd5d9de, { metalness: 0.6, roughness: 0.3 });
     const black = mat(0x1c1e21, { roughness: 0.7 });
-    const P = 80;					// profil ramy
-    // rama: gorny prostokat, nogi co ~600 mm, dolne podluznice, poprzeczki
-    const n = Math.max(2, Math.round(len / 600));
-    const xs = Array.from({ length: n + 1 }, (_, i) => x0 + P / 2 + (i * (len - P)) / n);
-    const yTop = th - 25 - P / 2;
-    const yLow = 150;
-    for (const z of [zFront + P / 2, zTable - P / 2, zBack - P / 2]) this.box(len, P, P, frame, x0 + len / 2, yTop, z);
-    for (const z of [zFront + P / 2, zBack - P / 2]) this.box(len, P, P, frame, x0 + len / 2, yLow, z);
-    for (const x of xs) {
-      for (const z of [zFront + P / 2, zBack - P / 2]) {
-        this.box(P, yTop, P, frame, x, yTop / 2, z);
-        this.box(140, 12, 140, 0x8b9096, x, 6, z);	// stopki
-      }
-      this.box(P, P, zBack - zFront, frame, x, yTop, (zFront + zBack) / 2);
-      if (x === xs[0] || x === xs[n]) this.box(P, P, zBack - zFront, frame, x, yLow, (zFront + zBack) / 2);
-    }
-    // rura z silownikami pneumatycznymi pod blatem (unoszenie rolek / dociski na 3 silownikach)
-    const pipeZ = (zFront + zTable) / 2;
-    const pipe = this.cylinder(30, len - 200, frame, this.scene, 20);
-    pipe.rotation.z = Math.PI / 2;
-    pipe.position.set(x0 + len / 2, th - 220, pipeZ);
-    for (let i = 0; i < 3; i++) {
-      const cx = x0 + len * (0.25 + i * 0.25);
-      const cyl = this.cylinder(32, 260, alu, this.scene, 24);
-      cyl.position.set(cx, th - 400, pipeZ);
-      const rod = this.cylinder(10, 160, 0xb9bec4, this.scene, 12);
-      rod.position.set(cx, th - 210, pipeZ);
-    }
-    // blat: czarna plyta z otworami rolek kulowych
-    const holes = this.texture(256, 256, (g, w, h) => {
-      g.fillStyle = '#202326';
-      g.fillRect(0, 0, w, h);
-      for (const [cx, cy] of [[64, 64], [192, 192]]) {
-        g.fillStyle = '#3c4146';
-        g.beginPath(); g.arc(cx, cy, 34, 0, Math.PI * 2); g.fill();
-        g.fillStyle = '#9da3a9';
-        g.beginPath(); g.arc(cx, cy, 16, 0, Math.PI * 2); g.fill();
-      }
-    }, [len / 300, m.tableWidth / 300]);
-    const topMat = mat(0xffffff, { map: holes, roughness: 0.8 });
-    const top = new THREE.Mesh(new THREE.BoxGeometry(len, 25, m.tableWidth), [black, black, topMat, black, black, black]);
-    top.position.set(x0 + len / 2, th - 12.5, (zFront + zTable) / 2);
-    top.receiveShadow = true;
-    this.scene.add(top);
-    // blat pod glowica (za szczelina pod krawedzia plyty) do belki
-    const zRear0 = 260;
-    const rearTop = new THREE.Mesh(new THREE.BoxGeometry(len, 25, railZ - 120 - zRear0), [black, black, topMat, black, black, black]);
-    rearTop.position.set(x0 + len / 2, th - 12.5, (zRear0 + railZ - 120) / 2);
-    rearTop.receiveShadow = true;
-    this.scene.add(rearTop);
-    this.box(len, P, P, frame, x0 + len / 2, yTop, zRear0 + P / 2);
-    // slupy i belka osi X (przesuw na lozyskach liniowych w wannie olejowej)
-    for (const px of [x0 + 60, x0 + len - 60]) this.box(140, beamTop - beamH - yTop, 140, frame, px, (beamTop - beamH + yTop) / 2, railZ);
-    this.box(len + 200, beamH, 240, frame, x0 + len / 2, beamTop - beamH / 2, railZ);
-    this.box(len + 200, 26, 250, yellow, x0 + len / 2, beamTop + 13, railZ);
-    this.box(len + 160, 40, 160, mat(0xb8bdc3, { metalness: 0.4, roughness: 0.4 }), x0 + len / 2, beamTop + 46, railZ + 20);	// wanna olejowa
-    const logo = this.texture(512, 256, (g, w, h) => {
-      g.fillStyle = '#f5b335';
+    // podstawa: zamknieta szafa pod blatem, przod cofniety (dostep tarczy od dolu krawedzi)
+    const zBaseFront = zFront - 160;
+    this.box(len, th - 25 - 60, zBaseFront - zRear, white, x0 + len / 2, 60 + (th - 85) / 2, (zBaseFront + zRear) / 2);
+    this.box(len - 40, 60, zBaseFront - zRear - 40, 0x9ea4aa, x0 + len / 2, 30, (zBaseFront + zRear) / 2);
+    for (const fx of [x0 + 100, x0 + len - 100]) this.box(160, 14, 160, 0x8b9096, fx, 7, zBaseFront - 60);
+    // zolte tablice PROMASZ na froncie podstawy
+    const logo = this.texture(512, 384, (g, w, h) => {
+      g.fillStyle = '#f5a623';
       g.fillRect(0, 0, w, h);
       g.strokeStyle = '#ffffff';
-      g.lineWidth = 6;
-      g.beginPath(); g.arc(w * 0.5, h * 1.05, h * 0.75, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+      g.lineWidth = 7;
+      g.beginPath(); g.arc(w * 0.5, h * 0.55, h * 0.36, Math.PI * 1.05, Math.PI * 2.25); g.stroke();
       g.fillStyle = '#ffffff';
-      g.font = `bold ${h * 0.3}px Georgia, "Times New Roman", serif`;
+      g.font = `bold ${h * 0.17}px Georgia, "Times New Roman", serif`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText('PROMASZ', w / 2, h * 0.58);
+      g.fillText('PROMASZ', w / 2, h * 0.62);
     });
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(400, 200), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 }));
-    plate.rotation.y = Math.PI;					// lico belki od strony operatora (-z)
-    plate.position.set(x0 + len - 360, beamTop - beamH / 2, railZ - 121);
-    this.scene.add(plate);
-    // szafa sterownicza na prawym koncu
-    const cabX = x0 - 230;
-    this.box(140, th + 150, 140, frame, cabX, (th + 150) / 2, railZ);
-    this.box(360, 900, 340, mat(0xf3f4f5, { roughness: 0.5 }), cabX, th + 600, railZ);
+    for (const f of [0.26, 0.74]) {
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(560, 420), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 }));
+      plate.position.set(x0 + len * f, 60 + (th - 85) * 0.5, zBaseFront + 1);
+      this.scene.add(plate);
+    }
+    // blat czarny (wysuniety nad przod podstawy)
+    const holes = this.texture(256, 256, (g, w, h) => {
+      g.fillStyle = '#1d2023';
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#2c3135';
+      for (const [cx, cy] of [[64, 64], [192, 192]]) { g.beginPath(); g.arc(cx, cy, 26, 0, Math.PI * 2); g.fill(); }
+    }, [len / 400, m.tableWidth / 400]);
+    const topMat = mat(0xffffff, { map: holes, roughness: 0.6 });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(len, 25, m.tableWidth), [black, black, topMat, black, black, black]);
+    top.position.set(x0 + len / 2, th - 12.5, (zFront + zRear) / 2);
+    top.receiveShadow = true;
+    top.castShadow = true;
+    this.scene.add(top);
+    // slupy na koncach i belka osi X (dwa zolte pasy jak na zdjeciu)
+    const postH = beamTop;
+    for (const px of [x0 - 90, x0 + len + 90]) this.box(160, postH, 220, white, px, postH / 2, railZ);
+    this.box(len + 340, beamH, 220, white, x0 + len / 2, beamTop - beamH / 2, railZ);
+    this.box(len + 360, 30, 240, yellow, x0 + len / 2, beamTop + 15, railZ);
+    this.box(len + 200, 70, 14, yellow, x0 + len / 2, beamTop - beamH + 70, railZ + 117);
+    this.box(len + 200, 40, 160, mat(0xb8bdc3, { metalness: 0.4, roughness: 0.4 }), x0 + len / 2, beamTop + 50, railZ);	// wanna olejowa
+    // oslona boczna (siatka) na prawym koncu i szafa sterownicza
+    const mesh = mat(0x9aa0a6, { transparent: true, opacity: 0.55, roughness: 0.6, side: THREE.DoubleSide });
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(12, beamTop - 150, zFront - railZ + 150), mesh);
+    guard.position.set(x0 + len + 180, 150 + (beamTop - 150) / 2, (zFront + railZ) / 2 + 40);
+    this.scene.add(guard);
+    const cabX = x0 + len + 330;
+    this.box(140, th + 200, 140, white, cabX, (th + 200) / 2, railZ);
+    this.box(320, 900, 300, mat(0xf3f4f5, { roughness: 0.5 }), cabX, th + 650, railZ);
     const vent = this.texture(128, 128, (g, w, h) => {
       g.fillStyle = '#e9ebed'; g.fillRect(0, 0, w, h);
       g.fillStyle = '#4a4f55';
       for (let i = 0; i < 8; i++) g.fillRect(14, 14 + i * 13, w - 28, 6);
     });
-    const ventPlate = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), new THREE.MeshStandardMaterial({ map: vent }));
-    ventPlate.rotation.y = Math.PI;
-    ventPlate.position.set(cabX, th + 940, railZ - 171);
+    const ventPlate = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), new THREE.MeshStandardMaterial({ map: vent }));
+    ventPlate.position.set(cabX, th + 980, railZ + 151);
     this.scene.add(ventPlate);
-    this.box(380, 30, 200, yellow, cabX + 280, beamTop + 13, railZ);
-    // prowadnik kabli: odcinek na belce do polowy dlugosci, petla przy wozku
+    // prowadnik kabli w belce: od punktu stalego do wozka
     this.chainFixX = x0 + len / 2;
-    this.chainRun = this.box(1, 50, 110, black, 0, beamTop + 160, railZ - 100);
-    // wozek osi X
+    this.chainRun = this.box(1, 40, 90, black, 0, beamTop + 95, railZ);
+    // wozek osi X na belce, ramie nad stolem do przodu, obudowa z szybka i silnikiem
     this.carriage = new THREE.Group();
     this.scene.add(this.carriage);
-    this.box(460, 120, 300, 0xd9dcdf, 0, beamTop + 125, railZ, this.carriage);
-    this.box(380, 160, 300, yellow, -40, beamTop + 265, railZ - 140, this.carriage);	// zolta obudowa z serwem
-    const servo = this.cylinder(55, 180, black, this.carriage, 24);
-    servo.position.set(-40, beamTop + 95, railZ - 230);
-    const servoFlange = this.box(130, 30, 130, 0x2a2d31, -40, beamTop + 175, railZ - 230, this.carriage);
-    servoFlange.castShadow = true;
-    const loop = new THREE.Mesh(new THREE.TorusGeometry(180, 48, 4, 24, Math.PI), black);
-    loop.rotation.z = Math.PI / 2;				// polokrag po stronie -x, ramiona w strone +x
-    loop.position.set(330, beamTop - 20, railZ - 100);
+    const hubZ = 380;
+    this.box(440, 130, 300, 0xd9dcdf, 0, beamTop + 135, railZ, this.carriage);
+    this.box(300, 200, hubZ + 120 - railZ, white, 0, beamTop + 160, (railZ + hubZ + 120) / 2, this.carriage);
+    const houseTop = beamTop + 260;
+    const houseBottom = th + 520;
+    this.box(320, houseTop - houseBottom, 300, white, 0, (houseTop + houseBottom) / 2, hubZ - 20, this.carriage);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(12, houseTop - houseBottom - 60, 380),
+      mat(0x2a2320, { transparent: true, opacity: 0.75, roughness: 0.15, metalness: 0.2 }));
+    glass.position.set(230, (houseTop + houseBottom) / 2, hubZ - 20);
+    this.carriage.add(glass);
+    this.box(14, houseTop - houseBottom - 30, 400, alu, 165, (houseTop + houseBottom) / 2, hubZ - 20, this.carriage);
+    const topMotor = this.cylinder(85, 260, mat(0xa9aeb4, { metalness: 0.35, roughness: 0.4 }), this.carriage, 28);
+    topMotor.rotation.z = Math.PI / 2;
+    topMotor.position.set(-20, houseTop + 90, hubZ - 40);
+    this.box(200, 60, 160, 0x8f959b, -20, houseTop + 30, hubZ - 40, this.carriage);
+    // petla prowadnika kabli od obudowy do glowicy (lewa strona, jak na zdjeciu)
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(230, 34, 4, 26, Math.PI), black);
+    loop.rotation.z = Math.PI / 2;				// polokrag po stronie -x
+    loop.position.set(-170, th + 470, hubZ + 60);
     loop.castShadow = true;
     this.carriage.add(loop);
-    // oslona z poliweglanu (przyciemniana) za glowica
-    const poly = new THREE.Mesh(new THREE.BoxGeometry(560, 620, 10),
-      mat(0x3a2a20, { transparent: true, opacity: 0.55, roughness: 0.2, metalness: 0.1 }));
-    poly.position.set(-360, beamTop - 260, railZ - 150);
-    this.carriage.add(poly);
-    this.box(580, 18, 30, alu, -360, beamTop + 52, railZ - 150, this.carriage);
-    // drugie wrzeciono (2S): silnik pionowy, silowniki opuszczania, szczotka
-    const s2 = new THREE.Group();
-    s2.position.set(-330, 0, 120);
-    this.carriage.add(s2);
-    const s2Top = beamTop - 40;
-    this.box(170, 300, 170, alu, 0, s2Top - 200, 0, s2);
-    this.box(260, 20, 200, alu, 0, s2Top - 40, 0, s2);
-    for (const dx of [-95, 95]) { const c = this.cylinder(22, 220, alu, s2, 16); c.position.set(dx, s2Top - 160, 50); }
-    const shTop = s2Top - 350;
-    const shBottom = th + 300;			// szczotka podniesiona (drugie wrzeciono poza programem)
-    const sh = this.cylinder(30, shTop - shBottom, 0xb0b5bb, s2, 20);
-    sh.position.y = (shTop + shBottom) / 2;
-    const cupS = this.cylinder(85, 30, alu, s2, 32);
-    cupS.position.y = th + 290;
-    const brush = this.cylinder(80, 70, mat(0x8a3b24, { roughness: 1 }), s2, 32);
-    brush.position.y = th + 240;
     this.column = this.box(240, 1, 40, mat(0xe9ebed, { roughness: 0.6 }), 0, 0, railZ - 40, this.carriage);
     // przegub B: zolta obudowa obrotu na koncu sanek
     this.hub = new THREE.Group();
@@ -332,9 +292,9 @@ export class EdgeView {
     const th = this.m.tableHeight;
     const t = new THREE.Vector3(centerX, th + 200, 250);
     const p = {
-      iso: [centerX + 1900, th + 1500, -3400], front: [centerX, th + 500, -4700],
-      side: [this.m.travelX[0] - 900, th + 120, 260], top: [centerX, th + 4200, -400],
-    }[name] ?? [centerX + 1900, th + 1500, -3400];
+      iso: [centerX + 1700, th + 1300, 3500], front: [centerX, th + 450, 4800],
+      side: [this.m.travelX[0] - 900, th + 120, 260], top: [centerX, th + 4200, 600],
+    }[name] ?? [centerX + 1700, th + 1300, 3500];
     if (name === 'side') t.set(this.m.travelX[0] + 200, th + 15, 0);
     if (name === 'top') t.set(centerX, th, 0);
     this.camera.position.set(...p);
@@ -407,7 +367,7 @@ export class EdgeView {
     this.column.position.set(0, (colTop + hubY) / 2, hubZ + 80);
     // prowadnik kabli na belce: od punktu stalego do petli przy wozku
     const ca = this.chainFixX;
-    const cb = x + 330;
+    const cb = x;
     this.chainRun.scale.x = Math.max(1, Math.abs(cb - ca));
     this.chainRun.position.x = (ca + cb) / 2;
     const rear = new THREE.Vector3(0, m.tableHeight + cv + n[1] * this.motorRear * 0.7, cu + n[0] * this.motorRear * 0.7);

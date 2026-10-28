@@ -7,145 +7,171 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- uklad jak VizuApp pily: gorny pasek (tryb, polaczenie, alarmy, STOP / PAUZA, logowanie w prawym rogu),
+       ekrany w lewym pasku, widok 3D, panel ekranu po prawej, stan na dolnym pasku -->
   <header class="bar">
-    <div class="brand">Boczkarka profilowa <span class="muted">Visu3D</span></div>
+    <div class="brand" title="Boczkarka profilowa Promasz B1PK – wizualizacja"><svg class="ic" aria-hidden="true"><use href="#i-polish"/></svg><span>Boczkarka</span></div>
     <div class="seg" id="mode">
-      <button data-mode="offline" title="Offline – symulacja cyklu bez PLC">Offline</button>
-      <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)">Online</button>
+      <button data-mode="online" title="Online – pozycje i stany z PLC (OPC UA)"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span class="lbl">PLC</span></button>
+      <button data-mode="offline" title="Offline – symulacja cyklu bez PLC"><svg class="ic" aria-hidden="true"><use href="#i-sim"/></svg><span class="lbl">SIM</span></button>
     </div>
-    <span class="chip" id="connChip" title="Połączenie z serwerem OPC UA">—</span>
+    <button id="connOpen" class="tool" title="Połączenie z PLC – adres IP serwera OPC UA"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
+    <button id="alarmOpen" class="tool" title="Alarmy"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span class="alarmCount" id="alarmCount" hidden></span></button>
+    <button id="barStop" class="tool" title="STOP"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">STOP</span></button>
+    <button id="barPause" class="tool" title="PAUZA"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="lbl">PAUZA</span></button>
     <div class="spacer"></div>
-    <span class="chip" id="userChip" title="Użytkownik i poziom dostępu" hidden></span>
-    <button id="loginBtn" class="barbtn" hidden>Zaloguj</button>
-    <div class="seg" id="views">
-      <button data-view="iso" title="Widok ogólny">Izo</button>
-      <button data-view="front" title="Wzdłuż krawędzi">Przód</button>
-      <button data-view="side" title="Przekrój profilu">Bok</button>
-      <button data-view="top" title="Z góry">Góra</button>
-      <button data-view="follow" title="Kamera podąża za głowicą">Śledź</button>
+    <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
+      <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option><option value="30">30×</option></select>
+    </label>
+    <div class="chip" id="authBox" hidden>
+      <svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span id="userChip" class="authUser"></span>
+      <button id="loginBtn" class="tool" title="Zaloguj" hidden><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button>
     </div>
   </header>
-  <main>
-    <div id="view"></div>
-    <aside class="panel">
-      <section class="card status">
-        <h2>Stan</h2>
-        <div class="kv"><span>Krok</span><b id="sStep">—</b></div>
-        <div class="kv"><span>Przejście</span><b id="sPass">—</b></div>
-        <div class="kv"><span>X</span><b id="sX">—</b></div>
-        <div class="kv"><span>B</span><b id="sB">—</b></div>
-        <div class="kv"><span>Wrzeciono</span><b id="sSpindle">—</b></div>
-        <div class="kv"><span>Docisk / woda</span><b id="sMedia">—</b></div>
-        <div class="kv"><span>Czas</span><b id="sTime">—</b></div>
-        <div class="kv"><span>Licznik</span><b id="sCount">—</b></div>
-        <div id="alarms" class="alarms"></div>
-      </section>
 
-      <section class="card">
-        <h2>Przekrój krawędzi</h2>
+  <main>
+    <nav class="tabs side" id="screens">
+      <button data-tab="auto" title="Automat"><svg class="ic big" aria-hidden="true"><use href="#i-auto"/></svg></button>
+      <button data-tab="manual" title="Ręczny"><svg class="ic big" aria-hidden="true"><use href="#i-hand"/></svg></button>
+      <button data-tab="service" title="Serwis"><svg class="ic big" aria-hidden="true"><use href="#i-wrench"/></svg></button>
+    </nav>
+    <section id="viewWrap">
+      <div id="view"></div>
+      <div class="vtools" id="viewTools">
+        <button data-view="iso" title="Izometria"><svg class="ic" aria-hidden="true"><use href="#i-iso"/></svg></button>
+        <button data-view="front" title="Z przodu (od operatora)"><svg class="ic" aria-hidden="true"><use href="#i-front"/></svg></button>
+        <button data-view="side" title="Z boku – przekrój profilu"><svg class="ic" aria-hidden="true"><use href="#i-side"/></svg></button>
+        <button data-view="top" title="Z góry"><svg class="ic" aria-hidden="true"><use href="#i-top"/></svg></button>
+        <button data-view="follow" title="Kamera podąża za głowicą"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg></button>
+      </div>
+    </section>
+
+    <aside id="panel">
+      <div class="panelTitle" id="panelTitle"></div>
+
+      <div class="tab" data-tab="auto" id="autoCard">
+        <h3>Przekrój krawędzi</h3>
         <svg id="section" viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet"></svg>
         <div id="passes" class="passes"></div>
-        <div class="row"><button id="newStone" title="Nowa, nieobrobiona płyta na widoku">Nowy kamień</button></div>
-      </section>
+        <div class="row"><button id="newStone" title="Nowa, nieobrobiona płyta na widoku"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg><span>Nowy kamień</span></button></div>
 
-      <section class="card" id="manualCard">
-        <h2>Ręczny</h2>
-        <div id="manualInfo" class="msg muted"></div>
-        <div class="jog">
-          <span>X</span><button data-jog="x:-1" title="Trzymaj – jazda w lewo">◀ X−</button><button data-jog="x:1" title="Trzymaj – jazda w prawo">X+ ▶</button>
-          <span>B</span><button data-jog="b:-1" title="Trzymaj – kąt w dół">↻ B−</button><button data-jog="b:1" title="Trzymaj – kąt w górę">B+ ↺</button>
+        <div id="onlineCard">
+          <h3>Sterowanie PLC</h3>
+          <div id="plcModes" class="seg wide" hidden>
+            <button data-modereq="0"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg><span>Ręczny</span></button>
+            <button data-modereq="1"><svg class="ic" aria-hidden="true"><use href="#i-auto"/></svg><span>Automat</span></button>
+          </div>
+          <div id="plcControls" class="row buttons" hidden>
+            <button data-write="EdgeProfile.Start" class="go"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span>START</span></button>
+            <button data-write="Alarms.Reset"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Reset alarmów</span></button>
+          </div>
+          <div id="plcInfo" class="msg muted"></div>
         </div>
-        <label class="check"><input id="jogFast" type="checkbox"> Jog szybko</label>
+
+        <div id="offlineCard">
+          <h3>Symulacja – receptura</h3>
+          <label>Receptura <select id="recipe"></select></label>
+          <label>Rodzaj <select id="kind"></select></label>
+          <div class="grid2">
+            <label>X start [mm]<input id="xStart" type="number" step="10"></label>
+            <label>X koniec [mm]<input id="xEnd" type="number" step="10"></label>
+            <label>Naddatek [mm]<input id="overtravel" type="number" step="5"></label>
+            <label>Posuw [m/min]<input id="feed" type="number" step="0.1"></label>
+            <label>Obroty [Hz]<input id="spindleFrequency" type="number" step="1"></label>
+            <label>Powtórzenia<input id="repeats" type="number" min="1" step="1"></label>
+            <label class="chamfer">Kąt fazy [°]<input id="angle" type="number" step="5"></label>
+            <label class="round">Kąt od [°]<input id="angleStart" type="number" step="5"></label>
+            <label class="round">Kąt do [°]<input id="angleEnd" type="number" step="5"></label>
+            <label class="round">Krok kąta [°]<input id="angleStep" type="number" step="1"></label>
+          </div>
+          <label class="cb"><input id="bothDirections" type="checkbox"> Przejścia w obie strony</label>
+          <div class="row buttons">
+            <button id="simStart" class="go"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span id="simStartLbl">START</span></button>
+            <button id="simAck" title="Potwierdzenie po STOP / błędzie receptury"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Kasuj</span></button>
+          </div>
+          <div id="simMsg" class="msg"></div>
+        </div>
+      </div>
+
+      <div class="tab" data-tab="manual" id="manualCard" hidden>
+        <p class="hint" id="manualInfo"></p>
+        <div class="jog">
+          <span>X</span><button data-jog="x:-1" title="Trzymaj – jazda w lewo"><svg class="ic" aria-hidden="true"><use href="#i-arrowLeft"/></svg><span>X−</span></button><button data-jog="x:1" title="Trzymaj – jazda w prawo"><span>X+</span><svg class="ic" aria-hidden="true"><use href="#i-arrowRight"/></svg></button>
+          <span>B</span><button data-jog="b:-1" title="Trzymaj – kąt w dół"><svg class="ic" aria-hidden="true"><use href="#i-tiltDown"/></svg><span>B−</span></button><button data-jog="b:1" title="Trzymaj – kąt w górę"><span>B+</span><svg class="ic" aria-hidden="true"><use href="#i-tiltUp"/></svg></button>
+        </div>
+        <label class="cb"><input id="jogFast" type="checkbox"> Jog szybko</label>
+        <h3>Dojazd</h3>
         <div class="grid2">
           <label>X cel [mm]<input id="gotoX" type="number" step="10" value="0"></label>
           <label>B cel [°]<input id="gotoB" type="number" step="5" value="0"></label>
+          <button id="gotoXBtn"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg><span>Jedź X</span></button>
+          <button id="gotoBBtn"><svg class="ic" aria-hidden="true"><use href="#i-tilt"/></svg><span>Ustaw B</span></button>
         </div>
+        <h3>Wrzeciono i media</h3>
+        <label class="inline">Obroty [Hz] <input id="manFreq" type="number" step="1" value="50" class="short"></label>
         <div class="row buttons">
-          <button id="gotoXBtn">Jedź X</button>
-          <button id="gotoBBtn">Ustaw B</button>
-        </div>
-        <div class="row buttons">
-          <label class="inline">Obroty <input id="manFreq" type="number" step="1" value="50" class="short"> Hz</label>
-          <button id="spindleBtn">Wrzeciono</button>
-          <button id="waterBtn">Woda</button>
-          <button id="clampBtn">Docisk</button>
+          <button id="spindleBtn"><svg class="ic" aria-hidden="true"><use href="#i-polish"/></svg><span>Wrzeciono</span></button>
+          <button id="waterBtn"><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><span>Woda</span></button>
+          <button id="clampBtn"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span>Docisk</span></button>
         </div>
         <div id="manualMsg" class="msg"></div>
-      </section>
+      </div>
 
-      <section class="card" id="offlineCard">
-        <h2>Symulacja (offline)</h2>
-        <label>Receptura <select id="recipe"></select></label>
-        <label>Rodzaj <select id="kind"></select></label>
-        <div class="grid2">
-          <label>X start [mm]<input id="xStart" type="number" step="10"></label>
-          <label>X koniec [mm]<input id="xEnd" type="number" step="10"></label>
-          <label>Naddatek [mm]<input id="overtravel" type="number" step="5"></label>
-          <label>Posuw [m/min]<input id="feed" type="number" step="0.1"></label>
-          <label>Obroty [Hz]<input id="spindleFrequency" type="number" step="1"></label>
-          <label>Powtórzenia<input id="repeats" type="number" min="1" step="1"></label>
-          <label class="chamfer">Kąt fazy [°]<input id="angle" type="number" step="5"></label>
-          <label class="round">Kąt od [°]<input id="angleStart" type="number" step="5"></label>
-          <label class="round">Kąt do [°]<input id="angleEnd" type="number" step="5"></label>
-          <label class="round">Krok kąta [°]<input id="angleStep" type="number" step="1"></label>
-        </div>
-        <label class="check"><input id="bothDirections" type="checkbox"> Przejścia w obie strony</label>
-        <div class="row">
-          <label class="inline">Tempo <select id="speed"><option>1</option><option>2</option><option selected>5</option><option>10</option><option>30</option></select>×</label>
-        </div>
-        <div class="row buttons">
-          <button id="simStart" class="go">START</button>
-          <button id="simPause">PAUZA</button>
-          <button id="simStop" class="stop">STOP</button>
-          <button id="simAck" title="Potwierdzenie po STOP / błędzie receptury">Kasuj</button>
-        </div>
-        <div id="simMsg" class="msg"></div>
-      </section>
-
-      <section class="card" id="onlineCard">
-        <h2>PLC (online)</h2>
-        <form id="connForm" class="conn">
-          <label>Adres IP serwera OPC UA<input id="plcHost" placeholder="192.168.1.10" autocomplete="off"></label>
-          <label>Port<input id="plcPort" type="number" value="4840"></label>
-          <div class="row buttons">
-            <button type="submit" class="go">Połącz</button>
-            <button type="button" id="connDefault" title="Adres z config.json">Domyślny</button>
-          </div>
-        </form>
-        <div id="connInfo" class="msg"></div>
-        <div id="plcControls" class="row buttons" hidden>
-          <button data-write="EdgeProfile.Start" class="go">START</button>
-          <button data-write="EdgeProfile.Pause">PAUZA</button>
-          <button data-write="EdgeProfile.Stop" class="stop">STOP</button>
-          <button data-write="Alarms.Reset">Reset alarmów</button>
-        </div>
-        <div id="plcModes" class="seg wide" hidden>
-          <button data-modereq="0">Ręczny</button>
-          <button data-modereq="1">Automat</button>
-        </div>
-        <div id="pageUrls" class="msg muted"></div>
-      </section>
-
-      <section class="card" id="serviceCard">
-        <h2>Serwis – parametry</h2>
-        <div id="serviceInfo" class="msg muted"></div>
+      <div class="tab" data-tab="service" id="serviceCard" hidden>
+        <p class="hint" id="serviceInfo"></p>
         <div id="serviceGroups"></div>
         <div id="serviceMsg" class="msg"></div>
-      </section>
+      </div>
     </aside>
   </main>
+
+  <!-- polaczenie z PLC: adres IP serwera OPC UA (sterownika) -->
+  <div id="connWin" class="win modal" hidden role="dialog" aria-label="Połączenie z PLC">
+    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Połączenie z PLC</span><button id="connClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <form class="winBody" id="connForm">
+      <label>Adres IP serwera OPC UA<input id="plcHost" type="text" placeholder="192.168.1.10" autocomplete="off" spellcheck="false"></label>
+      <label>Port<input id="plcPort" type="number" value="4840"></label>
+      <div class="row">
+        <button type="submit" class="primary"><svg class="ic" aria-hidden="true"><use href="#i-plc"/></svg><span>Połącz</span></button>
+        <button type="button" id="connDefault" title="Adres z config.json"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Domyślny</span></button>
+      </div>
+      <p class="hint" id="connInfo"></p>
+      <p class="hint" id="pageUrls"></p>
+    </form>
+  </div>
+
+  <div id="alarmWin" class="win alarmWin" hidden role="dialog" aria-label="Alarmy">
+    <div class="winHead"><span><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>Alarmy</span><button id="alarmClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="winBody">
+      <div id="alarms" class="alarms"></div>
+      <div class="row"><button id="alarmReset"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>Reset alarmów</span></button></div>
+    </div>
+  </div>
+
   <dialog id="loginDlg">
     <form id="loginForm" method="dialog">
-      <h2>Logowanie</h2>
+      <h3>Logowanie</h3>
       <label>Użytkownik <select id="loginUser"></select></label>
       <label>Hasło <input id="loginPass" type="password" autocomplete="current-password"></label>
       <div id="loginMsg" class="msg err"></div>
-      <div class="row buttons">
-        <button type="submit" class="go">Zaloguj</button>
+      <div class="row">
+        <button type="submit" class="primary"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg><span>Zaloguj</span></button>
         <button type="button" id="loginCancel">Anuluj</button>
       </div>
     </form>
   </dialog>
+
+  <!-- stan maszyny na dolnym pasku -->
+  <footer>
+    <div class="mono" id="pos"><span>X <b id="sX">—</b></span><span>B <b id="sB">—</b></span><span>Wrzeciono <b id="sSpindle">—</b></span><span><b id="sMedia">—</b></span></div>
+    <div class="statusline">
+      <span id="connChip">—</span>
+      <span>Krok: <b id="sStep">—</b></span>
+      <span>Przejście: <b id="sPass">—</b></span>
+      <span>Czas: <b id="sTime">—</b></span>
+      <span>Licznik: <b id="sCount">—</b></span>
+    </div>
+  </footer>
   <script type="module" src="app.js"></script>
 </body>
 </html>
