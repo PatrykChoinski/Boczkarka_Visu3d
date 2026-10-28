@@ -2,6 +2,7 @@
 // (headless, przegladarka z systemu przez playwright-core):
 //   1. serwer VizuApp bez PLC (--no-plc): strona, widok 3D, symulacja cyklu boczkarki offline,
 //   2. serwer VizuApp z testowym PLC (test/fake-plc-server.js --auto, OPC UA): tryb online - polaczenie, pozycje, zmienne,
+//      panel obslugi: reczny (jog), serwis (zapis parametru), logowanie Operatora (users.json testowy),
 //   3. wersja statyczna GitHub Pages (scripts/build-pages.js -> site/) pod podkatalogiem jak na github.io.
 // Kazdy blad JS / konsoli na stronie = blad testu. Zrzuty ekranu w test-results/.
 //
@@ -21,6 +22,7 @@ const PORT_OFFLINE = 18128;
 const PORT_ONLINE = 18129;
 const PORT_PLC = 14840;
 const PORT_STATIC = 18130;
+const PORT_AUTH = 18131;
 const procs = [];
 
 const log = (msg) => console.log(`[smoke] ${msg}`);
@@ -118,6 +120,25 @@ async function checkOfflineCycle(page) {
   return `cykl offline: ${c.done}/${c.passes} przejść, ${c.count}`;
 }
 
+// Reczny i serwis offline: jog X+ trzymany 1 s rusza os symulatora, parametr z karty Serwis zmienia symulator
+async function checkOfflinePanel(page) {
+  await page.waitForFunction(() => window.vizu.sim.step === 0);
+  const x0 = await page.evaluate(() => window.vizu.sim.x.pos);
+  await page.evaluate(() => document.querySelector('[data-jog="x:1"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7 })));
+  await sleep(1000);
+  await page.evaluate(() => document.querySelector('[data-jog="x:1"]').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7 })));
+  const x1 = await page.evaluate(() => window.vizu.sim.x.pos);
+  if (!(x1 > x0 + 1)) throw new Error(`jog offline: X ${x0} -> ${x1}`);
+  const jf = await page.evaluate(() => {
+    const e = document.querySelector('[data-param="AxesConfig.JogFastX"]');
+    e.value = '120';
+    e.dispatchEvent(new Event('change'));
+    return window.vizu.sim.o.jogFastX;
+  });
+  if (jf !== 120) throw new Error(`parametr offline: jogFastX ${jf}`);
+  return `jog X ${x0.toFixed(0)} -> ${x1.toFixed(0)} mm, Jog szybko X = ${jf}`;
+}
+
 function assertNoErrors(name, errors) {
   if (errors.length) throw new Error(`${name}: bledy na stronie:\n  ${errors.join('\n  ')}`);
 }
@@ -137,9 +158,10 @@ async function main() {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_OFFLINE}/`);
       await checkView(page);
       const hud = await checkOfflineCycle(page);
+      const panel = await checkOfflinePanel(page);
       await page.screenshot({ path: path.join(OUT, 'offline.png') });
       assertNoErrors('serwer offline', errors);
-      log(`OK serwer offline: ${hud}`);
+      log(`OK serwer offline: ${hud}; ${panel}`);
       await context.close();
     }
 
@@ -172,6 +194,54 @@ async function main() {
       }
       if (missing.length) throw new Error(`zmienne PLC bez typu / wartosci z subskrypcji: ${missing.join(', ')}`);
       log(`OK zmienne PLC: ${all.length}/${all.length} z typem i wartością (subskrypcje)`);
+      // panel lokalny bez users.json (Admin): reczny i serwis widoczne, parametry z PLC, zapis parametru (TIME s -> ms)
+      await page.waitForFunction(() => !document.getElementById('manualCard').classList.contains('hidden')
+        && !document.getElementById('serviceCard').classList.contains('hidden')
+        && document.querySelector('[data-param="EdgeProfileConfig.ClampDelay"]').value === '1', null, { timeout: 30000, polling: 250 });
+      await page.evaluate(() => {
+        const e = document.querySelector('[data-param="EdgeProfileConfig.ClampDelay"]');
+        e.value = '1.5';
+        e.dispatchEvent(new Event('change'));
+      });
+      await page.waitForFunction(() => window.vizu.app.hmi['EdgeProfileConfig.ClampDelay'] === 1500, null, { timeout: 30000, polling: 250 });
+      assertNoErrors('serwer online - serwis', errors);
+      log(`OK serwis online: ${await page.textContent('#userChip')}, ustalenie docisku 1 s -> 1.5 s w PLC`);
+      await context.close();
+    }
+
+    // 2b. logowanie (users.json z haslami testowymi w katalogu tymczasowym)
+    {
+      const { hashPassword } = await import('../src/server/auth.js');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vizu-smoke-users-'));
+      const usersFile = path.join(dir, 'users.json');
+      const pass = `op-${process.pid}`;
+      fs.writeFileSync(usersFile, JSON.stringify({ users: { Operator: { level: 1, ...hashPassword(pass) } } }));
+      run(['src/server/main.js', '--users', usersFile, '--port', String(PORT_AUTH), '--endpoint', `opc.tcp://localhost:${PORT_PLC}`,
+        '--alarms-db', path.join(dir, 'alarms.db')], 'serwer-logowanie');
+      await waitHttp(`http://127.0.0.1:${PORT_AUTH}/api/health`);
+      const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_AUTH}/`);
+      await page.waitForFunction(() => window.vizu.app.mode === 'online' && window.vizu.app.connected, null, { timeout: 60000, polling: 250 });
+      const before = await page.evaluate(() => ({
+        login: !document.getElementById('loginBtn').hidden, manual: !document.getElementById('manualCard').classList.contains('hidden'),
+        controls: !document.getElementById('plcControls').hidden,
+      }));
+      if (!before.login || before.manual || before.controls) throw new Error(`przed logowaniem: ${JSON.stringify(before)}`);
+      await page.evaluate((p) => {
+        document.getElementById('loginBtn').click();
+        document.getElementById('loginPass').value = p;
+        document.getElementById('loginForm').requestSubmit();
+      }, pass);
+      await page.waitForFunction(() => window.vizu.app.level === 1, null, { timeout: 20000, polling: 250 });
+      const after = await page.evaluate(() => ({
+        manual: !document.getElementById('manualCard').classList.contains('hidden'), service: !document.getElementById('serviceCard').classList.contains('hidden'),
+        controls: !document.getElementById('plcControls').hidden, chip: document.getElementById('userChip').textContent,
+      }));
+      if (!after.manual || after.service || !after.controls) throw new Error(`po logowaniu Operatora: ${JSON.stringify(after)}`);
+      await page.screenshot({ path: path.join(OUT, 'login.png') });
+      await page.evaluate(() => document.getElementById('loginBtn').click());
+      await page.waitForFunction(() => window.vizu.app.level === 0, null, { timeout: 20000, polling: 250 });
+      assertNoErrors('logowanie', errors);
+      log(`OK logowanie: ${after.chip} (ręczny i sterowanie widoczne, serwis ukryty), wylogowanie`);
       await context.close();
     }
 

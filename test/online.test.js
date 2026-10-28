@@ -59,7 +59,7 @@ test('wszystkie zmienne boczkarki w OPC UA (przegladanie drzewa jak w CODESYS)',
 
 test('sterowanie: START z listy PLC_WRITES uruchamia cykl, STOP zatrzymuje; zmienna spoza listy odrzucona', async () => {
   await until(() => source.connected);
-  const bad = await fetch(`${base}/api/plc/write`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: [{ v: 'AxesConfig.ParamsX.MaxVelocity', value: 1 }] }) });
+  const bad = await fetch(`${base}/api/plc/write`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: [{ v: 'Spindle.SimulateFault', value: true }] }) });
   assert.equal(bad.status, 403);
   assert.deepEqual(await api('/api/plc/write', { items: [{ v: 'EdgeProfile.Start', value: true }] }), { ok: true });
   await until(() => source.values.step !== STEP.WaitForStart);

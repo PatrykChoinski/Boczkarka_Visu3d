@@ -6,11 +6,12 @@
 // Przycisk chwilowy (jog): POST /api/plc/hold {v, on: true} co 200 ms, dopoki przycisk wcisniety;
 // bez odswiezenia przez HOLD_MS serwer sam zapisuje FALSE (zerwane polaczenie z tabletem nie zostawia jazdy).
 //
-// POST /api/plc/write {items: [{v, value}]}   zapis
+// POST /api/plc/write {items: [{v, value}]}   zapis; zmienne z typem (parametry serwisowe, cele dojazdu) - kontrola
+//                                             typu i zakresu (checkParam), TIME podawany w s
 // POST /api/plc/hold  {v, on}                 przycisk chwilowy
 // POST /api/plc/watch {cid, keys, paths}      dodatkowe zmienne strony (SSE: {values}, {hmi})
 
-import { PLC_WRITES } from '../shared/config.js';
+import { PLC_WRITES, checkParam, toPlc } from '../shared/config.js';
 
 export const HOLD_MS = 700;
 const MAX_WATCH = 400;
@@ -18,7 +19,7 @@ const MAX_WATCH = 400;
 // {write: {zmienna: {level, kinds}}, read} z listy PLC_WRITES
 export function writeAccess(list = PLC_WRITES) {
   const write = {};
-  for (const [v, w] of Object.entries(list)) write[v] = { level: w.level, kinds: new Set([w.kind]) };
+  for (const [v, w] of Object.entries(list)) write[v] = { ...w, kinds: new Set([w.kind]) };
   return { write, read: new Set(Object.keys(write)) };
 }
 
@@ -47,13 +48,21 @@ export class PlcControl {
     return null;
   }
 
+  // typ i zakres wartosci (zmienne z type w PLC_WRITES) albo null
+  checkValue(v, value) {
+    const err = checkParam(this.access.write[v], value);
+    return err ? `${v}: ${err}` : null;
+  }
+
   async write(items, who, level) {
     if (!Array.isArray(items) || !items.length || items.length > 100) throw Object.assign(new Error('zła lista zmiennych'), { code: 400 });
     for (const it of items) {
       const err = this.check(it?.v, level);
       if (err) throw Object.assign(new Error(err), { code: 403 });
+      const bad = this.checkValue(it.v, it.value);
+      if (bad) throw Object.assign(new Error(bad), { code: 400 });
     }
-    await this.source.write(items.map((it) => ({ v: it.v, value: it.value })));
+    await this.source.write(items.map((it) => ({ v: it.v, value: this.access.write[it.v].type ? toPlc(this.access.write[it.v], it.value) : it.value })));
     this.log(`[PLC] ${who}: ${items.map((it) => `${it.v} := ${JSON.stringify(it.value)}`).join(', ')}`);
   }
 

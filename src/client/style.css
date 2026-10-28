@@ -54,3 +54,32 @@ button:disabled { opacity: .45; cursor: default; }
   #view { height: 58vh; }
   .panel { width: 100%; border-left: 0; }
 }
+
+/* panel obslugi: logowanie, reczny, serwis */
+.barbtn { background: transparent; color: #fff; border: 1px solid #4b5560; border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; }
+.barbtn:hover { background: #2d353f; }
+.chip.user { background: #3a434e; }
+.chip.user.lvl2, .chip.user.lvl3 { background: #8a5a00; }
+.jog { display: grid; grid-template-columns: 22px 1fr 1fr; gap: 6px; align-items: center; margin-bottom: 6px; }
+.jog span { font-weight: 700; color: var(--muted); }
+.jog button { padding: 12px 6px; font-size: 15px; font-weight: 600; touch-action: none; user-select: none; }
+.jog button.held { background: var(--steel); border-color: #c98f12; }
+button.on { background: var(--steel); border-color: #c98f12; }
+input.short { width: 4.5em; }
+#serviceGroups details { border-top: 1px solid var(--line); padding: 4px 0; }
+#serviceGroups summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.param { display: grid; grid-template-columns: 1fr 96px 46px; gap: 6px; align-items: center; margin: 3px 0; font-size: 13px; }
+.param input[type="number"], .param select { width: 100%; }
+.param input[type="checkbox"] { justify-self: start; }
+.param em { color: var(--muted); font-style: normal; font-size: 12px; }
+.param .bad { outline: 2px solid var(--stop); }
+.param.saved input, .param.saved select { outline: 2px solid var(--go); }
+dialog { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 280px; }
+dialog h2 { margin: 0 0 10px; font-size: 16px; }
+dialog label { display: block; margin-bottom: 8px; }
+dialog input, dialog select { width: 100%; }
+label.inline input { width: auto; display: inline; margin: 0; }
+.jog button { border-radius: 6px; border: 1px solid var(--line); background: #f7f9fb; font-family: inherit; cursor: pointer; }
+.param { color: var(--ink); }
+[hidden] { display: none !important; }
+label.inline input.short { width: 4.5em; }

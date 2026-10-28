@@ -15,6 +15,8 @@
     </div>
     <span class="chip" id="connChip" title="Połączenie z serwerem OPC UA">—</span>
     <div class="spacer"></div>
+    <span class="chip" id="userChip" title="Użytkownik i poziom dostępu" hidden></span>
+    <button id="loginBtn" class="barbtn" hidden>Zaloguj</button>
     <div class="seg" id="views">
       <button data-view="iso" title="Widok ogólny">Izo</button>
       <button data-view="front" title="Wzdłuż krawędzi">Przód</button>
@@ -44,6 +46,32 @@
         <svg id="section" viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet"></svg>
         <div id="passes" class="passes"></div>
         <div class="row"><button id="newStone" title="Nowa, nieobrobiona płyta na widoku">Nowy kamień</button></div>
+      </section>
+
+      <section class="card" id="manualCard">
+        <h2>Ręczny</h2>
+        <div id="manualInfo" class="msg muted"></div>
+        <div class="jog">
+          <span>X</span><button data-jog="x:-1" title="Trzymaj – jazda w lewo">◀ X−</button><button data-jog="x:1" title="Trzymaj – jazda w prawo">X+ ▶</button>
+          <span>B</span><button data-jog="b:-1" title="Trzymaj – kąt w dół">↻ B−</button><button data-jog="b:1" title="Trzymaj – kąt w górę">B+ ↺</button>
+        </div>
+        <label class="check"><input id="jogFast" type="checkbox"> Jog szybko</label>
+        <div class="grid2">
+          <label>X cel [mm]<input id="gotoX" type="number" step="10" value="0"></label>
+          <label>B cel [°]<input id="gotoB" type="number" step="5" value="0"></label>
+        </div>
+        <div class="row buttons">
+          <button id="gotoXBtn">Jedź X</button>
+          <button id="gotoBBtn">Ustaw B</button>
+          <button id="homeBtn" title="B do 0°, potem X do pozycji załadunku">Bazowanie</button>
+        </div>
+        <div class="row buttons">
+          <label class="inline">Obroty <input id="manFreq" type="number" step="1" value="50" class="short"> Hz</label>
+          <button id="spindleBtn">Wrzeciono</button>
+          <button id="waterBtn">Woda</button>
+          <button id="clampBtn">Docisk</button>
+        </div>
+        <div id="manualMsg" class="msg"></div>
       </section>
 
       <section class="card" id="offlineCard">
@@ -99,8 +127,27 @@
         </div>
         <div id="pageUrls" class="msg muted"></div>
       </section>
+
+      <section class="card" id="serviceCard">
+        <h2>Serwis – parametry</h2>
+        <div id="serviceInfo" class="msg muted"></div>
+        <div id="serviceGroups"></div>
+        <div id="serviceMsg" class="msg"></div>
+      </section>
     </aside>
   </main>
+  <dialog id="loginDlg">
+    <form id="loginForm" method="dialog">
+      <h2>Logowanie</h2>
+      <label>Użytkownik <select id="loginUser"></select></label>
+      <label>Hasło <input id="loginPass" type="password" autocomplete="current-password"></label>
+      <div id="loginMsg" class="msg err"></div>
+      <div class="row buttons">
+        <button type="submit" class="go">Zaloguj</button>
+        <button type="button" id="loginCancel">Anuluj</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="app.js"></script>
 </body>
 </html>

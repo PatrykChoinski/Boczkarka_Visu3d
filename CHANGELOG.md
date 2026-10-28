@@ -4,6 +4,15 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (2)
+
+### Panel obsługi: logowanie, ręczny, serwis (Promasz_Boczkarka #41, #42, #43)
+- Logowanie na stronie: przycisk Zaloguj / Wyloguj, okno logowania, użytkownik i poziom na pasku, sesja po odświeżeniu; sterowanie, ręczny i serwis widoczne według poziomu (#41).
+- Karta Ręczny: jog X± / B± trzymany, jog szybko, dojazd X / B, bazowanie, wrzeciono z obrotami, woda, docisk (`Manual.*`); offline na symulatorze (`EdgeSimulator.jog / goto / home / toggle*`) (#42).
+- Karta Serwis: 49 parametrów trwałych PLC w 5 grupach (`SERVICE_PARAMS`), zakres i typ sprawdzane na stronie i w serwerze (`checkParam`), TIME s ↔ ms, odczyt przez subskrypcję ekranu (`/api/plc/watch`); offline parametry symulatora (#43).
+- Testowy PLC: węzły `Manual.*` i parametrów z typami CODESYS (LREAL / REAL / INT / TIME / BOOL), działanie jak w PLC.
+- Testy: `test/access.test.js`, ręczny w `simulator.test.js`, smoke test: jog i parametr offline, zapis parametru online, logowanie Operatora.
+
 ## 2026-10-28
 
 ### Wygląd maszyny jak B1PK-14.0-2000.2S (zdjęcia Promasz)

@@ -80,7 +80,102 @@ export const PLC_WRITES = {
   'Manual.JogBPositive': { level: 1, kind: 'mom' },
   'Manual.JogBNegative': { level: 1, kind: 'mom' },
   'Manual.JogFast': { level: 1, kind: 'set' },
+  'Manual.GotoX': { level: 1, kind: 'set' },
+  'Manual.GotoXTarget': { level: 1, kind: 'set', type: 'lreal', min: -100, max: 3500 },
+  'Manual.GotoB': { level: 1, kind: 'set' },
+  'Manual.GotoBTarget': { level: 1, kind: 'set', type: 'lreal', min: -95, max: 95 },
+  'Manual.SpindleToggle': { level: 1, kind: 'set' },
+  'Manual.SpindleFrequency': { level: 1, kind: 'set', type: 'real', min: 0, max: 120 },
+  'Manual.WaterToggle': { level: 1, kind: 'set' },
+  'Manual.ClampToggle': { level: 1, kind: 'set' },
 };
+
+// Poziomy dostepu (auth.js): 0 - bez logowania (podglad, STOP / PAUZA), 1 - Operator, 2 - Serwis, 3 - Admin
+export const LEVEL_NAMES = { 0: 'Podgląd', 1: 'Operator', 2: 'Serwis', 3: 'Admin' };
+
+// Ustawienia serwisowe (karta Serwis, poziom 2): parametry trwale PLC z zakresem. type: lreal / real / int - liczba,
+// time - TIME (w PLC ms, na stronie s), bool, enum (options). sim - odpowiednik w symulatorze offline (EdgeSimulator.o;
+// 'limits.xMin' - pole limits), bez sim - parametr tylko online.
+const sp = (v, label, unit, type, min, max, sim, options) => ({ v, label, unit, type, min, max, sim, options });
+const HOME_MODES = { 0: 'W napędzie (MC_Home)', 1: 'Przyjęcie pozycji' };
+export const SERVICE_PARAMS = [
+  { group: 'Oś X', items: [
+    sp('AxesConfig.ParamsX.SoftLimits', 'Softlimity', '', 'bool'),
+    sp('AxesConfig.ParamsX.SoftLimitNegative', 'Softlimit −', 'mm', 'lreal', -500, 3500, 'limits.xMin'),
+    sp('AxesConfig.ParamsX.SoftLimitPositive', 'Softlimit +', 'mm', 'lreal', -500, 3500, 'limits.xMax'),
+    sp('AxesConfig.ParamsX.MaxVelocity', 'Prędkość max', 'mm/s', 'lreal', 1, 1000, 'xMaxVelocity'),
+    sp('AxesConfig.ParamsX.MaxAcceleration', 'Przyspieszenie', 'mm/s²', 'lreal', 10, 10000, 'xAcceleration'),
+    sp('AxesConfig.ParamsX.StopDeceleration', 'Hamowanie STOP', 'mm/s²', 'lreal', 10, 20000),
+    sp('AxesConfig.ParamsX.MaxJerk', 'Jerk', 'mm/s³', 'lreal', 100, 1000000),
+    sp('AxesConfig.ParamsX.Homing', 'Bazowanie', '', 'enum', 0, 1, undefined, HOME_MODES),
+    sp('AxesConfig.ParamsX.HomePosition', 'Pozycja po bazowaniu', 'mm', 'lreal', -500, 3500),
+    sp('AxesConfig.JogSlowX', 'Jog wolno', 'mm/s', 'lreal', 1, 200, 'jogSlowX'),
+    sp('AxesConfig.JogFastX', 'Jog szybko', 'mm/s', 'lreal', 1, 600, 'jogFastX'),
+    sp('AxesConfig.ReturnVelocityX', 'Dojazdy i powrót', 'mm/s', 'lreal', 1, 1000, 'returnVelocity'),
+    sp('AxesConfig.LoadPositionX', 'Pozycja załadunku', 'mm', 'lreal', -500, 3500, 'loadPositionX'),
+  ] },
+  { group: 'Oś B', items: [
+    sp('AxesConfig.ParamsB.SoftLimits', 'Softlimity', '', 'bool'),
+    sp('AxesConfig.ParamsB.SoftLimitNegative', 'Softlimit −', '°', 'lreal', -120, 120, 'limits.bMin'),
+    sp('AxesConfig.ParamsB.SoftLimitPositive', 'Softlimit +', '°', 'lreal', -120, 120, 'limits.bMax'),
+    sp('AxesConfig.ParamsB.MaxVelocity', 'Prędkość max', '°/s', 'lreal', 1, 360),
+    sp('AxesConfig.ParamsB.MaxAcceleration', 'Przyspieszenie', '°/s²', 'lreal', 1, 5000, 'bAcceleration'),
+    sp('AxesConfig.ParamsB.StopDeceleration', 'Hamowanie STOP', '°/s²', 'lreal', 1, 10000),
+    sp('AxesConfig.ParamsB.MaxJerk', 'Jerk', '°/s³', 'lreal', 10, 100000),
+    sp('AxesConfig.ParamsB.Homing', 'Bazowanie', '', 'enum', 0, 1, undefined, HOME_MODES),
+    sp('AxesConfig.ParamsB.HomePosition', 'Pozycja po bazowaniu', '°', 'lreal', -120, 120),
+    sp('AxesConfig.VelocityB', 'Zmiana kąta', '°/s', 'lreal', 1, 360, 'bVelocity'),
+    sp('AxesConfig.JogSlowB', 'Jog wolno', '°/s', 'lreal', 0.1, 60, 'jogSlowB'),
+    sp('AxesConfig.JogFastB', 'Jog szybko', '°/s', 'lreal', 0.1, 180, 'jogFastB'),
+    sp('AxesConfig.HomingVelocityB', 'Dojazd do 0 po bazowaniu', '°/s', 'lreal', 0.1, 180),
+    sp('AxesConfig.ParkAngleB', 'Kąt po autopowrocie', '°', 'lreal', -95, 95, 'parkAngleB'),
+  ] },
+  { group: 'Wrzeciono (MS300)', items: [
+    sp('SpindleConfig.Poles', 'Liczba biegunów', '', 'int', 2, 12),
+    sp('SpindleConfig.MinFrequency', 'Częstotliwość min', 'Hz', 'real', 0, 120),
+    sp('SpindleConfig.MaxFrequency', 'Częstotliwość max', 'Hz', 'real', 1, 120),
+    sp('SpindleConfig.AtSpeedTolerance', 'Tolerancja obrotów', '%', 'real', 0.5, 20),
+    sp('SpindleConfig.StartTimeout', 'Czas rozruchu max', 's', 'time', 1, 120),
+    sp('SpindleConfig.RampHzPerSecond', 'Rampa (symulacja)', 'Hz/s', 'real', 1, 200, 'spindleRamp'),
+    sp('SpindleConfig.CurrentScale', 'Skala prądu', 'A/j', 'real', 0.001, 10),
+    sp('SpindleConfig.RatedCurrent', 'Prąd znamionowy', 'A', 'real', 1, 200),
+    sp('SpindleConfig.OverloadCurrent', 'Prąd przeciążenia', 'A', 'real', 1, 250),
+    sp('SpindleConfig.OverloadTime', 'Czas przeciążenia', 's', 'time', 0.1, 60),
+  ] },
+  { group: 'Automat', items: [
+    sp('EdgeProfileConfig.ClampDelay', 'Ustalenie docisku', 's', 'time', 0, 10, 'clampDelay'),
+    sp('EdgeProfileConfig.WaterOffDelay', 'Woda po zatrzymaniu', 's', 'time', 0, 60, 'waterOffDelay'),
+    sp('EdgeProfileConfig.AutoReturn', 'Autopowrót', '', 'bool', undefined, undefined, 'autoReturn'),
+    sp('EdgeProfileConfig.FeedMin', 'Posuw min', 'm/min', 'lreal', 0.01, 20),
+    sp('EdgeProfileConfig.FeedMax', 'Posuw max', 'm/min', 'lreal', 0.01, 20),
+  ] },
+  { group: 'Maszyna', items: [
+    sp('MachineConfig.GuardInstalled', 'Osłona z czujnikiem', '', 'bool'),
+    sp('MachineConfig.WaterSensorInstalled', 'Czujnik wody', '', 'bool'),
+    sp('MachineConfig.AirSensorInstalled', 'Czujnik powietrza', '', 'bool'),
+    sp('MachineConfig.OverridePotInstalled', 'Potencjometr posuwu', '', 'bool'),
+    sp('MachineConfig.OverrideAnalogMax', 'AI dla 10 V', '', 'int', 1000, 32767),
+    sp('MachineConfig.OverrideMaxPercent', 'Posuw max z potencjometru', '%', 'real', 100, 200),
+    sp('MachineConfig.Simulation', 'Symulacja (po restarcie PLC)', '', 'bool'),
+  ] },
+];
+export const SERVICE_ITEMS = SERVICE_PARAMS.flatMap((g) => g.items);
+for (const it of SERVICE_ITEMS) PLC_WRITES[it.v] = { level: 2, kind: 'set', param: true, type: it.type, min: it.min, max: it.max };
+
+// Wartosc parametru ze strony: null - poprawna, tekst - blad (typ / zakres); time w s
+export function checkParam(w, value) {
+  if (!w?.type) return null;
+  if (w.type === 'bool') return typeof value === 'boolean' ? null : 'oczekiwano TAK / NIE';
+  const n = Number(value);
+  if (value === '' || value === null || typeof value === 'boolean' || !Number.isFinite(n)) return 'oczekiwano liczby';
+  if ((w.type === 'int' || w.type === 'enum') && !Number.isInteger(n)) return 'oczekiwano liczby całkowitej';
+  if (w.min !== undefined && n < w.min) return `poniżej ${w.min}`;
+  if (w.max !== undefined && n > w.max) return `powyżej ${w.max}`;
+  return null;
+}
+// Strona <-> PLC: TIME w PLC w ms
+export const toPlc = (w, value) => (w?.type === 'time' ? Math.round(Number(value) * 1000) : w?.type === 'bool' ? Boolean(value) : Number(value));
+export const fromPlc = (w, value) => (w?.type === 'time' ? Number(value) / 1000 : value);
 
 // Kroki automatu (EdgeStep w PLC) - numer -> [nazwa, opis]
 export const EDGE_STEPS = {
@@ -124,13 +219,13 @@ export const DEFAULTS = {
   // Geometria maszyny do modelu 3D [mm] (B1PK-14.0-2000.2: glowica na ramieniu wychylnym, przejazd wzdluz stolu)
   machine: {
     travelX: [-50, 2350],		// zakres osi X (softlimity)
-    tableLength: 2600,
-    tableWidth: 1100,
+    tableLength: 3000,
+    tableWidth: 900,
     tableHeight: 820,
     stoneThickness: 30,
     stoneWidth: 650,			// glebokosc plyty (od krawedzi w glab stolu)
     stoneOverhang: 70,			// wysiegniecie krawedzi poza stol (dostep od dolu)
-    wheelDiameter: 130,			// tarcza garnkowa
+    wheelDiameter: 220,			// tarcza w oslonie
     wheelHeight: 40,
     motorDiameter: 170,
     motorLength: 330,
@@ -144,5 +239,6 @@ export const DEFAULTS = {
     bVelocity: 45, bAcceleration: 360,
     clampDelay: 1.0, spindleRamp: 25, waterOffDelay: 3,
     loadPositionX: 0, parkAngleB: 0, autoReturn: true,
+    jogSlowX: 20, jogFastX: 150, jogSlowB: 5, jogFastB: 30,
   },
 };

@@ -92,3 +92,49 @@ test('stop: zatrzymanie, WaitForCommand, potwierdzenie; zla receptura nie rusza'
   assert.equal(sim.error, 1);
   assert.equal(sim.step, STEP.WaitForCommand);
 });
+
+test('reczny: jog do softlimitu i hamowanie po puszczeniu, dojazd X / B w granicach, bazowanie B potem X', () => {
+  const sim = new EdgeSimulator({ limits: { xMin: -5, xMax: 2300 } });
+  assert.ok(sim.jog('x', 1, true));
+  sim.tick(1);
+  assert.ok(sim.x.pos > 50, 'jazda w prawo');
+  sim.jog('x', 0);
+  sim.tick(1);
+  assert.ok(Math.abs(sim.x.vel) < 1e-9, 'stoi po puszczeniu');
+  sim.jog('b', -1);
+  sim.tick(60);
+  assert.equal(sim.b.pos, -95, 'jog B do softlimitu');
+  assert.ok(sim.goto('x', 5000));
+  sim.tick(30);
+  assert.equal(sim.x.pos, 2300, 'dojazd ograniczony softlimitem');
+  assert.ok(sim.home());
+  sim.tick(60);
+  assert.equal(sim.b.pos, 0);
+  assert.equal(sim.x.pos, 0);
+  assert.equal(sim.state().homing, false);
+});
+
+test('reczny: wrzeciono, woda, docisk tylko gdy automat stoi; parametry serwisowe zmieniaja dynamike', () => {
+  const sim = new EdgeSimulator();
+  assert.ok(sim.toggleSpindle(40));
+  sim.tick(5);
+  assert.ok(Math.abs(sim.state().spindleFrequency - 40) < 0.5);
+  sim.toggleWater();
+  sim.toggleClamp();
+  assert.ok(sim.state().water && sim.state().clamp);
+  sim.toggleSpindle();
+  sim.toggleWater();
+  sim.toggleClamp();
+  sim.start(recipe(4));
+  assert.equal(sim.jog('x', 1), false, 'jog zablokowany w automacie');
+  assert.equal(sim.goto('b', 10), false);
+  sim.stop();
+  sim.tick(2);
+  sim.acknowledge();
+  sim.setOption('jogFastX', 10);
+  sim.setOption('limits.xMax', 500);
+  assert.equal(sim.option('limits.xMax'), 500);
+  sim.jog('x', 1, true);
+  sim.tick(1);
+  assert.ok(Math.abs(sim.x.vel) <= 10 + 1e-9, 'jog szybki z parametru');
+});

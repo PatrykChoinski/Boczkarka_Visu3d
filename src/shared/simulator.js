@@ -39,8 +39,10 @@ export class EdgeSimulator {
     this.o = {
       xMaxVelocity: 400, xAcceleration: 1500, returnVelocity: 300, bVelocity: 45, bAcceleration: 360,
       clampDelay: 1.0, spindleRamp: 25, waterOffDelay: 3, loadPositionX: 0, parkAngleB: 0, autoReturn: true,
-      limits: {}, ...opts,
+      jogSlowX: 20, jogFastX: 150, jogSlowB: 5, jogFastB: 30, ...opts,
     };
+    this.o.limits = { bMin: -95, bMax: 95, ...(opts.limits || {}) };
+    this.homing = false;
     this.x = new Axis(this.o.loadPositionX);
     this.b = new Axis(0);
     this.profile = null;
@@ -71,6 +73,7 @@ export class EdgeSimulator {
 
   // Start / wznowienie (jak przycisk START)
   start(profile) {
+    this.homing = false;
     if (this.step === STEP.Pause) {
       this.step = this.pauseStep === STEP.PassX ? STEP.ClampOn : this.pauseStep;
       this.timer = 0;
@@ -114,6 +117,61 @@ export class EdgeSimulator {
   acknowledge() {
     if (this.step === STEP.WaitForCommand && this.x.done && this.b.done) { this.step = STEP.WaitForStart; this.error = 0; }
   }
+
+  // ---- tryb reczny (jak ManualControl w PLC): tylko gdy automat stoi
+  idle() { return [STEP.WaitForStart, STEP.WaitForCommand].includes(this.step); }
+
+  range(axis) {
+    const l = this.o.limits;
+    return axis === 'x' ? [l.xMin ?? -Infinity, l.xMax ?? Infinity] : [l.bMin, l.bMax];
+  }
+
+  // Jog: dir +1 / -1 - jazda do softlimitu (puszczenie: jog(axis, 0) - hamowanie), fast - predkosc szybka
+  jog(axis, dir, fast = false) {
+    const a = axis === 'x' ? this.x : this.b;
+    if (!dir) { a.halt(); return true; }
+    if (!this.idle()) return false;
+    this.homing = false;
+    const [lo, hi] = this.range(axis);
+    const v = axis === 'x' ? (fast ? this.o.jogFastX : this.o.jogSlowX) : (fast ? this.o.jogFastB : this.o.jogSlowB);
+    a.moveTo(dir > 0 ? hi : lo, v, axis === 'x' ? this.o.xAcceleration : this.o.bAcceleration);
+    return true;
+  }
+
+  // Dojazd do pozycji X [mm] / kata B [deg] w granicach softlimitow
+  goto(axis, target) {
+    if (!this.idle() || !Number.isFinite(Number(target))) return false;
+    const [lo, hi] = this.range(axis);
+    const t = Math.min(hi, Math.max(lo, Number(target)));
+    if (axis === 'x') this.x.moveTo(t, this.o.returnVelocity, this.o.xAcceleration);
+    else this.b.moveTo(t, this.o.bVelocity, this.o.bAcceleration);
+    return true;
+  }
+
+  // Bazowanie jak HomingControl: najpierw B do 0, potem X do pozycji zaladunku
+  home() {
+    if (!this.idle()) return false;
+    this.homing = true;
+    return true;
+  }
+
+  toggleSpindle(frequency) {
+    if (!this.idle()) return false;
+    if (Number(frequency) > 0) this.spindleSet = Number(frequency);
+    this.spindleRequest = !this.spindleRequest;
+    return true;
+  }
+
+  toggleWater() { if (this.idle()) this.water = !this.water; }
+  toggleClamp() { if (this.idle()) this.clamp = !this.clamp; }
+
+  // Parametr z karty Serwis: klucz opcji ('xMaxVelocity') albo pole limitow ('limits.xMin')
+  setOption(key, value) {
+    if (key.startsWith('limits.')) this.o.limits[key.slice(7)] = Number(value);
+    else this.o[key] = typeof this.o[key] === 'boolean' ? Boolean(value) : Number(value);
+  }
+
+  option(key) { return key.startsWith('limits.') ? this.o.limits[key.slice(7)] : this.o[key]; }
 
   feed() { // mm/s
     const pass = this.passes[this.passIndex - 1];
@@ -159,6 +217,14 @@ export class EdgeSimulator {
     const atSpeed = this.spindleRequest && Math.abs(this.spindleFrequency - this.spindleSet) < 0.5;
     if (this.water) this.waterTimer = this.o.waterOffDelay;
     else this.waterTimer = Math.max(0, this.waterTimer - dt);
+    if (this.homing) {
+      if (!this.idle()) this.homing = false;
+      else if (this.b.done && Math.abs(this.b.pos) > 1e-6) this.b.moveTo(0, this.o.bVelocity, this.o.bAcceleration);
+      else if (this.b.done && this.x.done) {
+        if (Math.abs(this.x.pos - this.o.loadPositionX) > 1e-6) this.x.moveTo(this.o.loadPositionX, this.o.returnVelocity, this.o.xAcceleration);
+        else this.homing = false;
+      }
+    }
 
     switch (this.step) {
       case STEP.SpindleStart:
@@ -226,6 +292,7 @@ export class EdgeSimulator {
     const pass = this.passes[this.passIndex - 1];
     return {
       x: this.x.pos, b: this.b.pos, xVelocity: this.x.vel, xHomed: true, bHomed: true, mode: 2, simulation: true, safetyOk: true,
+      homing: this.homing, spindleRequest: this.spindleRequest,
       step: this.step, passIndex: this.passIndex, repeatIndex: this.repeatIndex, passCount: this.passes.length,
       passAngle: pass ? pass.angleB : 0, directionPositive: this.direction, passFrom: this.passFrom,
       spindleRunning: this.spindleFrequency > 0.5 || this.spindleRequest, spindleFrequency: this.spindleFrequency,

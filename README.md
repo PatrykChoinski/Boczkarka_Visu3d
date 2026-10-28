@@ -23,6 +23,19 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
   PLC (`src/shared/edgeprofile.js`) z receptury cyklu `EdgeProfile.CycleProfile`. Sterowanie (START, PAUZA, STOP,
   reset alarmów, tryb) – tylko zmienne z listy `PLC_WRITES` (`src/shared/config.js`).
 
+## Panel obsługi
+
+- **Logowanie** (przycisk „Zaloguj” na pasku, gdy obok `config.json` jest `users.json`; tworzenie:
+  `node scripts/users.mjs set <użytkownik>`). Poziomy: Podgląd (bez logowania: STOP, PAUZA), Operator (START, tryb,
+  receptura, ręczny), Serwis (parametry, adres OPC UA), Admin. Bez `users.json`: komputer z VizuApp = Admin, z sieci
+  tylko podgląd. Serwer sprawdza poziom przy każdym zapisie (403).
+- **Ręczny**: jog X± / B± (przycisk trzymany, `/api/plc/hold`, serwer puszcza po utracie strony), jog szybko,
+  dojazd do X / kąta B, bazowanie, wrzeciono z obrotami, woda, docisk – zmienne `Manual.*` w PLC. Offline: osie
+  symulatora, gdy automat stoi.
+- **Serwis**: parametry trwałe PLC (`SERVICE_PARAMS` w `src/shared/config.js`: `AxesConfig`, `SpindleConfig`,
+  `EdgeProfileConfig`, `MachineConfig`) z zakresem sprawdzanym na stronie i w serwerze (400), TIME na stronie w s,
+  w PLC w ms; zapis po zmianie pola. Offline: parametry z odpowiednikiem w symulatorze.
+
 ## Uruchomienie
 
 ```powershell
@@ -64,8 +77,10 @@ offline: `offline` (jak parametry `AxesConfig` / `SpindleConfig` / `EdgeProfileC
 ## Testy
 
 ```powershell
-npm test                        # receptury (zgodność z PLC), symulator, przekrój, OPC UA z testowym PLC, logowanie, alarmy
-node scripts/smoke-test.mjs     # strona w Chrome: offline, online (testowy PLC), wersja statyczna
+npm test                        # receptury (zgodność z PLC), symulator (też ręczny), przekrój, OPC UA z testowym PLC,
+                                # poziomy dostępu / jog / parametry (access.test.js), logowanie, alarmy
+node scripts/smoke-test.mjs     # strona w Chrome: offline (cykl, jog, parametr), online (testowy PLC, serwis),
+                                # logowanie Operatora, wersja statyczna
 ```
 
 Sprawdzone też z programem PLC boczkarki na lokalnym CODESYS Control Win V3 x64 SoftMotion (tryb symulacji PLC):
