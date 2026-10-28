@@ -432,7 +432,7 @@ input.short { width: 6em; }
 .alarms div { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--bad); font-weight: 600; }
 .alarms:empty::before { content: 'Brak aktywnych alarmów'; color: var(--muted); font-size: 13px; }
 #alarmOpen.on { background: var(--bad); color: #fff; }
-dialog { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 18px 16px; min-width: 300px; box-shadow: var(--shadow); }
+dialog { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 18px 16px; width: min(420px, calc(100vw - 32px)); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgba(15, 23, 42, 0.35); }
 footer .mono { display: flex; gap: 26px; }
 footer .mono b { font-weight: 600; }
