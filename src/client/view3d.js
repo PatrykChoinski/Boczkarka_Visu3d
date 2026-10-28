@@ -1,5 +1,5 @@
-// Scena 3D boczkarki (wyglad jak Promasz B1PK): podstawa z blatem, belka osi X nad przednia krawedzia stolu,
-// support z polkolem osi B przy krawedzi, glowica wychylna B przed krawedzia plyty (tarcza w oslonie + motoreduktor), szafa; krawedz plyty
+// Scena 3D boczkarki (wyglad jak Promasz B1PK): podstawa z blatem, belka osi X nad stolem, polksiezyc osi B
+// miedzy belka a prowadnica stolu, glowica wychylna B przed krawedzia plyty (tarcza w oslonie + motoreduktor), szafa; krawedz plyty
 // obrabiana kolejnymi przejsciami.
 //
 // Uklad (mm): three x = os X maszyny (wzdluz stolu), y - w gore, z - w poprzek: krawedz plyty z = 0 (od strony
@@ -77,7 +77,18 @@ export class EdgeView {
     return mesh;
   }
 
-  // Tekstury z canvas: blat z otworami kul (rolki wielokierunkowe), tabliczka PROMASZ, kratka wentylacyjna
+  // Ciegno (prostopadloscian) miedzy punktami a i b w plaszczyznie YZ rodzica
+  strut(a, b, w, h, material, parent) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, a.distanceTo(b)), material);
+    mesh.position.copy(a.clone().add(b).multiplyScalar(0.5));
+    const d = b.clone().sub(a);
+    mesh.rotation.set(Math.atan2(-d.y, d.z), 0, 0);		// os z bryly wzdluz a -> b (obrot wokol X: z -> (0, -sin, cos))
+    mesh.castShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  // Tekstury z canvas: blat z otworami kul (rolki wielokierunkowe), kratka wentylacyjna
   texture(w, h, draw, repeat = [1, 1]) {
     const c = document.createElement('canvas');
     c.width = w;
@@ -91,11 +102,11 @@ export class EdgeView {
     return t;
   }
 
-  // Wyglad jak boczkarka Promasz B1PK (zdjecie DSCN1131): zamknieta biala podstawa z dwiema zoltymi tablicami
-  // PROMASZ, czarny blat; krawedz plyty od strony operatora, glowica przed krawedzia (tarcza skierowana na
-  // krawedz, silnik do operatora); belka osi X nad przednia krawedzia stolu na slupach (zolte pasy), wozek z obudowa
-  // (szyba, silnik), support pionowy tuz przy krawedzi kamienia z polkolem osi B, prowadnik kabli, oslona boczna
-  // i szafa na prawym koncu (zdjecia DSCN1131, IMG_7802-7804).
+  // Wyglad jak boczkarka Promasz B1PK (zdjecia DSCN1131, IMG_7802-7804): zamknieta biala podstawa, czarny blat;
+  // krawedz plyty od strony operatora, glowica przed krawedzia (tarcza na krawedz, silnik do operatora); belka osi X
+  // lekko cofnieta nad stol na slupach przyspawanych do stolu (zolte pasy), wozek z obudowa (szyba, silnik);
+  // polksiezyc osi B: gora - mechanizm B z boku belki (lico z zoltym pasem), dol - wozek prowadnicy na froncie
+  // stolu; prowadnik kabli, oslona boczna i szafa na prawym koncu.
   buildMachine() {
     const m = this.m;
     const x0 = m.travelX[0] - 250;
@@ -103,7 +114,7 @@ export class EdgeView {
     const th = m.tableHeight;
     const zFront = -m.stoneOverhang;			// przednia krawedz blatu (operator po stronie +z)
     const zRear = zFront - m.tableWidth;
-    const railZ = 120;					// belka X nad przednia krawedzia stolu (support schodzi przy krawedzi kamienia)
+    const railZ = -230;					// belka X lekko cofnieta nad stol (przednie lico nad koncem polksiezyca)
     const beamTop = m.railHeight - 60;
     const beamH = 300;
     this.railZ = railZ;
@@ -117,24 +128,6 @@ export class EdgeView {
     this.box(len, th - 25 - 60, zBaseFront - zRear, white, x0 + len / 2, 60 + (th - 85) / 2, (zBaseFront + zRear) / 2);
     this.box(len - 40, 60, zBaseFront - zRear - 40, 0x9ea4aa, x0 + len / 2, 30, (zBaseFront + zRear) / 2);
     for (const fx of [x0 + 100, x0 + len - 100]) this.box(160, 14, 160, 0x8b9096, fx, 7, zBaseFront - 60);
-    // zolte tablice PROMASZ na froncie podstawy
-    const logo = this.texture(512, 384, (g, w, h) => {
-      g.fillStyle = '#f5a623';
-      g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 7;
-      g.beginPath(); g.arc(w * 0.5, h * 0.55, h * 0.36, Math.PI * 1.05, Math.PI * 2.25); g.stroke();
-      g.fillStyle = '#ffffff';
-      g.font = `bold ${h * 0.17}px Georgia, "Times New Roman", serif`;
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.fillText('PROMASZ', w / 2, h * 0.62);
-    });
-    for (const f of [0.26, 0.74]) {
-      const plate = new THREE.Mesh(new THREE.PlaneGeometry(520, 380), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 }));
-      plate.position.set(x0 + len * f, 350, zBaseFront + 1);			// pod prowadnica dolu supportu
-      this.scene.add(plate);
-    }
     // blat czarny (wysuniety nad przod podstawy)
     const holes = this.texture(256, 256, (g, w, h) => {
       g.fillStyle = '#1d2023';
@@ -149,8 +142,8 @@ export class EdgeView {
     top.castShadow = true;
     this.scene.add(top);
     // slupy na koncach i belka osi X (dwa zolte pasy jak na zdjeciu)
-    const postH = beamTop;
-    for (const px of [x0 - 90, x0 + len + 90]) this.box(160, postH, 220, white, px, postH / 2, railZ);
+    // slupy przyspawane do stolu (stoja na koncach blatu, bez osobnych nog)
+    for (const px of [x0 + 80, x0 + len - 80]) this.box(160, beamTop - th, 220, white, px, (beamTop + th) / 2, railZ);
     this.box(len + 340, beamH, 220, white, x0 + len / 2, beamTop - beamH / 2, railZ);
     this.box(len + 360, 30, 240, yellow, x0 + len / 2, beamTop + 15, railZ);
     this.box(len + 200, 70, 14, yellow, x0 + len / 2, beamTop - beamH + 70, railZ + 117);
@@ -208,16 +201,24 @@ export class EdgeView {
     this.arcRadius = Hw + 175;				// promien toru wozka B (korpus przekladni na prowadnicy)
     this.arcX = 150;					// prowadnica obok glowicy (w osi X)
     const Ra = this.arcRadius;
-    const plateX = this.arcX + 55;
-    const plateBottom = this.arcCenterY - Ra - 70;
-    const plateTop = beamTop + 190;
-    // plyta supportu: od wozka w dol do prowadnicy
-    this.box(30, plateTop - plateBottom, Ra + 110, white, plateX, (plateTop + plateBottom) / 2, 15 + (Ra + 110) / 2, this.carriage);	// przed krawedzia (kamien przejezdza obok)
-    // dol supportu prowadzony po stole: wspornik pod blatem do prowadnicy liniowej na froncie podstawy
+    const half = (120 / 180) * Math.PI;		// konce polksiezyca: +-120 stopni
+    const sideX = this.arcX + 28;			// strona polksiezyca od blachy C
+    const endTop = new THREE.Vector3(sideX, this.arcCenterY + Ra * Math.sin(half), Ra * Math.cos(half));
+    const endBottom = new THREE.Vector3(sideX, this.arcCenterY - Ra * Math.sin(half), Ra * Math.cos(half));
+    // gora: mechanizm osi B przypiety z boku belki (wozek na licu z zoltym pasem), ciegno do gornego konca polksiezyca
+    const frontZ = railZ + 110;
+    const mountY = beamTop - beamH / 2;
+    this.box(320, 240, 70, yellow, sideX - 60, mountY, frontZ + 35, this.carriage);
+    const mountServo = this.cylinder(45, 120, black, this.carriage, 20);
+    mountServo.rotation.x = Math.PI / 2;
+    mountServo.position.set(sideX - 140, mountY, frontZ + 130);
+    this.strut(new THREE.Vector3(sideX, mountY - 120, frontZ + 35), endTop, 70, 50, alu, this.carriage);
+    // dol: koniec polksiezyca do wozka prowadnicy liniowej na froncie stolu (pod blatem)
     const zLowRail = zBaseFront + 35;
     const yLowRail = th - 260;
-    this.box(30, 150, 40 - zLowRail, white, plateX, plateBottom + 75, (40 + zLowRail) / 2, this.carriage);
-    this.box(150, 90, 70, mat(0x5b6168, { metalness: 0.4, roughness: 0.4 }), plateX, yLowRail, zLowRail + 10, this.carriage);	// wozek prowadnicy
+    const lowCar = new THREE.Vector3(sideX, yLowRail, zLowRail + 10);
+    this.box(150, 90, 70, mat(0x5b6168, { metalness: 0.4, roughness: 0.4 }), sideX, yLowRail, zLowRail + 10, this.carriage);	// wozek prowadnicy
+    this.strut(endBottom, lowCar, 60, 40, alu, this.carriage);
     const arcGroup = new THREE.Group();			// polkole w plaszczyznie YZ, po stronie operatora (+z)
     arcGroup.position.set(this.arcX, this.arcCenterY, 0);
     arcGroup.rotation.y = -Math.PI / 2;			// lokalne x -> z
