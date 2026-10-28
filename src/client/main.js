@@ -10,6 +10,7 @@ import {
 import { EdgeSimulator } from '../shared/simulator.js';
 import {
   PROFILE_TYPE, PROFILE_NAMES, defaultRecipes, generatePasses, profileFromValues, setProfileDefaults, VALIDATION_TEXT,
+  ROUND_KINDS, CHAMFER_KINDS, FORM_KINDS,
 } from '../shared/edgeprofile.js';
 import { edgeSection, cutState } from '../shared/edgeshape.js';
 import { alarmText, activeFromValues } from '../shared/alarms.js';
@@ -75,17 +76,17 @@ const app = {
 
 // ---------------------------------------------------------------- receptura (offline)
 const recipes = defaultRecipes();
-const FIELDS = ['xStart', 'xEnd', 'overtravel', 'feed', 'spindleFrequency', 'repeats', 'angle', 'angleStart', 'angleEnd', 'angleStep'];
+const FIELDS = ['xStart', 'xEnd', 'overtravel', 'feed', 'spindleFrequency', 'repeats', 'angle', 'angleStart', 'angleEnd', 'angleStep', 'polishSteps'];
 let form = { ...recipes[4], xStart: 200, xEnd: 1600 };
 
 function fillForm() {
   $('kind').value = form.kind;
   for (const f of FIELDS) $(f).value = form[f];
   $('bothDirections').checked = form.bothDirections;
-  const round = [PROFILE_TYPE.TopQuarterRound, PROFILE_TYPE.BottomQuarterRound, PROFILE_TYPE.HalfRound].includes(form.kind);
-  const chamfer = [PROFILE_TYPE.TopChamfer, PROFILE_TYPE.BottomChamfer].includes(form.kind);
-  document.querySelectorAll('.round').forEach((e) => e.classList.toggle('hidden', !round));
-  document.querySelectorAll('.chamfer').forEach((e) => e.classList.toggle('hidden', !chamfer));
+  // pola katow wedlug rodzaju: luk (od / do / krok), faza (kat); tarcza ksztaltowa - bez katow (przejscie B = 0)
+  document.querySelectorAll('.round').forEach((e) => e.classList.toggle('hidden', !ROUND_KINDS.includes(form.kind)));
+  document.querySelectorAll('.chamfer').forEach((e) => e.classList.toggle('hidden', !CHAMFER_KINDS.includes(form.kind)));
+  $('formTool').hidden = !FORM_KINDS.includes(form.kind);
 }
 
 function readForm() {
@@ -590,7 +591,14 @@ let lastPanel = 0;
 let lastKey = '';
 function updatePanel(c) {
   const { state: s, profile, passes, cut } = c;
-  $('sStep').textContent = `${EDGE_STEPS[s.step]?.[1] ?? s.step}${app.mode === 'online' ? ` · ${MODES[s.mode] ?? ''}` : ''}`;
+  const stages = Number(s.stageCount) || 1;
+  const stageText = stages > 1 ? ` · ${Number(s.stage) > 0 ? `polerowanie ${s.stage}/${stages - 1}` : 'kształt'}` : '';
+  $('sStep').textContent = `${EDGE_STEPS[s.step]?.[1] ?? s.step}${stageText}${app.mode === 'online' ? ` · ${MODES[s.mode] ?? ''}` : ''}`;
+  // wymiana narzedzia przed etapem polerowania: komunikat przy START
+  const tool = s.step === STEP.ToolChange
+    ? `Wymień narzędzie na polerkę ${Number(s.stage) + 1}/${stages - 1} i naciśnij START.` : '';
+  $('toolMsg').textContent = tool;
+  $('toolMsg').hidden = !tool;
   $('sPass').textContent = passes.length && s.passIndex ? `${Math.min(s.passIndex, passes.length)} / ${passes.length}${s.repeatIndex > 1 ? ` (powt. ${s.repeatIndex})` : ''}` : `— / ${passes.length}`;
   $('sX').textContent = `${fmt(s.x)} mm${s.xVelocity ? ` · ${fmt(Math.abs(s.xVelocity) * 0.06, 2)} m/min` : ''}`;
   $('sB').textContent = `${fmt(s.b)} °`;

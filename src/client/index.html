@@ -53,6 +53,7 @@
         <h3>Przekrój krawędzi</h3>
         <svg id="section" viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet"></svg>
         <div id="passes" class="passes"></div>
+        <div id="toolMsg" class="msg toolMsg" hidden></div>
         <div class="row"><button id="newStone" title="Nowa, nieobrobiona płyta na widoku"><svg class="ic" aria-hidden="true"><use href="#i-stone"/></svg><span>Nowy kamień</span></button></div>
 
         <div id="onlineCard">
@@ -84,7 +85,9 @@
             <label class="round">Kąt od [°]<input id="angleStart" type="number" step="5"></label>
             <label class="round">Kąt do [°]<input id="angleEnd" type="number" step="5"></label>
             <label class="round">Krok kąta [°]<input id="angleStep" type="number" step="1"></label>
+            <label title="Etapy polerowania po kształcie: wymiana narzędzia, potem ta sama lista przejść">Polerowanie (etapy)<input id="polishSteps" type="number" min="0" max="7" step="1"></label>
           </div>
+          <p class="hint" id="formTool" hidden>Profil tarczą kształtową: przejście przy B = 0 (powtórzenia – zgrubne i wykańczające), potem etapy polerowania.</p>
           <label class="cb"><input id="bothDirections" type="checkbox"> Przejścia w obie strony</label>
           <div class="row buttons">
             <button id="simStart" class="go"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span id="simStartLbl">START</span></button>

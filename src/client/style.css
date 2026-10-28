@@ -439,6 +439,7 @@ footer .mono b { font-weight: 600; }
 .statusline b { color: #dbe6f1; font-weight: 600; }
 #connChip.ok { color: #7ee2a0; }
 #connChip.bad { color: #ff8a80; }
+.toolMsg { padding: 8px 10px; border-radius: 8px; background: #fff4e0; color: var(--warn); font-weight: 600; }
 #alarmWin .seg { margin-bottom: 8px; }
 #alarmWin .seg button { flex: 1; color: var(--text); background: transparent; border: none; }
 #alarmWin .seg button.active { background: var(--accent); color: #fff; }

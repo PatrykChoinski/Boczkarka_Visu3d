@@ -155,3 +155,24 @@ test('reczny: wrzeciono, woda, docisk tylko gdy automat stoi; parametry serwisow
   sim.tick(1);
   assert.ok(Math.abs(sim.x.vel) <= 10 + 1e-9, 'jog szybki z parametru');
 });
+
+test('etapy polerowania: po ksztalcie autopowrot, wrzeciono stop, ToolChange czeka na START, drugi etap, koniec', () => {
+  const r = defaultRecipes()[18];
+  const sim = new EdgeSimulator();
+  assert.ok(sim.start({ ...r, xStart: 100, xEnd: 500, overtravel: 20, feed: 6, polishSteps: 2 }));
+  runUntil(sim, (s) => s.step === STEP.ToolChange);
+  let s = sim.state();
+  assert.equal(s.stage, 0);
+  assert.equal(s.stageCount, 3);
+  assert.equal(s.spindleRunning, false);
+  assert.ok(Math.abs(s.x) < 1e-6, 'X w pozycji zaladunku');
+  sim.tick(5);
+  assert.equal(sim.step, STEP.ToolChange, 'bez START czeka');
+  sim.start();
+  runUntil(sim, (x) => x.step === STEP.ToolChange && x.stage === 1);
+  sim.start();
+  runUntil(sim, (x) => x.step === STEP.WaitForStart);
+  s = sim.state();
+  assert.equal(s.stage, 2);
+  assert.equal(s.cycles, 1);
+});

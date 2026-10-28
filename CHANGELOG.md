@@ -4,6 +4,13 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (7)
+
+### Profile z katalogu i etapy polerowania (jak PLC)
+- 14 nowych rodzajów profilu (ProfileType 7..20): European, 1/2 Bevel, 1/4 Round, 1/4 Bullnose, Demi Bullnose (tarcza garnkowa) i Cove, Cove Dupont, Cove Ogee, Deep Ogee, Dupont, Flat Ogee, Ogee, Ogee Bullnose, Waterfall (tarcza kształtowa, B = 0); 21 receptur startowych.
+- Przekrój krawędzi jako zarys u = f(v) (profile wklęsłe i S), 3D i rysunek 2D dla wszystkich profili.
+- Etapy polerowania (`polishSteps`, walidacja kod 8), symulator i testowy PLC: krok ToolChange (wymiana narzędzia, START), etap na pasku stanu, komunikat w ekranie Automat.
+
 ## 2026-10-28 (6)
 
 ### Logowanie, historia alarmów, woda, obroty na bieżąco, kolizje osi B

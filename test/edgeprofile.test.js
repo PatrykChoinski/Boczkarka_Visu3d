@@ -5,8 +5,27 @@ import { PROFILE_TYPE, defaultRecipes, generatePasses, validateProfile, newProfi
 
 const angles = (p) => generatePasses(p).passes.map((s) => s.angleB);
 
-test('receptury startowe: liczba przejsc jak w PLC (1/1/1/1/10/10/19)', () => {
-  assert.deepEqual(defaultRecipes().map((r) => generatePasses(r).passes.length), [1, 1, 1, 1, 10, 10, 19]);
+test('receptury startowe: 21 profili, liczba przejsc jak w PLC (katalog_profili w testach SoftMotion)', () => {
+  assert.deepEqual(defaultRecipes().map((r) => generatePasses(r).passes.length),
+    [1, 1, 1, 1, 10, 10, 19, 3, 1, 7, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(defaultRecipes().map((r) => r.kind), [0, 1, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+});
+
+test('profile z katalogu: European (bok + male fazy), 1/2 Bevel, 1/4 Round co 15, tarcza ksztaltowa B = 0 x2', () => {
+  const r = defaultRecipes();
+  assert.deepEqual(angles(r[7]), [0, 45, -45]);
+  assert.deepEqual(angles(r[8]), [45]);
+  assert.deepEqual(angles(r[9]), [0, 15, 30, 45, 60, 75, 90]);
+  for (const p of r.slice(12)) {
+    const g = generatePasses(p);
+    assert.deepEqual(g.passes.map((x) => [x.angleB, x.repeats]), [[0, 2]], p.name);
+    assert.equal(p.polishSteps, 3);
+  }
+  const ok = generatePasses(r[18]).passes;
+  const q = { ...r[18], xStart: 100, xEnd: 400, overtravel: 20 };
+  assert.equal(validateProfile(q, ok), 0);
+  assert.equal(validateProfile({ ...q, polishSteps: 8 }, ok), 8);
+  assert.equal(validateProfile({ ...q, polishSteps: -1 }, ok), 8);
 });
 
 test('katy przejsc: fazy, cwiercwalki, polwalek bez dublowania 0', () => {

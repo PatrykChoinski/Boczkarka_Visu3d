@@ -54,6 +54,9 @@ export class EdgeSimulator {
     this.pauseStep = STEP.WaitForStart;
     this.passIndex = 0;
     this.repeatIndex = 0;
+    this.stage = 0;
+    this.stageCount = 1;
+    this.changeTool = false;
     this.direction = true;
     this.passFrom = null;
     this.spindleRequest = false;
@@ -72,6 +75,16 @@ export class EdgeSimulator {
 
   // Start / wznowienie (jak przycisk START)
   start(profile) {
+    if (this.step === STEP.ToolChange) {
+      // narzedzie wymienione: kolejny etap (polerowanie), ta sama lista przejsc
+      this.changeTool = false;
+      this.stage += 1;
+      this.passIndex = 1;
+      this.repeatIndex = 1;
+      this.direction = this.profile.bothDirections ? Math.abs(this.x.pos - this.left) <= Math.abs(this.x.pos - this.right) : true;
+      this.go(STEP.SpindleStart);
+      return true;
+    }
     if (this.step === STEP.Pause) {
       this.step = this.pauseStep === STEP.PassX ? STEP.ClampOn : this.pauseStep;
       this.timer = 0;
@@ -87,6 +100,9 @@ export class EdgeSimulator {
     this.right = profile.xEnd + profile.overtravel;
     this.passIndex = 1;
     this.repeatIndex = 1;
+    this.stage = 0;
+    this.stageCount = 1 + Math.max(0, Number(profile.polishSteps) || 0);
+    this.changeTool = false;
     this.direction = profile.bothDirections ? Math.abs(this.x.pos - this.left) <= Math.abs(this.x.pos - this.right) : true;
     this.step = STEP.SpindleStart;
     return true;
@@ -251,13 +267,17 @@ export class EdgeSimulator {
         else { this.repeatIndex = 1; this.passIndex += 1; }
         if (this.passIndex <= this.passes.length) {
           if (this.profile.bothDirections) { this.direction = !this.direction; this.go(STEP.MoveBAngle); } else this.go(STEP.ReturnX);
-        } else this.go(STEP.AutoReturn);
+        } else {
+          // koniec etapu: kolejny etap polerowania - autopowrot i wymiana narzedzia
+          this.changeTool = this.stage + 1 < this.stageCount;
+          this.go(STEP.AutoReturn);
+        }
         break;
       case STEP.ReturnX:
         if (this.moveX(this.startSide(), this.o.returnVelocity)) this.go(STEP.MoveBAngle);
         break;
       case STEP.AutoReturn:
-        if (!this.o.autoReturn) this.go(STEP.SpindleStop);
+        if (!this.o.autoReturn && !this.changeTool) this.go(STEP.SpindleStop);
         else if (this.moveB(this.o.parkAngleB)) this.go(STEP.AutoReturnX);
         break;
       case STEP.AutoReturnX:
@@ -266,7 +286,7 @@ export class EdgeSimulator {
       case STEP.SpindleStop:
         this.spindleRequest = false;
         this.water = false;
-        if (this.spindleFrequency < 0.5) this.go(STEP.EndProcedure);
+        if (this.spindleFrequency < 0.5) this.go(this.changeTool ? STEP.ToolChange : STEP.EndProcedure);
         break;
       case STEP.EndProcedure:
         this.cycles += 1;
@@ -283,7 +303,7 @@ export class EdgeSimulator {
     const pass = this.passes[this.passIndex - 1];
     return {
       x: this.x.pos, b: this.b.pos, xVelocity: this.x.vel, mode: 1, simulation: true, safetyOk: true,
-      spindleRequest: this.spindleRequest,
+      spindleRequest: this.spindleRequest, stage: this.stage, stageCount: this.stageCount, changeTool: this.changeTool,
       step: this.step, passIndex: this.passIndex, repeatIndex: this.repeatIndex, passCount: this.passes.length,
       passAngle: pass ? pass.angleB : 0, directionPositive: this.direction, passFrom: this.passFrom,
       spindleRunning: this.spindleFrequency > 0.5 || this.spindleRequest, spindleFrequency: this.spindleFrequency,

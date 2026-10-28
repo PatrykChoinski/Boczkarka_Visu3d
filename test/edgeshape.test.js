@@ -1,7 +1,7 @@
 // Przekroj krawedzi po przejsciach (edgeshape.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeSection, passPlane, clip, cutState } from '../src/shared/edgeshape.js';
+import { edgeSection, edgeOutline, passPlane, clip, cutState, formOutline } from '../src/shared/edgeshape.js';
 import { PROFILE_TYPE, defaultRecipes, generatePasses } from '../src/shared/edgeprofile.js';
 
 const SHAPE = { quarterRadius: 20, chamferSize: 8, straightDepth: 1 };
@@ -53,4 +53,30 @@ test('stan obrobki z migawki: biezacy przejazd jako odcinek X', () => {
   assert.deepEqual(cutState({ passIndex: 0, step: 0 }, passes), { done: 0, partial: null });
   assert.deepEqual(cutState({ passIndex: 3, step: 50, x: 300, passFrom: 80 }, passes), { done: 2, partial: { angle: 20, from: 80, to: 300 } });
   assert.deepEqual(cutState({ passIndex: 11, step: 0 }, passes), { done: 10, partial: null });
+});
+
+test('profile ksztaltowe: Cove zdejmuje cwiartke kola, Ogee S, Dupont stopien, Waterfall kaskada', () => {
+  const box = T * 60;
+  const removed = (kind) => box - area(edgeSection(kind, [0], T, SHAPE));
+  const r = 0.45 * T;
+  const cove = removed(PROFILE_TYPE.Cove);
+  assert.ok(Math.abs(cove - (Math.PI * r * r) / 4) < 6, `cove ${cove.toFixed(1)}`);
+  // Ogee: wierzch cofniety o 2r, przegiecie w polowie wysokosci S, bok pod S nietkniety
+  const og = formOutline(PROFILE_TYPE.Ogee, T);
+  assert.ok(Math.abs(og(T) + 0.5 * T) < 1e-9 && Math.abs(og(0.75 * T) + 0.25 * T) < 1e-9 && og(0.4 * T) === 0);
+  const dp = formOutline(PROFILE_TYPE.Dupont, T);
+  assert.equal(dp(T), -0.25 * T);
+  assert.equal(dp(0.86 * T), -0.25 * T, 'stopien pionowy');
+  const wf = formOutline(PROFILE_TYPE.Waterfall, T);
+  assert.deepEqual([wf(T), wf(0.7 * T), wf(0.5 * T)].map((x) => Math.round(x * 100) / 100), [-9, -4.5, 0]);
+  // wszystkie profile katalogu daja zarys w granicach pasa i nie wychodza poza krawedz
+  for (const k of Object.values(PROFILE_TYPE)) {
+    const { f } = edgeOutline(k, generatePasses(defaultRecipes().find((p) => p.kind === k) || { ...defaultRecipes()[0], kind: k }).passes, T, SHAPE);
+    assert.ok(f.every((x) => x <= 1e-9 && x >= -60), `rodzaj ${k}`);
+  }
+});
+
+test('etap polerowania: ksztalt gotowy (cutState)', () => {
+  const passes = generatePasses(defaultRecipes()[4]).passes;
+  assert.deepEqual(cutState({ stage: 1, passIndex: 1, step: 50, x: 300, passFrom: 80 }, passes), { done: 10, partial: null });
 });
