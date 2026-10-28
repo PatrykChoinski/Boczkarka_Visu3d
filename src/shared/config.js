@@ -221,7 +221,7 @@ export const DEFAULTS = {
     wheelHeight: 40,
     motorDiameter: 170,
     motorLength: 330,
-    railHeight: 1450,			// os belki nad posadzka
+    railHeight: 1800,			// os belki nad posadzka
   },
   // Wielkosc profilu na rysunku (w PLC glebokosc ustala mechanika / docisk) [mm]
   shape: { quarterRadius: 20, chamferSize: 8, straightDepth: 1 },

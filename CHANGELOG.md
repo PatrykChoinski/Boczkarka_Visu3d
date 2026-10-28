@@ -8,6 +8,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 
 ### Oś B na półkolu, Ręczny jako okno
 - Obrót osi B po półkolistej prowadnicy zębatej (środek na krawędzi płyty) przykręconej do płyty supportu tuż obok głowicy; wózek B z serwem jedzie po półkolu i niesie silnik z tarczą skierowaną do środka. Bez piasty i łącznika.
+- Belka X nad przednią krawędzią stołu (jak na IMG_7804): wózek z obudową nad belką, pionowy support tuż przy krawędzi kamienia, bez długiego ramienia nad stołem; belka wyżej (`railHeight` 1800 - głowica przy B = +90° mieści się pod belką); widok Bok zza słupa belki.
 - Ręczny: okno jak „Ruchy ręczne” w pile – przycisk z ręką na górnym pasku, przesuwane za nagłówek (pozycja zapamiętana), zamknięcie puszcza jog. Z lewego paska zostały Automat i Serwis.
 
 ## 2026-10-28 (4)

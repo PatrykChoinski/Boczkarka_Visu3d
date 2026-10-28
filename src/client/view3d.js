@@ -1,9 +1,9 @@
-// Scena 3D boczkarki (wyglad jak Promasz B1PK): podstawa z blatem, belka osi X z tylu stolu, wozek z ramieniem
-// nad stolem, glowica wychylna B przed krawedzia plyty (tarcza w oslonie + motoreduktor), szafa; krawedz plyty
+// Scena 3D boczkarki (wyglad jak Promasz B1PK): podstawa z blatem, belka osi X nad przednia krawedzia stolu,
+// support z polkolem osi B przy krawedzi, glowica wychylna B przed krawedzia plyty (tarcza w oslonie + motoreduktor), szafa; krawedz plyty
 // obrabiana kolejnymi przejsciami.
 //
 // Uklad (mm): three x = os X maszyny (wzdluz stolu), y - w gore, z - w poprzek: krawedz plyty z = 0 (od strony
-// operatora), plyta z < 0 (w glab stolu, belka z tylu), glowica i operator po stronie z > 0. Przekroj krawedzi (u, v) z edgeshape.js: u -> z, v -> y (od wierzchu stolu).
+// operatora), plyta z < 0 (w glab stolu), belka, glowica i operator po stronie z > 0. Przekroj krawedzi (u, v) z edgeshape.js: u -> z, v -> y (od wierzchu stolu).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { edgeSection, passPlane, normal } from '../shared/edgeshape.js';
@@ -93,8 +93,9 @@ export class EdgeView {
 
   // Wyglad jak boczkarka Promasz B1PK (zdjecie DSCN1131): zamknieta biala podstawa z dwiema zoltymi tablicami
   // PROMASZ, czarny blat; krawedz plyty od strony operatora, glowica przed krawedzia (tarcza skierowana na
-  // krawedz, silnik do operatora); belka osi X z tylu stolu na slupach (zolte pasy), wozek z ramieniem nad
-  // stolem, obudowa z szybka i silnikiem, prowadnik kabli do glowicy, oslona boczna i szafa na prawym koncu.
+  // krawedz, silnik do operatora); belka osi X nad przednia krawedzia stolu na slupach (zolte pasy), wozek z obudowa
+  // (szyba, silnik), support pionowy tuz przy krawedzi kamienia z polkolem osi B, prowadnik kabli, oslona boczna
+  // i szafa na prawym koncu (zdjecia DSCN1131, IMG_7802-7804).
   buildMachine() {
     const m = this.m;
     const x0 = m.travelX[0] - 250;
@@ -102,7 +103,7 @@ export class EdgeView {
     const th = m.tableHeight;
     const zFront = -m.stoneOverhang;			// przednia krawedz blatu (operator po stronie +z)
     const zRear = zFront - m.tableWidth;
-    const railZ = zRear - 80;				// os belki X z tylu stolu
+    const railZ = 120;					// belka X nad przednia krawedzia stolu (support schodzi przy krawedzi kamienia)
     const beamTop = m.railHeight - 60;
     const beamH = 300;
     this.railZ = railZ;
@@ -156,8 +157,8 @@ export class EdgeView {
     this.box(len + 200, 40, 160, mat(0xb8bdc3, { metalness: 0.4, roughness: 0.4 }), x0 + len / 2, beamTop + 50, railZ);	// wanna olejowa
     // oslona boczna (siatka) na prawym koncu i szafa sterownicza
     const mesh = mat(0x9aa0a6, { transparent: true, opacity: 0.55, roughness: 0.6, side: THREE.DoubleSide });
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(12, beamTop - 150, zFront - railZ + 150), mesh);
-    guard.position.set(x0 + len + 180, 150 + (beamTop - 150) / 2, (zFront + railZ) / 2 + 40);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(12, beamTop - 150, railZ + 150 - zRear), mesh);
+    guard.position.set(x0 + len + 180, 150 + (beamTop - 150) / 2, (railZ + 150 + zRear) / 2);
     this.scene.add(guard);
     const cabX = x0 + len + 330;
     this.box(140, th + 200, 140, white, cabX, (th + 200) / 2, railZ);
@@ -173,14 +174,13 @@ export class EdgeView {
     // prowadnik kabli w belce: od punktu stalego do wozka
     this.chainFixX = x0 + len / 2;
     this.chainRun = this.box(1, 40, 90, black, 0, beamTop + 95, railZ);
-    // wozek osi X na belce, ramie nad stolem do przodu, obudowa z szybka i silnikiem
+    // wozek osi X na belce: obudowa z szybka i silnikiem nad belka, support w dol przy krawedzi (bez ramienia)
     this.carriage = new THREE.Group();
     this.scene.add(this.carriage);
-    const hubZ = 130;					// obudowa wozka nad polkolem osi B
+    const hubZ = railZ;					// obudowa wozka na belce, nad supportem
     this.box(440, 130, 300, 0xd9dcdf, 0, beamTop + 135, railZ, this.carriage);
-    this.box(300, 200, hubZ + 120 - railZ, white, 0, beamTop + 160, (railZ + hubZ + 120) / 2, this.carriage);
-    const houseTop = beamTop + 260;
-    const houseBottom = th + 520;
+    const houseTop = beamTop + 560;
+    const houseBottom = beamTop + 70;
     this.box(320, houseTop - houseBottom, 300, white, 0, (houseTop + houseBottom) / 2, hubZ - 20, this.carriage);
     // przyciemniana szyba na przodzie obudowy (od strony operatora)
     const glass = new THREE.Mesh(new THREE.BoxGeometry(260, houseTop - houseBottom - 60, 10),
@@ -194,7 +194,7 @@ export class EdgeView {
     // petla prowadnika kabli od obudowy do glowicy (lewa strona, jak na zdjeciu)
     const loop = new THREE.Mesh(new THREE.TorusGeometry(230, 34, 4, 26, Math.PI), black);
     loop.rotation.z = Math.PI / 2;				// polokrag po stronie -x
-    loop.position.set(-190, th + 470, hubZ + 140);
+    loop.position.set(-190, th + 650, railZ + 170);
     loop.castShadow = true;
     this.carriage.add(loop);
     // Os B: polkolista prowadnica zebata (srodek na krawedzi plyty, w polowie grubosci) przykrecona do plyty supportu
@@ -209,7 +209,7 @@ export class EdgeView {
     const plateBottom = this.arcCenterY - Ra - 70;
     const plateTop = beamTop + 190;
     // plyta supportu: od wozka w dol do prowadnicy
-    this.box(30, plateTop - plateBottom, Ra + 130, white, plateX, (plateTop + plateBottom) / 2, (Ra + 130) / 2 - 40, this.carriage);
+    this.box(30, plateTop - plateBottom, Ra + 110, white, plateX, (plateTop + plateBottom) / 2, 15 + (Ra + 110) / 2, this.carriage);	// przed krawedzia (kamien przejezdza obok)
     const arcGroup = new THREE.Group();			// polkole w plaszczyznie YZ, po stronie operatora (+z)
     arcGroup.position.set(this.arcX, this.arcCenterY, 0);
     arcGroup.rotation.y = -Math.PI / 2;			// lokalne x -> z
@@ -322,9 +322,9 @@ export class EdgeView {
     const t = new THREE.Vector3(centerX, th + 200, 250);
     const p = {
       iso: [centerX + 1700, th + 1300, 3500], front: [centerX, th + 450, 4800],
-      side: [this.m.travelX[0] - 900, th + 120, 260], top: [centerX, th + 4200, 600],
+      side: [centerX - 1500, th + 220, 950], top: [centerX, th + 4200, 600],
     }[name] ?? [centerX + 1700, th + 1300, 3500];
-    if (name === 'side') t.set(this.m.travelX[0] + 200, th + 15, 0);
+    if (name === 'side') t.set(centerX, th + 15, 0);
     if (name === 'top') t.set(centerX, th, 0);
     this.camera.position.set(...p);
     this.controls.target.copy(t);
