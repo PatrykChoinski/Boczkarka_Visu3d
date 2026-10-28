@@ -24,6 +24,7 @@
     <label class="chip" id="speedBox" title="Tempo symulacji"><svg class="ic" aria-hidden="true"><use href="#i-speed"/></svg>
       <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option><option value="30">30×</option></select>
     </label>
+    <div class="seg" id="langSeg" title="Język / Language"><button data-lang="pl">PL</button><button data-lang="en">EN</button></div>
     <div class="chip" id="authBox">
       <svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span id="userChip" class="authUser">Niezalogowany</span>
       <button id="loginBtn" class="tool" title="Zaloguj"><svg class="ic" aria-hidden="true"><use href="#i-login"/></svg></button>
@@ -191,6 +192,7 @@
       <span>Przejście: <b id="sPass">—</b></span>
       <span>Czas: <b id="sTime">—</b></span>
       <span>Licznik: <b id="sCount">—</b></span>
+      <span id="buildInfo" title="Wersja strony (package.json, commit, data budowy)"></span>
     </div>
   </footer>
   <script type="module" src="app.js"></script>

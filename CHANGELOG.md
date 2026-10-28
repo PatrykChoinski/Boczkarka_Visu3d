@@ -4,6 +4,13 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (8)
+
+### Język polski / angielski, wersja strony
+- Przełącznik PL / EN (`src/client/i18n.js`): cała strona, kroki automatu, alarmy, profile, parametry serwisowe, komunikaty serwera; polski domyślnie.
+- Wersja strony na dolnym pasku (package.json, commit, data budowy) - porównanie strony lokalnej z GitHub Pages.
+- Test strony: wersja angielska bez polskich tekstów (także Serwis, Ręczny, alarmy).
+
 ## 2026-10-28 (7)
 
 ### Profile z katalogu i etapy polerowania (jak PLC)

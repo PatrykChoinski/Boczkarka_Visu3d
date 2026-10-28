@@ -4,6 +4,7 @@
 // offline na symulatorze.
 import { EdgeView } from './view3d.js';
 import { installIcons, icon } from './icons.js';
+import { t, translatePage, lang, setLang, LANGS } from './i18n.js';
 import {
   DEFAULTS, EDGE_STEPS, STEP, MODES, LEVEL_NAMES, PLC_WRITES, SERVICE_PARAMS, SERVICE_ITEMS, checkParam, fromPlc, endpointFromHost,
 } from '../shared/config.js';
@@ -16,6 +17,7 @@ import { edgeSection, cutState } from '../shared/edgeshape.js';
 import { alarmText, activeFromValues } from '../shared/alarms.js';
 
 installIcons();
+translatePage();			// jezyk strony: polski domyslnie, angielski z przelacznika PL / EN
 const $ = (id) => document.getElementById(id);
 const fmt = (v, d = 1) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
 const store = {
@@ -96,15 +98,15 @@ function readForm() {
   form = f;
 }
 
-$('recipe').innerHTML = recipes.map((r, i) => `<option value="${i}">${i + 1}. ${r.name}</option>`).join('');
+$('recipe').innerHTML = recipes.map((r, i) => `<option value="${i}">${i + 1}. ${t(r.name)}</option>`).join('');
 $('recipe').value = '4';
 $('kind').innerHTML = Object.entries(PROFILE_NAMES).filter(([k]) => Number(k) !== PROFILE_TYPE.Custom)
-  .map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+  .map(([k, n]) => `<option value="${k}">${t(n)}</option>`).join('');
 $('recipe').addEventListener('change', () => {
   form = { ...recipes[Number($('recipe').value)], xStart: form.xStart, xEnd: form.xEnd };
   fillForm();
 });
-$('side').innerHTML = Object.entries(SIDE_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+$('side').innerHTML = Object.entries(SIDE_NAMES).map(([k, n]) => `<option value="${k}">${t(n)}</option>`).join('');
 $('kind').addEventListener('change', () => { readForm(); form = setProfileDefaults(form, form.kind); fillForm(); });
 for (const id of [...FIELDS, 'bothDirections']) $(id).addEventListener('change', readForm);
 // obroty na biezaco: zmiana pola dziala od razu na symulator (takze w trakcie cyklu)
@@ -114,7 +116,7 @@ fillForm();
 $('simStart').addEventListener('click', () => {
   readForm();
   const ok = sim.start({ ...form });
-  $('simMsg').textContent = ok || sim.step !== STEP.WaitForCommand ? '' : `Receptura: ${VALIDATION_TEXT[sim.error] ?? sim.error}`;
+  $('simMsg').textContent = ok || sim.step !== STEP.WaitForCommand ? '' : `${t('Receptura:')} ${t(VALIDATION_TEXT[sim.error]) ?? sim.error}`;
   $('simMsg').classList.toggle('err', !ok && sim.step === STEP.WaitForCommand);
 });
 $('simAck').addEventListener('click', () => { sim.acknowledge(); $('simMsg').textContent = ''; });
@@ -156,9 +158,15 @@ function showTab(name) {
   store.set('vizu.tab', name);
   document.querySelectorAll('#screens button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('#panel .tab').forEach((t) => { t.hidden = t.dataset.tab !== name; });
-  $('panelTitle').innerHTML = `${icon(TABS[name][0])}<span>${TABS[name][1]}</span>`;
+  $('panelTitle').innerHTML = `${icon(TABS[name][0])}<span>${t(TABS[name][1])}</span>`;
 }
 document.querySelectorAll('#screens button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+document.querySelectorAll('#langSeg button').forEach((b) => {
+  b.classList.toggle('active', b.dataset.lang === lang);
+  b.addEventListener('click', () => { if (b.dataset.lang !== lang) setLang(b.dataset.lang); });
+});
+$('alarms').dataset.empty = t('Brak aktywnych alarmów');
+$('buildInfo').textContent = typeof __BUILD__ === 'undefined' ? '' : __BUILD__;	// wersja (scripts/build-client.js)
 
 // Okno Reczny (jak "Ruchy reczne" w pile): otwierane z paska, przesuwane za naglowek (mysz i dotyk),
 // pozycja zapamietana w przegladarce; zamkniecie puszcza jog
@@ -207,21 +215,21 @@ $('connClose').addEventListener('click', () => { $('connWin').hidden = true; });
 $('alarmOpen').addEventListener('click', () => { $('alarmWin').hidden = !$('alarmWin').hidden; loadAlarmHistory(); });
 $('alarmClose').addEventListener('click', () => { $('alarmWin').hidden = true; });
 // Historia alarmow (baza SQLite serwera, alarms.db): zakladka w oknie alarmow, odswiezana przy zmianie (SSE alarmsVersion)
-const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('pl-PL') : '—');
+const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString(lang === 'en' ? 'en-GB' : 'pl-PL') : '—');
 async function loadAlarmHistory() {
   if ($('alarmWin').hidden || document.querySelector('[data-apage="history"]').hidden) return;
   if (cfg.static || !cfg.plc) {
-    $('alarmHistInfo').textContent = 'Historia alarmów jest zapisywana w bazie serwera VizuApp (alarms.db) przy pracy z PLC.';
+    $('alarmHistInfo').textContent = t('Historia alarmów jest zapisywana w bazie serwera VizuApp (alarms.db) przy pracy z PLC.');
     $('alarmHist').innerHTML = '';
     return;
   }
   try {
     const h = await getJson('api/alarms?limit=200');
-    $('alarmHistInfo').textContent = `Wpisów: ${h.total}, niepotwierdzonych: ${h.unacked}`;
-    $('alarmHist').innerHTML = `<tr><th class="n">Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th><th>Kwit.</th></tr>`
-      + h.entries.map((e) => `<tr class="${e.off ? 'off' : 'on'}"><td class="n">${e.n}</td><td>${e.name ?? alarmText(e.n)}</td>`
-        + `<td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : 'aktywny'}</td><td>${e.ack ? '✓' : ''}</td></tr>`).join('');
-  } catch (err) { $('alarmHistInfo').textContent = `Historia: ${err.message}`; }
+    $('alarmHistInfo').textContent = t(`Wpisów: ${h.total}, niepotwierdzonych: ${h.unacked}`);
+    $('alarmHist').innerHTML = `<tr><th class="n">${t('Nr')}</th><th>${t('Alarm')}</th><th>${t('Wystąpił')}</th><th>${t('Ustąpił')}</th><th>${t('Kwit.')}</th></tr>`
+      + h.entries.map((e) => `<tr class="${e.off ? 'off' : 'on'}"><td class="n">${e.n}</td><td>${t(e.name ?? alarmText(e.n))}</td>`
+        + `<td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : t('aktywny')}</td><td>${e.ack ? '✓' : ''}</td></tr>`).join('');
+  } catch (err) { $('alarmHistInfo').textContent = t(`Historia: ${err.message}`); }
 }
 document.querySelectorAll('#alarmTabs button').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('#alarmTabs button').forEach((x) => x.classList.toggle('active', x === b));
@@ -239,8 +247,8 @@ $('barPause').addEventListener('click', () => (app.mode === 'offline' ? sim.paus
 
 function updateChip() {
   const chip = $('connChip');
-  if (app.mode === 'offline') { chip.textContent = 'Symulacja offline'; chip.className = ''; return; }
-  chip.textContent = app.status;
+  if (app.mode === 'offline') { chip.textContent = t('Symulacja offline'); chip.className = ''; return; }
+  chip.textContent = t(app.status);
   chip.className = app.connected ? 'ok' : 'bad';
 }
 
@@ -263,7 +271,7 @@ function connectEvents() {
 
 async function loadConnection() {
   if (!cfg.plc) {
-    $('connInfo').textContent = cfg.static ? 'Wersja bez serwera – dostępna tylko symulacja offline.' : 'Serwer uruchomiony bez PLC (--no-plc).';
+    $('connInfo').textContent = t(cfg.static ? 'Wersja bez serwera – dostępna tylko symulacja offline.' : 'Serwer uruchomiony bez PLC (--no-plc).');
     $('connForm').classList.add('hidden');
     return;
   }
@@ -271,26 +279,26 @@ async function loadConnection() {
     const c = await getJson('api/connection');
     const m = /^opc\.tcp:\/\/([^:/]+)(?::(\d+))?/.exec(c.endpoint || '');
     if (m) { $('plcHost').value = m[1]; $('plcPort').value = m[2] || 4840; }
-    $('connInfo').textContent = `Adres: ${c.endpoint}${c.endpoint !== c.defaultEndpoint ? ` (domyślny ${c.defaultEndpoint})` : ''}`;
-    $('pageUrls').textContent = c.urls?.length ? `Strona w sieci: ${c.urls.join('  ')}` : '';
-  } catch (err) { $('connInfo').textContent = `Połączenie: ${err.message}`; }
+    $('connInfo').textContent = t(`Adres: ${c.endpoint}${c.endpoint !== c.defaultEndpoint ? ` (domyślny ${c.defaultEndpoint})` : ''}`);
+    $('pageUrls').textContent = t(c.urls?.length ? `Strona w sieci: ${c.urls.join('  ')}` : '');
+  } catch (err) { $('connInfo').textContent = t(`Połączenie: ${err.message}`); }
 }
 
 async function setEndpoint(endpoint) {
   $('connInfo').classList.remove('err');
   try {
     const c = await getJson('api/connection', post({ endpoint }));
-    $('connInfo').textContent = `Łączenie z ${c.endpoint}…`;
+    $('connInfo').textContent = t(`Łączenie z ${c.endpoint}…`);
     app.values = {};
   } catch (err) {
-    $('connInfo').textContent = err.message;
+    $('connInfo').textContent = t(err.message);
     $('connInfo').classList.add('err');
   }
 }
 $('connForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const host = $('plcHost').value.trim();
-  if (!host) { $('connInfo').textContent = 'Wpisz adres IP serwera OPC UA (sterownika)'; $('connInfo').classList.add('err'); return; }
+  if (!host) { $('connInfo').textContent = t('Wpisz adres IP serwera OPC UA (sterownika)'); $('connInfo').classList.add('err'); return; }
   setEndpoint(endpointFromHost(host, Number($('plcPort').value) || 4840));
 });
 $('connDefault').addEventListener('click', () => setEndpoint('').then(loadConnection));
@@ -320,7 +328,7 @@ function applyAccess() {
   $('plcControls').hidden = !op;
   $('plcModes').hidden = !op;
   $('autoFreqBox').hidden = !op;
-  $('plcInfo').textContent = !app.connected ? '' : op ? '' : 'Sterowanie po zalogowaniu (Operator).';
+  $('plcInfo').textContent = t(!app.connected ? '' : op ? '' : 'Sterowanie po zalogowaniu (Operator).');
   // Reczny od Operatora, Serwis tylko Serwis i Admin - w obu trybach
   $('manOpen').hidden = app.level < 1;
   if ($('manOpen').hidden && !$('manWin').hidden) showManWin(false);
@@ -328,16 +336,16 @@ function applyAccess() {
   showTab(app.tab);
   const loginOn = true;				// zawsze: Operator / Serwis / Admin
   const loggedIn = simLogin() ? Boolean(demo.user) : Boolean(session.token && app.level > 0);
-  $('loginBtn').title = loggedIn ? 'Wyloguj' : 'Zaloguj';
+  $('loginBtn').title = t(loggedIn ? 'Wyloguj' : 'Zaloguj');
   $('loginBtn').innerHTML = icon(loggedIn ? 'logout' : 'login');
   const lvl = LEVEL_NAMES[app.level];
-  $('userChip').innerHTML = app.level > 0 ? (app.user === lvl ? `<b>${lvl}</b>` : `<b>${app.user}</b> · ${lvl}`) : loginOn ? 'Niezalogowany' : LEVEL_NAMES[0];
-  $('manualInfo').textContent = online
+  $('userChip').innerHTML = app.level > 0 ? (app.user === lvl ? `<b>${t(lvl)}</b>` : `<b>${t(app.user)}</b> · ${t(lvl)}`) : loginOn ? t('Niezalogowany') : t(LEVEL_NAMES[0]);
+  $('manualInfo').textContent = t(online
     ? 'Online: jog i dojazdy w trybie Ręczny (przełącznik na ekranie Automat).'
-    : 'Offline: osie symulatora, gdy automat stoi.';
-  $('serviceInfo').textContent = online
+    : 'Offline: osie symulatora, gdy automat stoi.');
+  $('serviceInfo').textContent = t(online
     ? 'Parametry trwałe PLC – zapis po zmianie pola (zakres sprawdzany na stronie i w serwerze).'
-    : 'Offline: parametry symulatora (te, które mają odpowiednik w trybie offline).';
+    : 'Offline: parametry symulatora (te, które mają odpowiednik w trybie offline).');
   watchService();
 }
 
@@ -346,10 +354,10 @@ function loginHint() {
   const u = $('loginUser').value;
   const noPass = simLogin() || (cfg.auth?.open && !cfg.auth?.passwords?.[u]);
   $('loginPassRow').hidden = noPass;
-  $('loginHint').textContent = cfg.static ? 'Wersja demonstracyjna: wybór konta bez hasła – pokazuje i ukrywa funkcje jak na maszynie.'
+  $('loginHint').textContent = t(cfg.static ? 'Wersja demonstracyjna: wybór konta bez hasła – pokazuje i ukrywa funkcje jak na maszynie.'
     : simLogin() ? 'Symulacja: logowanie bez hasła (bez dostępu do PLC). W trybie PLC – hasło.'
     : noPass ? 'Hasła nieustawione (brak users.json) – logowanie bez hasła tylko na komputerze z VizuApp. Hasło: node scripts/users.mjs set ' + u
-      : '';
+      : '');
 }
 $('loginUser').addEventListener('change', loginHint);
 $('loginBtn').addEventListener('click', async () => {
@@ -359,7 +367,7 @@ $('loginBtn').addEventListener('click', async () => {
     session.token = null;
     return refreshAccess();
   }
-  $('loginUser').innerHTML = (simLogin() || !cfg.auth?.users?.length ? Object.keys(DEMO_LEVELS) : cfg.auth.users).map((u) => `<option>${u}</option>`).join('');
+  $('loginUser').innerHTML = (simLogin() || !cfg.auth?.users?.length ? Object.keys(DEMO_LEVELS) : cfg.auth.users).map((u) => `<option value="${u}">${t(u)}</option>`).join('');
   $('loginPass').value = '';
   $('loginMsg').textContent = '';
   loginHint();
@@ -379,7 +387,7 @@ $('loginForm').addEventListener('submit', async (e) => {
     session.token = s.token;
     $('loginDlg').close();
     await refreshAccess();
-  } catch (err) { $('loginMsg').textContent = err.message === '401' ? 'Złe hasło' : err.message; }
+  } catch (err) { $('loginMsg').textContent = t(err.message === '401' ? 'Złe hasło' : err.message); }
 });
 // sesja po odswiezeniu strony; wygasla (bezczynnosc) - wylogowanie
 async function restoreSession() {
@@ -395,7 +403,7 @@ async function plcWriteMany(items, msg = 'connInfo') {
     await getJson('api/plc/write', post({ items }));
     return true;
   } catch (err) {
-    $(msg).textContent = err.message;
+    $(msg).textContent = t(err.message);
     $(msg).classList.add('err');
     return false;
   }
@@ -406,7 +414,7 @@ document.querySelectorAll('[data-modereq]').forEach((b) => b.addEventListener('c
 // ---------------------------------------------------------------- tryb reczny
 // Jog: przycisk trzymany. Online: POST /api/plc/hold co 200 ms (serwer zdejmuje po utracie strony), offline: symulator
 const jogs = new Map();
-function manualMsg(text, err = false) { $('manualMsg').textContent = text; $('manualMsg').classList.toggle('err', err); }
+function manualMsg(text, err = false) { $('manualMsg').textContent = t(text); $('manualMsg').classList.toggle('err', err); }
 function jogStart(btn) {
   const [axis, d] = btn.dataset.jog.split(':');
   const dir = Number(d);
@@ -469,7 +477,7 @@ function freqWriter(input, v, msg) {
     timer = setTimeout(() => {
       const value = Number(input.value);
       const err = checkParam(PLC_WRITES[v], value);
-      if (err) { $(msg).textContent = `Obroty: ${err}`; $(msg).classList.add('err'); return; }
+      if (err) { $(msg).textContent = t(`Obroty: ${err}`); $(msg).classList.add('err'); return; }
       plcWriteMany([{ v, value }], msg);
     }, 250);
   });
@@ -489,12 +497,12 @@ function updateManual(s) {
 
 // ---------------------------------------------------------------- parametry serwisowe
 const paramInputs = new Map();	// zmienna -> {it, input, row}
-$('serviceGroups').innerHTML = SERVICE_PARAMS.map((g, gi) => `<details ${gi === 0 ? 'open' : ''}><summary>${g.group}</summary>${
+$('serviceGroups').innerHTML = SERVICE_PARAMS.map((g, gi) => `<details ${gi === 0 ? 'open' : ''}><summary>${t(g.group)}</summary>${
   g.items.map((it) => {
     const field = it.type === 'bool' ? `<input type="checkbox" data-param="${it.v}">`
       : it.type === 'enum' ? `<select data-param="${it.v}">${Object.entries(it.options).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>`
         : `<input type="number" data-param="${it.v}" step="any" min="${it.min}" max="${it.max}">`;
-    return `<label class="param" data-row="${it.v}" title="${it.v}${it.min !== undefined ? ` (${it.min} … ${it.max})` : ''}"><span>${it.label}</span>${field}<em>${it.unit}</em></label>`;
+    return `<label class="param" data-row="${it.v}" title="${it.v}${it.min !== undefined ? ` (${it.min} … ${it.max})` : ''}"><span>${t(it.label)}</span>${field}<em>${it.unit}</em></label>`;
   }).join('')}</details>`).join('');
 for (const it of SERVICE_ITEMS) {
   paramInputs.set(it.v, { it, input: document.querySelector(`[data-param="${it.v}"]`), row: document.querySelector(`[data-row="${it.v}"]`) });
@@ -507,7 +515,7 @@ async function saveParam(v) {
   const err = checkParam(PLC_WRITES[v], value);
   input.classList.toggle('bad', Boolean(err));
   $('serviceMsg').classList.toggle('err', Boolean(err));
-  $('serviceMsg').textContent = err ? `${it.label}: ${err}` : '';
+  $('serviceMsg').textContent = err ? `${t(it.label)}: ${t(err)}` : '';
   if (err) return;
   let ok = true;
   if (app.mode === 'offline') sim.setOption(it.sim, value);
@@ -515,7 +523,7 @@ async function saveParam(v) {
   if (ok) {
     row.classList.add('saved');
     setTimeout(() => row.classList.remove('saved'), 900);
-    $('serviceMsg').textContent = `Zapisano: ${it.label} = ${it.type === 'bool' ? (value ? 'TAK' : 'NIE') : value} ${it.unit}`;
+    $('serviceMsg').textContent = `${t('Zapisano:')} ${t(it.label)} = ${it.type === 'bool' ? t(value ? 'TAK' : 'NIE') : value} ${it.unit}`;
   }
 }
 for (const [v, { input }] of paramInputs) input.addEventListener('change', () => saveParam(v));
@@ -586,7 +594,7 @@ function sectionSvg(profile, passes, cut) {
     <polygon points="${P([[-45, 0], [0, 0], [0, T], [-45, T]])}" fill="none" stroke="#9aa1aa" stroke-dasharray="3 2"/>
     <polygon points="${P(now)}" fill="#a9a39d" stroke="#5c5753" stroke-width="1"/>
     <polygon points="${P(target)}" fill="none" stroke="#1f6fb2" stroke-width="1" stroke-dasharray="4 2"/>
-    <text x="6" y="14" font-size="9" fill="#6b7480">${PROFILE_NAMES[profile.kind] ?? ''} · ${cut.done}/${passes.length}</text>`;
+    <text x="6" y="14" font-size="9" fill="#6b7480">${t(PROFILE_NAMES[profile.kind] ?? '')} · ${cut.done}/${passes.length}</text>`;
 }
 
 let lastPanel = 0;
@@ -595,23 +603,23 @@ function updatePanel(c) {
   const { state: s, profile, passes, cut } = c;
   const stages = Number(s.stageCount) || 1;
   const stageText = stages > 1 ? ` · ${Number(s.stage) > 0 ? `polerowanie ${s.stage}/${stages - 1}` : 'kształt'}` : '';
-  $('sStep').textContent = `${EDGE_STEPS[s.step]?.[1] ?? s.step}${stageText}${app.mode === 'online' ? ` · ${MODES[s.mode] ?? ''}` : ''}`;
+  $('sStep').textContent = `${t(EDGE_STEPS[s.step]?.[1]) ?? s.step}${t(stageText)}${app.mode === 'online' ? ` · ${t(MODES[s.mode] ?? '')}` : ''}`;
   // wymiana narzedzia przed etapem polerowania: komunikat przy START
   const tool = s.step === STEP.ToolChange
     ? `Wymień narzędzie na polerkę ${Number(s.stage) + 1}/${stages - 1} i naciśnij START.` : '';
-  $('toolMsg').textContent = tool;
+  $('toolMsg').textContent = t(tool);
   $('toolMsg').hidden = !tool;
-  $('sPass').textContent = passes.length && s.passIndex ? `${Math.min(s.passIndex, passes.length)} / ${passes.length}${s.repeatIndex > 1 ? ` (powt. ${s.repeatIndex})` : ''}` : `— / ${passes.length}`;
+  $('sPass').textContent = passes.length && s.passIndex ? `${Math.min(s.passIndex, passes.length)} / ${passes.length}${s.repeatIndex > 1 ? ` (${t('powt.')} ${s.repeatIndex})` : ''}` : `— / ${passes.length}`;
   $('sX').textContent = `${fmt(s.x)} mm${s.xVelocity ? ` · ${fmt(Math.abs(s.xVelocity) * 0.06, 2)} m/min` : ''}`;
   $('sB').textContent = `${fmt(s.b)} °`;
   $('sSpindle').textContent = `${fmt(s.spindleFrequency)} Hz${s.spindleCurrent ? ` · ${fmt(s.spindleCurrent)} A` : ''}`;
-  $('sMedia').textContent = `${s.clamp ? 'docisk' : '—'} / ${s.water ? 'woda' : '—'}`;
-  $('sTime').textContent = app.mode === 'online' ? `${fmt(s.timeRemaining, 0)} s pozostało · ${fmt(s.progress, 0)} %` : '—';
-  $('sCount').textContent = `${s.cycles ?? 0} cykli · ${fmt(s.metersTotal, 2)} m`;
+  $('sMedia').textContent = `${s.clamp ? t('docisk') : '—'} / ${s.water ? t('woda') : '—'}`;
+  $('sTime').textContent = app.mode === 'online' ? t(`${fmt(s.timeRemaining, 0)} s pozostało · ${fmt(s.progress, 0)} %`) : '—';
+  $('sCount').textContent = t(`${s.cycles ?? 0} cykli · ${fmt(s.metersTotal, 2)} m`);
   const alarms = app.mode === 'online' ? activeFromValues(app.values) : [];
   const simAlarm = app.mode === 'offline' && s.validationError;
-  $('alarms').innerHTML = alarms.map((n) => `<div>${n}. ${alarmText(n)}</div>`).join('')
-    + (simAlarm ? `<div>14. ${alarmText(14)}: ${VALIDATION_TEXT[s.validationError]}</div>` : '');
+  $('alarms').innerHTML = alarms.map((n) => `<div>${n}. ${t(alarmText(n))}</div>`).join('')
+    + (simAlarm ? `<div>14. ${t(alarmText(14))}: ${t(VALIDATION_TEXT[s.validationError])}</div>` : '');
   const count = alarms.length + (simAlarm ? 1 : 0);
   $('alarmCount').hidden = !count;
   $('alarmCount').textContent = count;
@@ -625,7 +633,7 @@ function updatePanel(c) {
       return `<span class="${cls}">${p.angleB > 0 ? '+' : ''}${fmt(p.angleB, 0)}°</span>`;
     }).join('');
   }
-  $('simStartLbl').textContent = sim.step === STEP.Pause ? 'WZNÓW' : 'START';
+  $('simStartLbl').textContent = sim.step === STEP.Pause ? t('WZNÓW') : 'START';
   updateManual(s);
   updateService();
 }

@@ -32,6 +32,13 @@ przejście B = 0). Przekrój (`src/shared/edgeshape.js`) jako zarys u = f(v) –
   PLC (`src/shared/edgeprofile.js`) z receptury cyklu `EdgeProfile.CycleProfile`. Sterowanie (START, PAUZA, STOP,
   reset alarmów, tryb) – tylko zmienne z listy `PLC_WRITES` (`src/shared/config.js`).
 
+## Język i wersja
+
+Strona po polsku, przełącznik **PL / EN** na górnym pasku (zapamiętany w przeglądarce, `src/client/i18n.js`: słownik
+PL → EN, tłumaczenie strony, kroków, alarmów, profili, parametrów i komunikatów serwera). W prawym dolnym rogu wersja
+strony: `v<package.json> <commit> <data budowy>` - ta sama na stronie lokalnej i na GitHub Pages oznacza ten sam kod.
+Serwer czyta `config.json` i swój kod przy starcie: po zmianach (git pull, `npm run build:client`) uruchom go ponownie.
+
 ## Układ strony (jak VizuApp piły)
 
 Górny pasek: tryb PLC / SIM, połączenie z PLC, alarmy, STOP / PAUZA, tempo symulacji, logowanie w prawym górnym

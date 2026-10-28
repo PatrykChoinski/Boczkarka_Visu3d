@@ -430,7 +430,7 @@ input.short { width: 6em; }
 .param .bad { border-color: var(--bad) !important; box-shadow: 0 0 0 3px #fde2e2; }
 .param.saved input, .param.saved select { border-color: var(--ok); box-shadow: 0 0 0 3px #dcf2e3; }
 .alarms div { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--bad); font-weight: 600; }
-.alarms:empty::before { content: 'Brak aktywnych alarmów'; color: var(--muted); font-size: 13px; }
+.alarms:empty::before { content: attr(data-empty); color: var(--muted); font-size: 13px; }
 #alarmOpen.on { background: var(--bad); color: #fff; }
 dialog { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 18px 16px; width: min(420px, calc(100vw - 32px)); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgba(15, 23, 42, 0.35); }
@@ -446,3 +446,6 @@ footer .mono b { font-weight: 600; }
 .tableWrap { max-height: 50vh; overflow-y: auto; }
 .win.manWin { width: 400px; top: 70px; left: 84px; }
 .bar button.tool.active { background: var(--accent); color: #fff; }
+
+#langSeg button { min-height: 32px; padding: 2px 8px; font-size: 12px; }
+#buildInfo { opacity: .7; }

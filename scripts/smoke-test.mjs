@@ -75,8 +75,9 @@ async function launchBrowser() {
 }
 
 // Strona w nowym kontekscie (czysty localStorage); bledy JS i konsoli zbierane do errors
-async function openPage(browser, url) {
+async function openPage(browser, url, langCode = null) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  if (langCode) await context.addInitScript((l) => { localStorage.setItem('vizu.lang', l); }, langCode);
   const page = await context.newPage();
   page.setDefaultTimeout(90000);  // runner CI bez GPU
   const errors = [];
@@ -271,6 +272,27 @@ async function main() {
       assertNoErrors('wersja statyczna', errors);
       log(`OK wersja statyczna (GitHub Pages): ${hud}`);
       await context.close();
+      // wersja angielska: zadnego polskiego tekstu (wezly, podpowiedzi, opcje list) po wybraniu EN, takze w Serwisie
+      const en = await openPage(browser, `http://127.0.0.1:${PORT_STATIC}/Boczkarka_Visu3d/`, 'en');
+      await en.page.evaluate(() => {
+        document.getElementById('loginBtn').click();
+        document.getElementById('loginUser').value = 'Admin';
+        document.getElementById('loginForm').requestSubmit();
+        document.querySelector('[data-tab="service"]').click();
+        document.getElementById('manOpen').click();
+        document.getElementById('alarmOpen').click();
+      });
+      const polish = await en.page.evaluate(() => {
+        const out = [];
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('script,style')) out.push(n.nodeValue);
+        for (const el of document.querySelectorAll('[title],[placeholder]')) out.push(el.getAttribute('title') || el.getAttribute('placeholder'));
+        return out.filter((x) => /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(x) && !x.includes('Język / Language'));
+      });
+      if (polish.length) throw new Error(`wersja EN - polskie teksty: ${polish.slice(0, 10).join(' | ')}`);
+      assertNoErrors('wersja angielska', en.errors);
+      log(`OK wersja angielska: ${await en.page.textContent('#panelTitle')}, ${await en.page.textContent('#sStep')}`);
+      await en.context.close();
     } finally {
       st.close();
     }
