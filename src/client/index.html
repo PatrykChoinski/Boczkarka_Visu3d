@@ -17,6 +17,7 @@
     </div>
     <button id="connOpen" class="tool" title="Połączenie z PLC – adres IP serwera OPC UA"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
     <button id="alarmOpen" class="tool" title="Alarmy"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span class="alarmCount" id="alarmCount" hidden></span></button>
+    <button id="manOpen" class="tool" title="Ręczny – okno, które można przesuwać i zamknąć"><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg></button>
     <button id="barStop" class="tool" title="STOP"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">STOP</span></button>
     <button id="barPause" class="tool" title="PAUZA"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="lbl">PAUZA</span></button>
     <div class="spacer"></div>
@@ -32,7 +33,6 @@
   <main>
     <nav class="tabs side" id="screens">
       <button data-tab="auto" title="Automat"><svg class="ic big" aria-hidden="true"><use href="#i-auto"/></svg></button>
-      <button data-tab="manual" title="Ręczny"><svg class="ic big" aria-hidden="true"><use href="#i-hand"/></svg></button>
       <button data-tab="service" title="Serwis"><svg class="ic big" aria-hidden="true"><use href="#i-wrench"/></svg></button>
     </nav>
     <section id="viewWrap">
@@ -93,30 +93,6 @@
         </div>
       </div>
 
-      <div class="tab" data-tab="manual" id="manualCard" hidden>
-        <p class="hint" id="manualInfo"></p>
-        <div class="jog">
-          <span>X</span><button data-jog="x:-1" title="Trzymaj – jazda w lewo"><svg class="ic" aria-hidden="true"><use href="#i-arrowLeft"/></svg><span>X−</span></button><button data-jog="x:1" title="Trzymaj – jazda w prawo"><span>X+</span><svg class="ic" aria-hidden="true"><use href="#i-arrowRight"/></svg></button>
-          <span>B</span><button data-jog="b:-1" title="Trzymaj – kąt w dół"><svg class="ic" aria-hidden="true"><use href="#i-tiltDown"/></svg><span>B−</span></button><button data-jog="b:1" title="Trzymaj – kąt w górę"><span>B+</span><svg class="ic" aria-hidden="true"><use href="#i-tiltUp"/></svg></button>
-        </div>
-        <label class="cb"><input id="jogFast" type="checkbox"> Jog szybko</label>
-        <h3>Dojazd</h3>
-        <div class="grid2">
-          <label>X cel [mm]<input id="gotoX" type="number" step="10" value="0"></label>
-          <label>B cel [°]<input id="gotoB" type="number" step="5" value="0"></label>
-          <button id="gotoXBtn"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg><span>Jedź X</span></button>
-          <button id="gotoBBtn"><svg class="ic" aria-hidden="true"><use href="#i-tilt"/></svg><span>Ustaw B</span></button>
-        </div>
-        <h3>Wrzeciono i media</h3>
-        <label class="inline">Obroty [Hz] <input id="manFreq" type="number" step="1" value="50" class="short"></label>
-        <div class="row buttons">
-          <button id="spindleBtn"><svg class="ic" aria-hidden="true"><use href="#i-polish"/></svg><span>Wrzeciono</span></button>
-          <button id="waterBtn"><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><span>Woda</span></button>
-          <button id="clampBtn"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span>Docisk</span></button>
-        </div>
-        <div id="manualMsg" class="msg"></div>
-      </div>
-
       <div class="tab" data-tab="service" id="serviceCard" hidden>
         <p class="hint" id="serviceInfo"></p>
         <div id="serviceGroups"></div>
@@ -124,6 +100,34 @@
       </div>
     </aside>
   </main>
+
+  <!-- Reczny: okno jak "Ruchy reczne" w pile - przesuwane za naglowek, pozycja zapamietana, zamykane -->
+  <div id="manWin" class="win manWin" hidden role="dialog" aria-label="Ręczny">
+    <div class="winHead" id="manHead"><span><svg class="ic" aria-hidden="true"><use href="#i-hand"/></svg>Ręczny</span><button id="manClose" title="Zamknij"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="winBody" id="manualCard">
+          <p class="hint" id="manualInfo"></p>
+          <div class="jog">
+            <span>X</span><button data-jog="x:-1" title="Trzymaj – jazda w lewo"><svg class="ic" aria-hidden="true"><use href="#i-arrowLeft"/></svg><span>X−</span></button><button data-jog="x:1" title="Trzymaj – jazda w prawo"><span>X+</span><svg class="ic" aria-hidden="true"><use href="#i-arrowRight"/></svg></button>
+            <span>B</span><button data-jog="b:-1" title="Trzymaj – kąt w dół"><svg class="ic" aria-hidden="true"><use href="#i-tiltDown"/></svg><span>B−</span></button><button data-jog="b:1" title="Trzymaj – kąt w górę"><span>B+</span><svg class="ic" aria-hidden="true"><use href="#i-tiltUp"/></svg></button>
+          </div>
+          <label class="cb"><input id="jogFast" type="checkbox"> Jog szybko</label>
+          <h3>Dojazd</h3>
+          <div class="grid2">
+            <label>X cel [mm]<input id="gotoX" type="number" step="10" value="0"></label>
+            <label>B cel [°]<input id="gotoB" type="number" step="5" value="0"></label>
+            <button id="gotoXBtn"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg><span>Jedź X</span></button>
+            <button id="gotoBBtn"><svg class="ic" aria-hidden="true"><use href="#i-tilt"/></svg><span>Ustaw B</span></button>
+          </div>
+          <h3>Wrzeciono i media</h3>
+          <label class="inline">Obroty [Hz] <input id="manFreq" type="number" step="1" value="50" class="short"></label>
+          <div class="row buttons">
+            <button id="spindleBtn"><svg class="ic" aria-hidden="true"><use href="#i-polish"/></svg><span>Wrzeciono</span></button>
+            <button id="waterBtn"><svg class="ic" aria-hidden="true"><use href="#i-wave"/></svg><span>Woda</span></button>
+            <button id="clampBtn"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span>Docisk</span></button>
+          </div>
+          <div id="manualMsg" class="msg"></div>
+    </div>
+  </div>
 
   <!-- polaczenie z PLC: adres IP serwera OPC UA (sterownika) -->
   <div id="connWin" class="win modal" hidden role="dialog" aria-label="Połączenie z PLC">

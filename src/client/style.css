@@ -439,3 +439,5 @@ footer .mono b { font-weight: 600; }
 .statusline b { color: #dbe6f1; font-weight: 600; }
 #connChip.ok { color: #7ee2a0; }
 #connChip.bad { color: #ff8a80; }
+.win.manWin { width: 400px; top: 70px; left: 84px; }
+.bar button.tool.active { background: var(--accent); color: #fff; }

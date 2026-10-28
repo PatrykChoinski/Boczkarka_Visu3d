@@ -26,7 +26,7 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
 ## Układ strony (jak VizuApp piły)
 
 Górny pasek: tryb PLC / SIM, połączenie z PLC, alarmy, STOP / PAUZA, tempo symulacji, logowanie w prawym górnym
-rogu. Ekrany w lewym pasku: Automat, Ręczny, Serwis. Widok 3D z narzędziami widoku, panel ekranu po prawej,
+rogu. Ekrany w lewym pasku: Automat, Serwis; Ręczny - przesuwane okno (przycisk z ręką na pasku, jak w pile). Widok 3D z narzędziami widoku, panel ekranu po prawej,
 stan maszyny (X, B, wrzeciono, krok, przejście, czas, licznik) na dolnym pasku.
 
 ## Panel obsługi

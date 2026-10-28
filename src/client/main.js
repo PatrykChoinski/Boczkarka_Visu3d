@@ -136,7 +136,7 @@ document.querySelectorAll('#viewTools button').forEach((b) => b.addEventListener
 }));
 
 // Ekrany z lewego paska (jak menu HMI): Automat, Reczny, Serwis - tytul panelu z ikona i nazwa
-const TABS = { auto: ['auto', 'Automat'], manual: ['hand', 'Ręczny'], service: ['wrench', 'Serwis – parametry'] };
+const TABS = { auto: ['auto', 'Automat'], service: ['wrench', 'Serwis – parametry'] };
 function showTab(name) {
   const btn = document.querySelector(`#screens [data-tab="${name}"]`);
   if (!btn || btn.hidden) name = 'auto';
@@ -147,6 +147,47 @@ function showTab(name) {
   $('panelTitle').innerHTML = `${icon(TABS[name][0])}<span>${TABS[name][1]}</span>`;
 }
 document.querySelectorAll('#screens button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+// Okno Reczny (jak "Ruchy reczne" w pile): otwierane z paska, przesuwane za naglowek (mysz i dotyk),
+// pozycja zapamietana w przegladarce; zamkniecie puszcza jog
+const MAN_WIN_KEY = 'vizu.manWin';
+function placeManWin(x, y) {
+  const win = $('manWin');
+  if (x === undefined) {
+    try { ({ x, y } = JSON.parse(store.get(MAN_WIN_KEY, '{}'))); } catch { /* domyslne miejsce z CSS */ }
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  win.style.left = `${Math.min(Math.max(0, x), Math.max(0, window.innerWidth - win.offsetWidth))}px`;
+  win.style.top = `${Math.min(Math.max(0, y), Math.max(0, window.innerHeight - 40))}px`;
+}
+function showManWin(open) {
+  if (!open) [...jogs.keys()].forEach(jogStop);
+  $('manWin').hidden = !open;
+  $('manOpen').classList.toggle('active', open);
+  if (open) placeManWin();
+}
+{
+  const win = $('manWin');
+  const head = $('manHead');
+  let drag = null;
+  head.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = win.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener('pointermove', (e) => { if (drag) placeManWin(e.clientX - drag.dx, e.clientY - drag.dy); });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    store.set(MAN_WIN_KEY, JSON.stringify({ x: win.offsetLeft, y: win.offsetTop }));
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  $('manOpen').addEventListener('click', () => showManWin(win.hidden));
+  $('manClose').addEventListener('click', () => showManWin(false));
+  window.addEventListener('resize', () => { if (!win.hidden) placeManWin(win.offsetLeft, win.offsetTop); });
+}
 
 // Okna polaczenia i alarmow (gorny pasek)
 $('connOpen').addEventListener('click', () => { $('connWin').hidden = !$('connWin').hidden; if (!$('connWin').hidden) loadConnection(); });
@@ -236,7 +277,8 @@ function applyAccess() {
   $('plcControls').hidden = !op;
   $('plcModes').hidden = !op;
   $('plcInfo').textContent = !app.connected ? '' : op ? '' : 'Sterowanie po zalogowaniu (Operator).';
-  document.querySelector('#screens [data-tab="manual"]').hidden = online && app.level < 1;
+  $('manOpen').hidden = online && app.level < 1;
+  if ($('manOpen').hidden && !$('manWin').hidden) showManWin(false);
   document.querySelector('#screens [data-tab="service"]').hidden = online && app.level < 2;
   showTab(app.tab);
   const loginOn = Boolean(cfg.auth?.enabled);

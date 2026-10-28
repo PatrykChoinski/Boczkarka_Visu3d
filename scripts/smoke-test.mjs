@@ -195,7 +195,7 @@ async function main() {
       if (missing.length) throw new Error(`zmienne PLC bez typu / wartosci z subskrypcji: ${missing.join(', ')}`);
       log(`OK zmienne PLC: ${all.length}/${all.length} z typem i wartością (subskrypcje)`);
       // panel lokalny bez users.json (Admin): reczny i serwis widoczne, parametry z PLC, zapis parametru (TIME s -> ms)
-      await page.waitForFunction(() => !document.querySelector('#screens [data-tab="manual"]').hidden
+      await page.waitForFunction(() => !document.getElementById('manOpen').hidden
         && !document.querySelector('#screens [data-tab="service"]').hidden
         && document.querySelector('[data-param="EdgeProfileConfig.ClampDelay"]').value === '1', null, { timeout: 30000, polling: 250 });
       await page.evaluate(() => {
@@ -222,7 +222,7 @@ async function main() {
       const { page, context, errors } = await openPage(browser, `http://127.0.0.1:${PORT_AUTH}/`);
       await page.waitForFunction(() => window.vizu.app.mode === 'online' && window.vizu.app.connected, null, { timeout: 60000, polling: 250 });
       const before = await page.evaluate(() => ({
-        login: !document.getElementById('loginBtn').hidden, manual: !document.querySelector('#screens [data-tab="manual"]').hidden,
+        login: !document.getElementById('loginBtn').hidden, manual: !document.getElementById('manOpen').hidden,
         controls: !document.getElementById('plcControls').hidden,
       }));
       if (!before.login || before.manual || before.controls) throw new Error(`przed logowaniem: ${JSON.stringify(before)}`);
@@ -233,7 +233,7 @@ async function main() {
       }, pass);
       await page.waitForFunction(() => window.vizu.app.level === 1, null, { timeout: 20000, polling: 250 });
       const after = await page.evaluate(() => ({
-        manual: !document.querySelector('#screens [data-tab="manual"]').hidden, service: !document.querySelector('#screens [data-tab="service"]').hidden,
+        manual: !document.getElementById('manOpen').hidden, service: !document.querySelector('#screens [data-tab="service"]').hidden,
         controls: !document.getElementById('plcControls').hidden, chip: document.getElementById('userChip').textContent,
       }));
       if (!after.manual || after.service || !after.controls) throw new Error(`po logowaniu Operatora: ${JSON.stringify(after)}`);

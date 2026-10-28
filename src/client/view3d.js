@@ -176,17 +176,17 @@ export class EdgeView {
     // wozek osi X na belce, ramie nad stolem do przodu, obudowa z szybka i silnikiem
     this.carriage = new THREE.Group();
     this.scene.add(this.carriage);
-    const hubZ = 380;
+    const hubZ = 130;					// obudowa wozka nad polkolem osi B
     this.box(440, 130, 300, 0xd9dcdf, 0, beamTop + 135, railZ, this.carriage);
     this.box(300, 200, hubZ + 120 - railZ, white, 0, beamTop + 160, (railZ + hubZ + 120) / 2, this.carriage);
     const houseTop = beamTop + 260;
     const houseBottom = th + 520;
     this.box(320, houseTop - houseBottom, 300, white, 0, (houseTop + houseBottom) / 2, hubZ - 20, this.carriage);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(12, houseTop - houseBottom - 60, 380),
+    // przyciemniana szyba na przodzie obudowy (od strony operatora)
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(260, houseTop - houseBottom - 60, 10),
       mat(0x2a2320, { transparent: true, opacity: 0.75, roughness: 0.15, metalness: 0.2 }));
-    glass.position.set(230, (houseTop + houseBottom) / 2, hubZ - 20);
+    glass.position.set(-10, (houseTop + houseBottom) / 2, hubZ + 136);
     this.carriage.add(glass);
-    this.box(14, houseTop - houseBottom - 30, 400, alu, 165, (houseTop + houseBottom) / 2, hubZ - 20, this.carriage);
     const topMotor = this.cylinder(85, 260, mat(0xa9aeb4, { metalness: 0.35, roughness: 0.4 }), this.carriage, 28);
     topMotor.rotation.z = Math.PI / 2;
     topMotor.position.set(-20, houseTop + 90, hubZ - 40);
@@ -194,19 +194,48 @@ export class EdgeView {
     // petla prowadnika kabli od obudowy do glowicy (lewa strona, jak na zdjeciu)
     const loop = new THREE.Mesh(new THREE.TorusGeometry(230, 34, 4, 26, Math.PI), black);
     loop.rotation.z = Math.PI / 2;				// polokrag po stronie -x
-    loop.position.set(-170, th + 470, hubZ + 60);
+    loop.position.set(-190, th + 470, hubZ + 140);
     loop.castShadow = true;
     this.carriage.add(loop);
-    this.column = this.box(240, 1, 40, mat(0xe9ebed, { roughness: 0.6 }), 0, 0, railZ - 40, this.carriage);
-    // przegub B: zolta obudowa obrotu na koncu sanek
-    this.hub = new THREE.Group();
-    this.carriage.add(this.hub);
-    const hubDisc = this.cylinder(120, 110, yellow, this.hub);
-    hubDisc.rotation.z = Math.PI / 2;
-    const hubCap = this.cylinder(70, 130, 0x8d949c, this.hub, 24);
-    hubCap.rotation.z = Math.PI / 2;
-    // lacznik piasta -> glowica (dlugosc ustawiana w update)
-    this.link = this.box(110, 90, 1, mat(0xcfd3d8, { metalness: 0.3 }), 0, 0, 0, this.carriage);
+    // Os B: polkolista prowadnica zebata (srodek na krawedzi plyty, w polowie grubosci) przykrecona do plyty supportu
+    // tuz obok glowicy; wozek B jedzie po polkolu i niesie silnik z tarcza skierowana do srodka polkola.
+    const T = m.stoneThickness;
+    const Hw = m.wheelHeight;
+    this.arcCenterY = th + T / 2;
+    this.arcRadius = Hw + 175;				// promien toru wozka B (korpus przekladni na prowadnicy)
+    this.arcX = 150;					// prowadnica obok glowicy (w osi X)
+    const Ra = this.arcRadius;
+    const plateX = this.arcX + 55;
+    const plateBottom = this.arcCenterY - Ra - 70;
+    const plateTop = beamTop + 190;
+    // plyta supportu: od wozka w dol do prowadnicy
+    this.box(30, plateTop - plateBottom, Ra + 130, white, plateX, (plateTop + plateBottom) / 2, (Ra + 130) / 2 - 40, this.carriage);
+    const arcGroup = new THREE.Group();			// polkole w plaszczyznie YZ, po stronie operatora (+z)
+    arcGroup.position.set(this.arcX, this.arcCenterY, 0);
+    arcGroup.rotation.y = -Math.PI / 2;			// lokalne x -> z
+    this.carriage.add(arcGroup);
+    const span = (200 / 180) * Math.PI;			// -100 ... +100 stopni
+    const arcIn = new THREE.Group();
+    arcIn.rotation.z = -span / 2;
+    arcGroup.add(arcIn);
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(Ra, 16, 8, 64, span), mat(0xc9ced4, { metalness: 0.75, roughness: 0.25 }));
+    rail.castShadow = true;
+    arcIn.add(rail);
+    const plateC = new THREE.Mesh(new THREE.RingGeometry(Ra - 45, Ra + 45, 64, 1, 0, span), mat(0xdfe3e7, { side: THREE.DoubleSide, metalness: 0.55, roughness: 0.3 }));
+    plateC.position.z = -28;				// blacha C miedzy torem a plyta supportu (lokalne -z = +x swiata)
+    arcIn.add(plateC);
+    for (let i = 0; i <= 40; i++) {			// zeby listwy (zebatka po obwodzie)
+      const a = (i / 40) * span;
+      const tooth = this.box(8, 14, 26, 0x7f868e, Math.cos(a) * (Ra + 20), Math.sin(a) * (Ra + 20), 0, arcIn);
+      tooth.rotation.z = a;
+    }
+    // wozek B na polkolu (polozenie z kata B w update)
+    this.slider = new THREE.Group();
+    this.carriage.add(this.slider);
+    this.box(this.arcX + 20, 120, 110, yellow, this.arcX / 2, 0, 0, this.slider);
+    const servoB = this.cylinder(40, 140, black, this.slider, 20);
+    servoB.rotation.x = Math.PI / 2;			// serwo B z zebnikiem na zebatce, wzdluz osi narzedzia
+    servoB.position.set(this.arcX - 30, 0, 125);
     // glowica: uklad, w ktorym +z = normalna szlifowanej plaszczyzny (od kamienia do silnika)
     this.head = new THREE.Group();
     this.carriage.add(this.head);
@@ -263,10 +292,10 @@ export class EdgeView {
     motor.position.z = H + 250 + (m.motorLength - 150) / 2;
     const fan = this.cylinder(m.motorDiameter / 2 - 4, 70, mat(0x1d4fb8, { roughness: 0.4 }), this.tool, 32);
     fan.rotation.x = Math.PI / 2;
-    fan.position.z = H + 175 + m.motorLength + 35;
+    fan.position.z = H + 250 + (m.motorLength - 150) + 35;
     const cap = this.cylinder(40, 50, yellow, this.tool, 24);
     cap.position.set(0, m.motorDiameter / 2 + 30, H + 260);
-    this.motorRear = H + 175 + m.motorLength + 70;
+    this.motorRear = H + 250 + (m.motorLength - 150) + 70;
     // woda
     this.water = new THREE.Mesh(new THREE.ConeGeometry(m.wheelDiameter * 0.55, 140, 24, 1, true),
       new THREE.MeshBasicMaterial({ color: 0x5fb3ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
@@ -357,26 +386,14 @@ export class EdgeView {
     const cv = plane.contact[1] + n[1] * off;
     this.head.position.set(0, m.tableHeight + cv, cu);
     this.head.rotation.x = -b * Math.PI / 180;
-    // piasta przegubu nad krawedzia, ramie z wozka do piasty, lacznik piasta -> tyl silnika
-    const hubY = m.tableHeight + 420;
-    const hubZ = 380;
-    this.hub.position.set(0, hubY, hubZ);
-    // sanki pionowe od wozka (przed belka) do obudowy B
-    const colTop = this.beamTop + 190;
-    this.column.scale.y = colTop - hubY;
-    this.column.position.set(0, (colTop + hubY) / 2, hubZ + 80);
+    // wozek B na polkolistej prowadnicy: promien arcRadius od srodka polkola w kierunku normalnej
+    this.slider.position.set(0, this.arcCenterY + n[1] * this.arcRadius, n[0] * this.arcRadius);
+    this.slider.rotation.x = -b * Math.PI / 180;
     // prowadnik kabli na belce: od punktu stalego do petli przy wozku
     const ca = this.chainFixX;
     const cb = x;
     this.chainRun.scale.x = Math.max(1, Math.abs(cb - ca));
     this.chainRun.position.x = (ca + cb) / 2;
-    const rear = new THREE.Vector3(0, m.tableHeight + cv + n[1] * this.motorRear * 0.7, cu + n[0] * this.motorRear * 0.7);
-    const hub = new THREE.Vector3(0, hubY, hubZ);
-    const len = rear.distanceTo(hub);
-    this.link.scale.z = Math.max(1, len);
-    this.link.position.copy(rear.clone().add(hub).multiplyScalar(0.5));
-    // os z prostopadloscianu wzdluz odcinka tyl silnika -> piasta (obrot wokol X: z -> (0, -sin, cos))
-    this.link.rotation.set(Math.atan2(-(hub.y - rear.y), hub.z - rear.z), 0, 0);
     // obroty tarczy i woda
     const rps = Math.min(Number(state.spindleFrequency) || 0, 120) / 10;
     this.spin += rps * Math.PI * 2 * dt;

@@ -4,6 +4,12 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28 (5)
+
+### Oś B na półkolu, Ręczny jako okno
+- Obrót osi B po półkolistej prowadnicy zębatej (środek na krawędzi płyty) przykręconej do płyty supportu tuż obok głowicy; wózek B z serwem jedzie po półkolu i niesie silnik z tarczą skierowaną do środka. Bez piasty i łącznika.
+- Ręczny: okno jak „Ruchy ręczne” w pile – przycisk z ręką na górnym pasku, przesuwane za nagłówek (pozycja zapamiętana), zamknięcie puszcza jog. Z lewego paska zostały Automat i Serwis.
+
 ## 2026-10-28 (4)
 
 ### Układ strony jak VizuApp piły, model wg zdjęcia maszyny (DSCN1131)
