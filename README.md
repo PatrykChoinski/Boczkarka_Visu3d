@@ -35,7 +35,7 @@ stan maszyny (X, B, wrzeciono, krok, przejście, czas, licznik) na dolnym pasku.
   **Admin** (dodatkowo Serwis – parametry, adres OPC UA). Bez logowania: podgląd, STOP, PAUZA. Hasła w `users.json` obok
   `config.json` (poza repo): `node scripts/users.mjs set Operator` (tak samo `Serwis`, `Admin`). Bez `users.json` konta są
   bez hasła i można je otworzyć tylko na komputerze z VizuApp (z tabletu w sieci nie). Serwer sprawdza poziom przy
-  każdym zapisie (403). Wersja statyczna (Pages): logowanie demonstracyjne bez hasła.
+  każdym zapisie (403). Tryb SIM i wersja statyczna (Pages): logowanie bez hasła, tylko na stronie (bez dostępu do PLC); tryb PLC: hasło.
 - **Alarmy**: okno z paska – aktywne i **historia z bazy** `alarms.db` (SQLite obok `config.json`; serwer zapisuje
   wystąpienie i ustąpienie każdego alarmu PLC, także bez otwartej strony), kwitowanie od Operatora.
 - **Ręczny**: jog X± / B± (przycisk trzymany, `/api/plc/hold`, serwer puszcza po utracie strony), jog szybko,

@@ -7,6 +7,7 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ## 2026-10-28 (6)
 
 ### Logowanie, historia alarmów, woda, obroty na bieżąco, kolizje osi B
+- Logowanie w trybie SIM bez hasła (tylko strona, bez dostępu do PLC), w trybie PLC z hasłem z `users.json`; `users.mjs` usuwa BOM z wejścia PowerShell.
 - Logowanie zawsze widoczne: konta Operator / Serwis / Admin; Ręczny od Operatora, Serwis tylko Serwis i Admin (online i offline). Bez `users.json` konta bez hasła tylko lokalnie; Pages - logowanie demonstracyjne.
 - Okno alarmów: zakładka Historia z bazy `alarms.db` (`/api/alarms`), kwitowanie, odświeżanie przy zmianie.
 - Woda: krople z wrzeciona (środek tarczy) i z wieńca tarczy zrzucane stycznie, opadające i rozbryzgiwane na kamieniu / stole.

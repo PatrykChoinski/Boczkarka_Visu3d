@@ -27,7 +27,8 @@ const session = {
   get token() { try { return sessionStorage.getItem('vizu.token'); } catch { return null; } },
   set token(t) { try { if (t) sessionStorage.setItem('vizu.token', t); else sessionStorage.removeItem('vizu.token'); } catch { /* bez pamieci */ } },
 };
-// wersja statyczna (GitHub Pages): logowanie demonstracyjne bez hasla - tylko pokazuje i ukrywa funkcje jak na maszynie
+// Logowanie bez hasla w symulacji (SIM) i w wersji statycznej (Pages) - tylko po stronie strony, pokazuje i ukrywa
+// funkcje jak na maszynie, bez dostepu do PLC. Tryb PLC: logowanie w serwerze z haslem (users.json).
 const DEMO_LEVELS = { Operator: 1, Serwis: 2, Admin: 3 };
 const demo = {
   get user() { try { return sessionStorage.getItem('vizu.demoUser') || ''; } catch { return ''; } },
@@ -132,7 +133,7 @@ function setMode(mode) {
   $('speedBox').hidden = mode !== 'offline';
   $('connOpen').hidden = !cfg.plc || mode !== 'online';
   updateChip();
-  applyAccess();
+  refreshAccess();
 }
 document.querySelectorAll('#mode button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 document.querySelector('#mode [data-mode="online"]').disabled = !cfg.plc;
@@ -293,8 +294,9 @@ $('connDefault').addEventListener('click', () => setEndpoint('').then(loadConnec
 
 // ---------------------------------------------------------------- logowanie i poziom dostepu
 // Poziom z serwera (GET /api/plc): z logowania (users.json), bez logowania - panel lokalny Admin, z sieci Podglad
+const simLogin = () => cfg.static || app.mode === 'offline';
 async function refreshAccess() {
-  if (cfg.static) {
+  if (simLogin()) {
     app.level = DEMO_LEVELS[demo.user] ?? 0;
     app.user = demo.user;
   } else {
@@ -322,7 +324,7 @@ function applyAccess() {
   document.querySelector('#screens [data-tab="service"]').hidden = app.level < 2;
   showTab(app.tab);
   const loginOn = true;				// zawsze: Operator / Serwis / Admin
-  const loggedIn = cfg.static ? Boolean(demo.user) : Boolean(session.token && app.level > 0);
+  const loggedIn = simLogin() ? Boolean(demo.user) : Boolean(session.token && app.level > 0);
   $('loginBtn').title = loggedIn ? 'Wyloguj' : 'Zaloguj';
   $('loginBtn').innerHTML = icon(loggedIn ? 'logout' : 'login');
   const lvl = LEVEL_NAMES[app.level];
@@ -339,21 +341,22 @@ function applyAccess() {
 // okno logowania: haslo niepotrzebne w wersji demonstracyjnej i dla konta bez hasla (bez users.json, tylko lokalnie)
 function loginHint() {
   const u = $('loginUser').value;
-  const noPass = cfg.static || (cfg.auth?.open && !cfg.auth?.passwords?.[u]);
+  const noPass = simLogin() || (cfg.auth?.open && !cfg.auth?.passwords?.[u]);
   $('loginPassRow').hidden = noPass;
   $('loginHint').textContent = cfg.static ? 'Wersja demonstracyjna: wybór konta bez hasła – pokazuje i ukrywa funkcje jak na maszynie.'
+    : simLogin() ? 'Symulacja: logowanie bez hasła (bez dostępu do PLC). W trybie PLC – hasło.'
     : noPass ? 'Hasła nieustawione (brak users.json) – logowanie bez hasła tylko na komputerze z VizuApp. Hasło: node scripts/users.mjs set ' + u
       : '';
 }
 $('loginUser').addEventListener('change', loginHint);
 $('loginBtn').addEventListener('click', async () => {
-  if (cfg.static && demo.user) { demo.user = ''; return refreshAccess(); }
-  if (!cfg.static && session.token && app.level > 0) {
+  if (simLogin() && demo.user) { demo.user = ''; return refreshAccess(); }
+  if (!simLogin() && session.token && app.level > 0) {
     await getJson('api/logout', post({})).catch(() => {});
     session.token = null;
     return refreshAccess();
   }
-  $('loginUser').innerHTML = (cfg.static || !cfg.auth?.users?.length ? Object.keys(DEMO_LEVELS) : cfg.auth.users).map((u) => `<option>${u}</option>`).join('');
+  $('loginUser').innerHTML = (simLogin() || !cfg.auth?.users?.length ? Object.keys(DEMO_LEVELS) : cfg.auth.users).map((u) => `<option>${u}</option>`).join('');
   $('loginPass').value = '';
   $('loginMsg').textContent = '';
   loginHint();
@@ -363,7 +366,7 @@ $('loginBtn').addEventListener('click', async () => {
 $('loginCancel').addEventListener('click', () => $('loginDlg').close());
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (cfg.static) {
+  if (simLogin()) {
     demo.user = $('loginUser').value;
     $('loginDlg').close();
     return refreshAccess();

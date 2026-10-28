@@ -18,7 +18,8 @@ const users = loadUsers(file);
 async function readPassword() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdin.isTTY ? process.stdout : undefined, terminal: false });
   if (process.stdin.isTTY) process.stdout.write(`Hasło dla ${name}: `);
-  for await (const line of rl) { rl.close(); return line.replace(/\r$/, ''); }
+  // PowerShell dodaje na poczatku BOM (EF BB BF) i CRLF - haslo bez nich, takie jak wpisane
+  for await (const line of rl) { rl.close(); return line.replace(/^﻿/, '').replace(/\r$/, ''); }
   return '';
 }
 
