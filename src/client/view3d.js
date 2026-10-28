@@ -131,8 +131,8 @@ export class EdgeView {
       g.fillText('PROMASZ', w / 2, h * 0.62);
     });
     for (const f of [0.26, 0.74]) {
-      const plate = new THREE.Mesh(new THREE.PlaneGeometry(560, 420), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 }));
-      plate.position.set(x0 + len * f, 60 + (th - 85) * 0.5, zBaseFront + 1);
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(520, 380), new THREE.MeshStandardMaterial({ map: logo, roughness: 0.5 }));
+      plate.position.set(x0 + len * f, 350, zBaseFront + 1);			// pod prowadnica dolu supportu
       this.scene.add(plate);
     }
     // blat czarny (wysuniety nad przod podstawy)
@@ -171,6 +171,9 @@ export class EdgeView {
     const ventPlate = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), new THREE.MeshStandardMaterial({ map: vent }));
     ventPlate.position.set(cabX, th + 980, railZ + 151);
     this.scene.add(ventPlate);
+    // prowadnica liniowa dolu supportu na froncie podstawy (pod krawedzia blatu)
+    this.box(len, 30, 35, mat(0xb8bdc3, { metalness: 0.7, roughness: 0.25 }), x0 + len / 2, th - 260, zBaseFront + 18);
+    this.box(len, 70, 12, mat(0x8b9096, { metalness: 0.4 }), x0 + len / 2, th - 260, zBaseFront + 6);
     // prowadnik kabli w belce: od punktu stalego do wozka
     this.chainFixX = x0 + len / 2;
     this.chainRun = this.box(1, 40, 90, black, 0, beamTop + 95, railZ);
@@ -210,11 +213,16 @@ export class EdgeView {
     const plateTop = beamTop + 190;
     // plyta supportu: od wozka w dol do prowadnicy
     this.box(30, plateTop - plateBottom, Ra + 110, white, plateX, (plateTop + plateBottom) / 2, 15 + (Ra + 110) / 2, this.carriage);	// przed krawedzia (kamien przejezdza obok)
+    // dol supportu prowadzony po stole: wspornik pod blatem do prowadnicy liniowej na froncie podstawy
+    const zLowRail = zBaseFront + 35;
+    const yLowRail = th - 260;
+    this.box(30, 150, 40 - zLowRail, white, plateX, plateBottom + 75, (40 + zLowRail) / 2, this.carriage);
+    this.box(150, 90, 70, mat(0x5b6168, { metalness: 0.4, roughness: 0.4 }), plateX, yLowRail, zLowRail + 10, this.carriage);	// wozek prowadnicy
     const arcGroup = new THREE.Group();			// polkole w plaszczyznie YZ, po stronie operatora (+z)
     arcGroup.position.set(this.arcX, this.arcCenterY, 0);
     arcGroup.rotation.y = -Math.PI / 2;			// lokalne x -> z
     this.carriage.add(arcGroup);
-    const span = (200 / 180) * Math.PI;			// -100 ... +100 stopni
+    const span = (240 / 180) * Math.PI;			// -120 ... +120 stopni (polksiezyc dluzszy niz polkole, zawija za krawedz)
     const arcIn = new THREE.Group();
     arcIn.rotation.z = -span / 2;
     arcGroup.add(arcIn);
@@ -224,8 +232,8 @@ export class EdgeView {
     const plateC = new THREE.Mesh(new THREE.RingGeometry(Ra - 45, Ra + 45, 64, 1, 0, span), mat(0xdfe3e7, { side: THREE.DoubleSide, metalness: 0.55, roughness: 0.3 }));
     plateC.position.z = -28;				// blacha C miedzy torem a plyta supportu (lokalne -z = +x swiata)
     arcIn.add(plateC);
-    for (let i = 0; i <= 40; i++) {			// zeby listwy (zebatka po obwodzie)
-      const a = (i / 40) * span;
+    for (let i = 0; i <= 48; i++) {			// zeby listwy (zebatka po obwodzie)
+      const a = (i / 48) * span;
       const tooth = this.box(8, 14, 26, 0x7f868e, Math.cos(a) * (Ra + 20), Math.sin(a) * (Ra + 20), 0, arcIn);
       tooth.rotation.z = a;
     }
