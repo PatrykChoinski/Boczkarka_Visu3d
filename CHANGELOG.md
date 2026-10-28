@@ -4,6 +4,15 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-28
+
+### Wygląd maszyny jak B1PK-14.0-2000.2S (zdjęcia Promasz)
+- Rama stołu z profili w jasnoszarym lakierze strukturalnym, czarny blat z rolkami kulowymi (także pod głowicą, szczelina pod krawędzią płyty), rura z 3 siłownikami pneumatycznymi pod blatem.
+- Belka osi X z tyłu stołu: jasnoszara, żółty pas, wanna olejowa, tabliczka PROMASZ; wózek z żółtą obudową i serwem, sanki pionowe, żółta obudowa obrotu B.
+- Głowica: żebrowana tarcza w półkolistej osłonie aluminiowej, żółta osłona z kratką, motoreduktor z niebieskim wentylatorem; drugie wrzeciono ze szczotką (podniesione), prowadnik kabli, osłona z poliwęglanu, szafa sterownicza na prawym końcu.
+- Kamera od strony operatora (jak na zdjęciach), hala z posadzką betonową; stół 3000 mm, tarcza 220 mm.
+- Tryb `?lite` (bez cieni, scena co 200 ms) – słaby tablet, CI; publikacja Pages przy `PAGES_ENABLED`.
+
 ## 2026-10-27 (2)
 
 ### Wizualizacja boczkarki profilowej

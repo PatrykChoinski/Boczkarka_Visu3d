@@ -4,8 +4,10 @@ Wizualizacja 3D boczkarki profilowej Promasz (konstrukcja jak B1PK-14.0-2000.2: 
 wrzecionowym i tarczą garnkową na ramieniu wychylnym B, przejazd X wzdłuż stołu). Submoduł `Visu3D` repo
 [Promasz_Boczkarka](https://github.com/PatrykChoinski/Promasz_Boczkarka) (obok `PLC` i `HMI`).
 
-Widok pokazuje stół z płytą, belkę z wózkiem osi X, ramię i głowicę pochyloną o kąt B, docisk, wodę, obroty
-tarczy oraz **krawędź płyty obrabianą przejście po przejściu** (fasetki ćwierćwałka / półwałka, fazy, bok prosty,
+Wygląd jak na zdjęciach B1PK-14.0-2000.2S (zpupromasz.pl): jasnoszara rama, czarny blat z rolkami kulowymi, belka
+z żółtym pasem i tabliczką PROMASZ, wózek i głowica w żółtych obudowach, tarcza w półkolistej osłonie, drugie
+wrzeciono ze szczotką, prowadnik kabli, szafa na prawym końcu; kamera od strony operatora. Widok pokazuje
+głowicę pochyloną o kąt B, docisk, wodę, obroty tarczy oraz **krawędź płyty obrabianą przejście po przejściu** (fasetki ćwierćwałka / półwałka, fazy, bok prosty,
 bieżący przejazd zeszlifowany do aktualnej pozycji X). Panel: krok automatu, przejście i/n, X, B, wrzeciono, czas,
 liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
 
