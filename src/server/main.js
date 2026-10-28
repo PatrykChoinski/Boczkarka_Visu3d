@@ -72,7 +72,10 @@ export function clientConfig(cfg, plc, auth = null) {
   return {
     plc: Boolean(plc), endpoint: cfg.endpoint, variables: cfg.variables, steps: EDGE_STEPS,
     machine: cfg.machine, shape: cfg.shape, offline: cfg.offline,
-    auth: { enabled: Boolean(auth?.enabled), users: auth?.enabled ? auth.names() : [], timeoutMin: cfg.auth?.timeoutMin ?? 30 },
+    auth: {
+      enabled: Boolean(auth?.enabled), users: auth?.enabled ? auth.names() : [], timeoutMin: cfg.auth?.timeoutMin ?? 30,
+      passwords: Object.fromEntries((auth?.names() || []).map((n) => [n, auth.hasPassword(n)])), open: Boolean(auth?.open),
+    },
   };
 }
 
@@ -169,8 +172,12 @@ async function handleAuth(auth, req, res, pathname) {
   if (!auth?.enabled) return json(res, 404, { error: 'Logowanie wyłączone (brak users.json)' });
   if (pathname === '/api/login' && req.method === 'POST') {
     const { user, password } = await readJson(req);
-    const s = auth.login(String(user || ''), String(password || ''));
+    const name = String(user || '');
+    const s = auth.login(name, String(password || ''), { local: isLocal(req) });
     if (s) return json(res, 200, s);
+    if (auth.users[name] && !auth.hasPassword(name)) {
+      return json(res, 403, { error: auth.open ? `${name}: bez hasła tylko na komputerze z VizuApp` : `${name}: brak hasła – ustaw: node scripts/users.mjs set ${name}` });
+    }
     // zle haslo: odpowiedz z opoznieniem (zgadywanie hasel wolniej)
     return setTimeout(() => json(res, 401, { error: 'Złe hasło' }), 500);
   }
@@ -271,7 +278,8 @@ async function main() {
   if (args.port) cfg.httpPort = Number(args.port);
   if (args.host) cfg.httpHost = args.host;
   const source = args['no-plc'] ? null : new OpcUaSource(cfg);
-  const auth = new Auth(loadUsers(args.users || cfg.usersFile), cfg.auth);
+  const usersFile = args.users || cfg.usersFile;
+  const auth = new Auth(loadUsers(usersFile), { ...cfg.auth, open: !fs.existsSync(usersFile) });
   let alarmDb = null;
   if (source) {
     try { alarmDb = new AlarmDb(args['alarms-db'] || cfg.alarmsDbFile); } catch (err) { console.log(`Historia alarmów wyłączona (${cfg.alarmsDbFile}): ${err.message}`); }
@@ -283,7 +291,7 @@ async function main() {
     throw err;
   });
   server.listen(cfg.httpPort, cfg.httpHost, () => {
-    console.log(`VizuApp: ${pageUrls(cfg.httpHost, cfg.httpPort).join('  ')}  (OPC UA: ${source ? cfg.endpoint : 'wylaczone'}, logowanie: ${auth.enabled ? auth.names().join(' / ') : 'wylaczone - brak users.json'})`);
+    console.log(`VizuApp: ${pageUrls(cfg.httpHost, cfg.httpPort).join('  ')}  (OPC UA: ${source ? cfg.endpoint : 'wylaczone'}, logowanie: ${auth.names().join(' / ')}${auth.open ? ' - bez users.json: bez hasla tylko na tym komputerze' : ''})`);
     if (source) source.start();
   });
 }

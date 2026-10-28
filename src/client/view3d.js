@@ -167,9 +167,6 @@ export class EdgeView {
     // prowadnica liniowa dolu supportu na froncie podstawy (pod krawedzia blatu)
     this.box(len, 30, 35, mat(0xb8bdc3, { metalness: 0.7, roughness: 0.25 }), x0 + len / 2, th - 260, zBaseFront + 18);
     this.box(len, 70, 12, mat(0x8b9096, { metalness: 0.4 }), x0 + len / 2, th - 260, zBaseFront + 6);
-    // prowadnik kabli w belce: od punktu stalego do wozka
-    this.chainFixX = x0 + len / 2;
-    this.chainRun = this.box(1, 40, 90, black, 0, beamTop + 95, railZ);
     // wozek osi X na belce: obudowa z szybka i silnikiem nad belka, support w dol przy krawedzi (bez ramienia)
     this.carriage = new THREE.Group();
     this.scene.add(this.carriage);
@@ -187,12 +184,6 @@ export class EdgeView {
     topMotor.rotation.z = Math.PI / 2;
     topMotor.position.set(-20, houseTop + 90, hubZ - 40);
     this.box(200, 60, 160, 0x8f959b, -20, houseTop + 30, hubZ - 40, this.carriage);
-    // petla prowadnika kabli od obudowy do glowicy (lewa strona, jak na zdjeciu)
-    const loop = new THREE.Mesh(new THREE.TorusGeometry(230, 34, 4, 26, Math.PI), black);
-    loop.rotation.z = Math.PI / 2;				// polokrag po stronie -x
-    loop.position.set(-190, th + 650, railZ + 170);
-    loop.castShadow = true;
-    this.carriage.add(loop);
     // Os B: polkolista prowadnica zebata (srodek na krawedzi plyty, w polowie grubosci) przykrecona do plyty supportu
     // tuz obok glowicy; wozek B jedzie po polkolu i niesie silnik z tarcza skierowana do srodka polkola.
     const T = m.stoneThickness;
@@ -208,10 +199,10 @@ export class EdgeView {
     // gora: mechanizm osi B przypiety z boku belki (wozek na licu z zoltym pasem), ciegno do gornego konca polksiezyca
     const frontZ = railZ + 110;
     const mountY = beamTop - beamH / 2;
-    this.box(320, 240, 70, yellow, sideX - 60, mountY, frontZ + 35, this.carriage);
+    this.box(300, 240, 70, yellow, sideX + 110, mountY, frontZ + 35, this.carriage);	// z boku glowicy (B -90..+90 bez kolizji)
     const mountServo = this.cylinder(45, 120, black, this.carriage, 20);
     mountServo.rotation.x = Math.PI / 2;
-    mountServo.position.set(sideX - 140, mountY, frontZ + 130);
+    mountServo.position.set(sideX + 190, mountY, frontZ + 130);
     this.strut(new THREE.Vector3(sideX, mountY - 120, frontZ + 35), endTop, 70, 50, alu, this.carriage);
     // dol: koniec polksiezyca do wozka prowadnicy liniowej na froncie stolu (pod blatem)
     const zLowRail = zBaseFront + 35;
@@ -305,12 +296,8 @@ export class EdgeView {
     const cap = this.cylinder(40, 50, yellow, this.tool, 24);
     cap.position.set(0, m.motorDiameter / 2 + 30, H + 260);
     this.motorRear = H + 250 + (m.motorLength - 150) + 70;
-    // woda
-    this.water = new THREE.Mesh(new THREE.ConeGeometry(m.wheelDiameter * 0.55, 140, 24, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x5fb3ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
-    this.water.rotation.x = -Math.PI / 2;
-    this.water.position.z = -20;
-    this.tool.add(this.water);
+    // woda: krople wylatujace z wrzeciona (srodek tarczy) i rozbryzgiwane przez obracajaca sie tarcze
+    this.buildSpray();
     // znacznik docisku (pierscien przy oslonie)
     this.clampRing = new THREE.Mesh(new THREE.TorusGeometry(R + 34, 6, 12, 48), mat(0x2ecc71, { emissive: 0x0b5d2a }));
     this.clampRing.position.z = H + 8;
@@ -398,18 +385,94 @@ export class EdgeView {
     // wozek B na polkolistej prowadnicy: promien arcRadius od srodka polkola w kierunku normalnej
     this.slider.position.set(0, this.arcCenterY + n[1] * this.arcRadius, n[0] * this.arcRadius);
     this.slider.rotation.x = -b * Math.PI / 180;
-    // prowadnik kabli na belce: od punktu stalego do petli przy wozku
-    const ca = this.chainFixX;
-    const cb = x;
-    this.chainRun.scale.x = Math.max(1, Math.abs(cb - ca));
-    this.chainRun.position.x = (ca + cb) / 2;
     // obroty tarczy i woda
     const rps = Math.min(Number(state.spindleFrequency) || 0, 120) / 10;
     this.spin += rps * Math.PI * 2 * dt;
     this.wheel.rotation.z = this.spin;
-    this.water.visible = Boolean(state.water);
-    this.water.material.opacity = 0.2 + 0.1 * Math.sin(performance.now() / 70);
+    this.updateSpray(Boolean(state.water), rps, dt);
     this.clampRing.visible = Boolean(state.clamp);
+  }
+
+  // Woda (jak na filmach): z wrzeciona przez srodek tarczy na wieniec, z wienca zrzucana stycznie (obroty) i promieniowo,
+  // opada pod grawitacja i rozbryzguje sie na kamieniu / stole / posadzce. Czastki w ukladzie sceny (bufor kolowy).
+  buildSpray() {
+    const n = this.lite ? 260 : 1400;
+    const sp = { n, pos: new Float32Array(n * 3), vel: new Float32Array(n * 3), life: new Float32Array(n), bounced: new Uint8Array(n), next: 0, carry: 0 };
+    sp.pos.fill(-1e5);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(sp.pos, 3));
+    const drop = this.texture(32, 32, (g, w, h) => {	// okragla kropla z jasnym srodkiem
+      const r = g.createRadialGradient(w / 2, h / 2, 1, w / 2, h / 2, w / 2);
+      r.addColorStop(0, 'rgba(235,248,255,1)');
+      r.addColorStop(0.5, 'rgba(150,210,255,0.85)');
+      r.addColorStop(1, 'rgba(150,210,255,0)');
+      g.fillStyle = r;
+      g.fillRect(0, 0, w, h);
+    });
+    sp.points = new THREE.Points(geo, new THREE.PointsMaterial({ map: drop, size: 26, transparent: true, opacity: 0.8, depthWrite: false }));
+    sp.points.frustumCulled = false;
+    this.scene.add(sp.points);
+    this.spray = sp;
+  }
+
+  updateSpray(on, rps, dt) {
+    const sp = this.spray;
+    const R = this.m.wheelDiameter / 2;
+    const H = this.m.wheelHeight;
+    const top = this.m.tableHeight + this.m.stoneThickness;
+    if (on && dt > 0) {
+      this.tool.updateWorldMatrix(true, false);
+      const q = new THREE.Quaternion();
+      this.tool.getWorldQuaternion(q);
+      const vt = Math.min(1700, 300 + rps * 2 * Math.PI * R * 0.3);	// predkosc obwodowa (wizualnie, skrocona)
+      sp.carry += (this.lite ? 600 : 2600) * Math.min(dt, 0.1);
+      for (; sp.carry >= 1; sp.carry -= 1) {
+        const i = sp.next;
+        sp.next = (sp.next + 1) % sp.n;
+        let p;
+        let v;
+        if (Math.random() < 0.3) {
+          // strumien z wrzeciona: srodek tarczy, w strone krawedzi kamienia (os narzedzia)
+          p = new THREE.Vector3((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, H * 0.5);
+          v = new THREE.Vector3((Math.random() - 0.5) * 250, (Math.random() - 0.5) * 250, -900 - Math.random() * 400);
+        } else {
+          // z wienca tarczy: stycznie (obroty) i promieniowo
+          const a = Math.random() * Math.PI * 2;
+          const radial = 120 + Math.random() * 280;
+          p = new THREE.Vector3(Math.cos(a) * (R + 2), Math.sin(a) * (R + 2), H * Math.random());
+          v = new THREE.Vector3(-Math.sin(a) * vt + Math.cos(a) * radial, Math.cos(a) * vt + Math.sin(a) * radial, -150 + Math.random() * 450);
+        }
+        this.tool.localToWorld(p);
+        v.applyQuaternion(q);
+        sp.pos[i * 3] = p.x; sp.pos[i * 3 + 1] = p.y; sp.pos[i * 3 + 2] = p.z;
+        sp.vel[i * 3] = v.x; sp.vel[i * 3 + 1] = v.y; sp.vel[i * 3 + 2] = v.z;
+        sp.life[i] = 0.25 + Math.random() * 0.35;
+        sp.bounced[i] = 0;
+      }
+    }
+    const g = 9810;
+    const step = Math.min(dt, 0.05);
+    for (let i = 0; i < sp.n; i++) {
+      if (sp.life[i] <= 0) { sp.pos[i * 3 + 1] = -1e5; continue; }
+      sp.life[i] -= step;
+      sp.vel[i * 3 + 1] -= g * step;
+      sp.pos[i * 3] += sp.vel[i * 3] * step;
+      sp.pos[i * 3 + 1] += sp.vel[i * 3 + 1] * step;
+      sp.pos[i * 3 + 2] += sp.vel[i * 3 + 2] * step;
+      // rozbryzg: na wierzchu kamienia / stolu (z < 0) albo na posadzce - odbicie w gore z rozrzutem, potem koniec
+      const z = sp.pos[i * 3 + 2];
+      const floor = z < 0 && z > -this.m.stoneWidth ? top : z < 0 ? this.m.tableHeight : 0;
+      if (sp.pos[i * 3 + 1] < floor && sp.vel[i * 3 + 1] < 0) {
+        if (sp.bounced[i]) { sp.life[i] = 0; continue; }
+        sp.bounced[i] = 1;
+        sp.pos[i * 3 + 1] = floor + 1;
+        sp.vel[i * 3] = sp.vel[i * 3] * 0.3 + (Math.random() - 0.5) * 600;
+        sp.vel[i * 3 + 1] = Math.abs(sp.vel[i * 3 + 1]) * 0.25 + Math.random() * 400;
+        sp.vel[i * 3 + 2] = sp.vel[i * 3 + 2] * 0.3 + (Math.random() - 0.5) * 600;
+        sp.life[i] = Math.min(sp.life[i], 0.25 + Math.random() * 0.2);
+      }
+    }
+    sp.points.geometry.attributes.position.needsUpdate = true;
   }
 
   render() {

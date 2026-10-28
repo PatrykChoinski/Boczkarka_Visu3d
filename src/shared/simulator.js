@@ -152,6 +152,14 @@ export class EdgeSimulator {
     return true;
   }
 
+  // Obroty na biezaco (jak PLC): reczny - zadana wrzeciona, automat - obroty profilu cyklu (przejscia bez wlasnych obrotow)
+  setSpindleFrequency(frequency) {
+    const f = Number(frequency);
+    if (!(f >= 0)) return;
+    if (this.profile && !this.idle()) this.profile.spindleFrequency = f;
+    else if (this.spindleRequest) this.spindleSet = f;
+  }
+
   toggleWater() { if (this.idle()) this.water = !this.water; }
   toggleClamp() { if (this.idle()) this.clamp = !this.clamp; }
 
@@ -201,6 +209,7 @@ export class EdgeSimulator {
     this.x.step(dt);
     this.b.step(dt);
     // wrzeciono: rampa do zadanej
+    if (this.spindleRequest && !this.idle() && this.step !== STEP.SpindleStop && this.passes[this.passIndex - 1]) this.spindleSet = this.frequency();
     const want = this.spindleRequest ? this.spindleSet : 0;
     const ramp = this.o.spindleRamp * dt;
     this.spindleFrequency += Math.max(-ramp, Math.min(ramp, want - this.spindleFrequency));

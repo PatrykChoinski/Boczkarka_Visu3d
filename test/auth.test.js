@@ -24,7 +24,18 @@ test('logowanie (#145): skrot scrypt, sprawdzanie hasla, sesja i wylogowanie po 
   const s2 = auth.login('Operator', 'op-test');
   auth.logout(s2.token);
   assert.equal(auth.session(s2.token), null);
-  assert.deepEqual(auth.names(), ['Operator', 'Serwis']);
+  assert.deepEqual(auth.names(), ['Operator', 'Serwis', 'Admin']);
+  // Admin bez hasla w istniejacym users.json - wylaczony
+  assert.equal(auth.login('Admin', ''), null);
+  assert.equal(auth.login('Admin', '', { local: true }), null);
+});
+
+test('zawsze 3 konta; bez users.json konto bez hasla tylko na komputerze z VizuApp', () => {
+  const open = new Auth({}, { open: true });
+  assert.deepEqual(open.names(), ['Operator', 'Serwis', 'Admin']);
+  assert.equal(open.login('Admin', '', { local: false }), null);
+  assert.equal(open.login('Admin', '', { local: true }).level, 3);
+  assert.equal(open.login('Serwis', 'cokolwiek', { local: true }).level, 2);
 });
 
 test('users.json: zapis i odczyt bez hasel jawnych, config strony bez skrotow', () => {
@@ -38,7 +49,8 @@ test('users.json: zapis i odczyt bez hasel jawnych, config strony bez skrotow', 
   assert.equal(cfg.usersFile, file);
   const pub = JSON.stringify(clientConfig(cfg, null, new Auth(USERS)));
   assert.ok(!pub.includes(USERS.Operator.hash) && !pub.includes(USERS.Operator.salt));
-  assert.deepEqual(clientConfig(cfg, null, new Auth(USERS)).auth.users, ['Operator', 'Serwis']);
+  assert.deepEqual(clientConfig(cfg, null, new Auth(USERS)).auth.users, ['Operator', 'Serwis', 'Admin']);
+  assert.deepEqual(clientConfig(cfg, null, new Auth(USERS)).auth.passwords, { Operator: true, Serwis: true, Admin: false });
   assert.equal(clientConfig(cfg, null, null).auth.enabled, false);
 });
 

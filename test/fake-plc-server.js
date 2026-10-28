@@ -73,6 +73,7 @@ export function createModel({ auto = false } = {}) {
       cycleAngleStart: p.angleStart, cycleAngleEnd: p.angleEnd, cycleAngleStep: p.angleStep, cycleRepeats: p.repeats, cycleBothDirections: p.bothDirections,
       activeName: a.name, activeKind: a.kind, activeXStart: a.xStart, activeXEnd: a.xEnd, activeOvertravel: a.overtravel, activeAngle: a.angle,
       activeAngleStart: a.angleStart, activeAngleEnd: a.angleEnd, activeAngleStep: a.angleStep, activeRepeats: a.repeats,
+      activeSpindleFrequency: a.spindleFrequency,
       passTarget: s.directionPositive ? p.xEnd + p.overtravel : p.xStart - p.overtravel,
     };
   };
@@ -86,13 +87,17 @@ export function createModel({ auto = false } = {}) {
     else if (v === 'Recipes.Index') m.recipe = Number(value);
     else if (v === 'Recipes.Load' && value && recipes[(m.recipe || 1) - 1]) m.active = { ...recipes[m.recipe - 1], xStart: 200, xEnd: 1600 };
     else if (v.startsWith('Manual.')) m.manualWrite(v.slice(7), value);
+    else if (v === 'RecipeStore.Active.SpindleFrequency') { m.active.spindleFrequency = Number(value); sim.setSpindleFrequency(value); }
     else if (SERVICE[v]?.sim) sim.setOption(SERVICE[v].sim, fromPlc(SERVICE[v], value));
   };
   // ManualControl: jog trzymany (TRUE - jazda, FALSE - hamowanie), Goto* / *Toggle - rozkaz chwilowy
   m.manualWrite = (name, value) => {
     const jog = /^Jog([XB])(Positive|Negative)$/.exec(name);
     if (jog) sim.jog(jog[1].toLowerCase(), value ? (jog[2] === 'Positive' ? 1 : -1) : 0, m.manual.JogFast);
-    else if (name in m.manual) m.manual[name] = value;
+    else if (name in m.manual) {
+      m.manual[name] = value;
+      if (name === 'SpindleFrequency') sim.setSpindleFrequency(value);	// ManualControl: zadana w kazdym cyklu
+    }
     else if (name === 'GotoX' && value) sim.goto('x', m.manual.GotoXTarget);
     else if (name === 'GotoB' && value) sim.goto('b', m.manual.GotoBTarget);
     else if (name === 'SpindleToggle' && value) sim.toggleSpindle(m.manual.SpindleFrequency);
@@ -153,7 +158,9 @@ export async function startFakePlc(port, { auto = false } = {}) {
   for (const [key, varPath] of Object.entries(VARIABLES)) {
     const type = key === 'alarms' ? DataType.Boolean : BOOLS.has(key) ? DataType.Boolean : INTS.has(key) ? DataType.Int16
       : STRINGS.has(key) ? DataType.String : key === 'cycles' ? DataType.UInt32 : DataType.Double;
-    add(varPath, type, () => variant(type, values()[key]), () => StatusCodes.BadNotWritable, key === 'alarms' ? MAX_ALARMS : 0);
+    // zmienne z listy sterowania (np. obroty aktywnej receptury) - zapis jak w PLC
+    const set = PLC_WRITES[varPath] ? (vr) => { model.write(varPath, vr.value); return StatusCodes.Good; } : () => StatusCodes.BadNotWritable;
+    add(varPath, type, () => variant(type, values()[key]), set, key === 'alarms' ? MAX_ALARMS : 0);
   }
   const written = {};
   for (const [varPath, w] of Object.entries(PLC_WRITES)) {

@@ -27,6 +27,12 @@ const session = {
   get token() { try { return sessionStorage.getItem('vizu.token'); } catch { return null; } },
   set token(t) { try { if (t) sessionStorage.setItem('vizu.token', t); else sessionStorage.removeItem('vizu.token'); } catch { /* bez pamieci */ } },
 };
+// wersja statyczna (GitHub Pages): logowanie demonstracyjne bez hasla - tylko pokazuje i ukrywa funkcje jak na maszynie
+const DEMO_LEVELS = { Operator: 1, Serwis: 2, Admin: 3 };
+const demo = {
+  get user() { try { return sessionStorage.getItem('vizu.demoUser') || ''; } catch { return ''; } },
+  set user(u) { try { if (u) sessionStorage.setItem('vizu.demoUser', u); else sessionStorage.removeItem('vizu.demoUser'); } catch { /* bez pamieci */ } },
+};
 const post = (body) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 async function getJson(url, opts = {}) {
@@ -97,6 +103,8 @@ $('recipe').addEventListener('change', () => {
 });
 $('kind').addEventListener('change', () => { readForm(); form = setProfileDefaults(form, form.kind); fillForm(); });
 for (const id of [...FIELDS, 'bothDirections']) $(id).addEventListener('change', readForm);
+// obroty na biezaco: zmiana pola dziala od razu na symulator (takze w trakcie cyklu)
+$('spindleFrequency').addEventListener('input', () => { readForm(); sim.setSpindleFrequency(form.spindleFrequency); });
 fillForm();
 
 $('simStart').addEventListener('click', () => {
@@ -192,8 +200,34 @@ function showManWin(open) {
 // Okna polaczenia i alarmow (gorny pasek)
 $('connOpen').addEventListener('click', () => { $('connWin').hidden = !$('connWin').hidden; if (!$('connWin').hidden) loadConnection(); });
 $('connClose').addEventListener('click', () => { $('connWin').hidden = true; });
-$('alarmOpen').addEventListener('click', () => { $('alarmWin').hidden = !$('alarmWin').hidden; });
+$('alarmOpen').addEventListener('click', () => { $('alarmWin').hidden = !$('alarmWin').hidden; loadAlarmHistory(); });
 $('alarmClose').addEventListener('click', () => { $('alarmWin').hidden = true; });
+// Historia alarmow (baza SQLite serwera, alarms.db): zakladka w oknie alarmow, odswiezana przy zmianie (SSE alarmsVersion)
+const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('pl-PL') : '—');
+async function loadAlarmHistory() {
+  if ($('alarmWin').hidden || document.querySelector('[data-apage="history"]').hidden) return;
+  if (cfg.static || !cfg.plc) {
+    $('alarmHistInfo').textContent = 'Historia alarmów jest zapisywana w bazie serwera VizuApp (alarms.db) przy pracy z PLC.';
+    $('alarmHist').innerHTML = '';
+    return;
+  }
+  try {
+    const h = await getJson('api/alarms?limit=200');
+    $('alarmHistInfo').textContent = `Wpisów: ${h.total}, niepotwierdzonych: ${h.unacked}`;
+    $('alarmHist').innerHTML = `<tr><th class="n">Nr</th><th>Alarm</th><th>Wystąpił</th><th>Ustąpił</th><th>Kwit.</th></tr>`
+      + h.entries.map((e) => `<tr class="${e.off ? 'off' : 'on'}"><td class="n">${e.n}</td><td>${e.name ?? alarmText(e.n)}</td>`
+        + `<td>${fmtTime(e.on)}</td><td>${e.off ? fmtTime(e.off) : 'aktywny'}</td><td>${e.ack ? '✓' : ''}</td></tr>`).join('');
+  } catch (err) { $('alarmHistInfo').textContent = `Historia: ${err.message}`; }
+}
+document.querySelectorAll('#alarmTabs button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('#alarmTabs button').forEach((x) => x.classList.toggle('active', x === b));
+  document.querySelectorAll('#alarmWin [data-apage]').forEach((p) => { p.hidden = p.dataset.apage !== b.dataset.atab; });
+  loadAlarmHistory();
+}));
+$('alarmAck').addEventListener('click', async () => {
+  try { await getJson('api/alarms/ack', post({})); } catch (err) { $('alarmHistInfo').textContent = err.message; }
+  loadAlarmHistory();
+});
 $('alarmReset').addEventListener('click', () => (app.mode === 'offline' ? sim.acknowledge() : plcWrite('Alarms.Reset', true)));
 // STOP / PAUZA na pasku: offline - symulator, online - PLC (bez logowania, jak przyciski na pulpicie)
 $('barStop').addEventListener('click', () => (app.mode === 'offline' ? sim.stop() : plcWrite('EdgeProfile.Stop', true)));
@@ -214,6 +248,7 @@ function connectEvents() {
   es.onmessage = (e) => {
     const d = JSON.parse(e.data);
     if ('status' in d) { app.status = d.status; app.connected = d.connected; updateChip(); refreshAccess(); }
+    if ('alarmsVersion' in d) loadAlarmHistory();
     if (d.full) { app.values = { ...(d.values || {}) }; app.hmi = { ...(d.hmi || {}) }; } else {
       if (d.values) Object.assign(app.values, d.values);
       if (d.hmi) Object.assign(app.hmi, d.hmi);
@@ -259,7 +294,10 @@ $('connDefault').addEventListener('click', () => setEndpoint('').then(loadConnec
 // ---------------------------------------------------------------- logowanie i poziom dostepu
 // Poziom z serwera (GET /api/plc): z logowania (users.json), bez logowania - panel lokalny Admin, z sieci Podglad
 async function refreshAccess() {
-  if (cfg.plc || cfg.auth?.enabled) {
+  if (cfg.static) {
+    app.level = DEMO_LEVELS[demo.user] ?? 0;
+    app.user = demo.user;
+  } else {
     try {
       const a = await getJson('api/plc');
       app.level = a.level;
@@ -276,15 +314,15 @@ function applyAccess() {
   const op = app.connected && app.level >= 1;
   $('plcControls').hidden = !op;
   $('plcModes').hidden = !op;
+  $('autoFreqBox').hidden = !op;
   $('plcInfo').textContent = !app.connected ? '' : op ? '' : 'Sterowanie po zalogowaniu (Operator).';
-  $('manOpen').hidden = online && app.level < 1;
+  // Reczny od Operatora, Serwis tylko Serwis i Admin - w obu trybach
+  $('manOpen').hidden = app.level < 1;
   if ($('manOpen').hidden && !$('manWin').hidden) showManWin(false);
-  document.querySelector('#screens [data-tab="service"]').hidden = online && app.level < 2;
+  document.querySelector('#screens [data-tab="service"]').hidden = app.level < 2;
   showTab(app.tab);
-  const loginOn = Boolean(cfg.auth?.enabled);
-  const loggedIn = Boolean(session.token && app.level > 0);
-  $('authBox').hidden = !cfg.plc && !loginOn;
-  $('loginBtn').hidden = !loginOn;
+  const loginOn = true;				// zawsze: Operator / Serwis / Admin
+  const loggedIn = cfg.static ? Boolean(demo.user) : Boolean(session.token && app.level > 0);
   $('loginBtn').title = loggedIn ? 'Wyloguj' : 'Zaloguj';
   $('loginBtn').innerHTML = icon(loggedIn ? 'logout' : 'login');
   const lvl = LEVEL_NAMES[app.level];
@@ -298,21 +336,38 @@ function applyAccess() {
   watchService();
 }
 
+// okno logowania: haslo niepotrzebne w wersji demonstracyjnej i dla konta bez hasla (bez users.json, tylko lokalnie)
+function loginHint() {
+  const u = $('loginUser').value;
+  const noPass = cfg.static || (cfg.auth?.open && !cfg.auth?.passwords?.[u]);
+  $('loginPassRow').hidden = noPass;
+  $('loginHint').textContent = cfg.static ? 'Wersja demonstracyjna: wybór konta bez hasła – pokazuje i ukrywa funkcje jak na maszynie.'
+    : noPass ? 'Hasła nieustawione (brak users.json) – logowanie bez hasła tylko na komputerze z VizuApp. Hasło: node scripts/users.mjs set ' + u
+      : '';
+}
+$('loginUser').addEventListener('change', loginHint);
 $('loginBtn').addEventListener('click', async () => {
-  if (session.token && app.level > 0) {
+  if (cfg.static && demo.user) { demo.user = ''; return refreshAccess(); }
+  if (!cfg.static && session.token && app.level > 0) {
     await getJson('api/logout', post({})).catch(() => {});
     session.token = null;
     return refreshAccess();
   }
-  $('loginUser').innerHTML = (cfg.auth?.users || []).map((u) => `<option>${u}</option>`).join('');
+  $('loginUser').innerHTML = (cfg.static || !cfg.auth?.users?.length ? Object.keys(DEMO_LEVELS) : cfg.auth.users).map((u) => `<option>${u}</option>`).join('');
   $('loginPass').value = '';
   $('loginMsg').textContent = '';
+  loginHint();
   $('loginDlg').showModal();
-  $('loginPass').focus();
+  if (!$('loginPassRow').hidden) $('loginPass').focus();
 });
 $('loginCancel').addEventListener('click', () => $('loginDlg').close());
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (cfg.static) {
+    demo.user = $('loginUser').value;
+    $('loginDlg').close();
+    return refreshAccess();
+  }
   try {
     const s = await getJson('api/login', post({ user: $('loginUser').value, password: $('loginPass').value }));
     session.token = s.token;
@@ -399,7 +454,28 @@ $('spindleBtn').addEventListener('click', () => manualCommand(() => sim.toggleSp
 $('waterBtn').addEventListener('click', () => manualCommand(() => sim.toggleWater(), [{ v: 'Manual.WaterToggle', value: true }]));
 $('clampBtn').addEventListener('click', () => manualCommand(() => sim.toggleClamp(), [{ v: 'Manual.ClampToggle', value: true }]));
 
+// Obroty: Reczny (Manual.SpindleFrequency) i Automat (RecipeStore.Active.SpindleFrequency) zapisywane od razu po zmianie
+function freqWriter(input, v, msg) {
+  let timer = null;
+  input.addEventListener('input', () => {
+    if (app.mode === 'offline') { if (v === 'Manual.SpindleFrequency') sim.setSpindleFrequency(input.value); return; }
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const value = Number(input.value);
+      const err = checkParam(PLC_WRITES[v], value);
+      if (err) { $(msg).textContent = `Obroty: ${err}`; $(msg).classList.add('err'); return; }
+      plcWriteMany([{ v, value }], msg);
+    }, 250);
+  });
+}
+freqWriter($('manFreq'), 'Manual.SpindleFrequency', 'manualMsg');
+freqWriter($('autoFreq'), 'RecipeStore.Active.SpindleFrequency', 'plcInfo');
+
 function updateManual(s) {
+  if (app.mode === 'online' && document.activeElement !== $('autoFreq') && app.values.activeSpindleFrequency !== undefined) {
+    const f = String(Math.round(Number(app.values.activeSpindleFrequency) * 10) / 10);
+    if ($('autoFreq').value !== f) $('autoFreq').value = f;
+  }
   $('spindleBtn').classList.toggle('on', Boolean(s.spindleRunning));
   $('waterBtn').classList.toggle('on', Boolean(s.water));
   $('clampBtn').classList.toggle('on', Boolean(s.clamp));

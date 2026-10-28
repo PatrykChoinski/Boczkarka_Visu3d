@@ -9,6 +9,7 @@ import { startFakePlc } from './fake-plc-server.js';
 import { OpcUaSource } from '../src/server/opcua-source.js';
 import { loadConfig, createServer } from '../src/server/main.js';
 import { Auth, hashPassword } from '../src/server/auth.js';
+import { AlarmDb } from '../src/server/alarmdb.js';
 import { SERVICE_ITEMS, PLC_WRITES, checkParam, toPlc, fromPlc } from '../src/shared/config.js';
 
 const PORT = 4863;
@@ -17,6 +18,7 @@ let server;
 let source;
 let base;
 let dir;
+let alarmDb;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(cond, ms = 15000) {
   const end = Date.now() + ms;
@@ -42,7 +44,8 @@ before(async () => {
   const cfg = loadConfig(cfgFile);
   source = new OpcUaSource(cfg);
   const auth = new Auth({ Operator: { level: 1, ...hashPassword(PASS.Operator) }, Serwis: { level: 2, ...hashPassword(PASS.Serwis) } });
-  server = createServer(cfg, source, auth);
+  alarmDb = new AlarmDb(path.join(dir, 'alarms.db'));
+  server = createServer(cfg, source, auth, undefined, alarmDb);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   source.start();
@@ -52,6 +55,7 @@ after(async () => {
   await source.stop();
   await new Promise((r) => server.close(r));
   await plc.stop();
+  alarmDb.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -109,4 +113,18 @@ test('Serwis: odczyt parametrow (watch), zapis w zakresie zmienia PLC (TIME w ms
   await until(() => source.hmiValues['EdgeProfileConfig.AutoReturn'] === false);
   await call('/api/logout', {}, sv.token);
   assert.equal((await call('/api/plc', null, sv.token)).body.level, 0);
+});
+
+test('historia alarmow: alarm z PLC zapisany w bazie (wystapil / ustapil), kwitowanie od Operatora', async () => {
+  await until(() => source.connected);
+  plc.model.alarms[4] = true;					// alarm 5: blad serwa B
+  await until(async () => (await call('/api/alarms?active=1')).body.entries.some((e) => e.n === 5));
+  plc.model.alarms[4] = false;
+  await until(async () => (await call('/api/alarms')).body.entries.some((e) => e.n === 5 && e.off));
+  assert.equal((await call('/api/alarms/ack', {})).status, 403);
+  const op = (await call('/api/login', { user: 'Operator', password: PASS.Operator })).body;
+  assert.equal((await call('/api/alarms/ack', {}, op.token)).status, 200);
+  const h = (await call('/api/alarms')).body;
+  assert.equal(h.unacked, 0);
+  assert.match(h.entries[0].name, /serwa B/i);
 });

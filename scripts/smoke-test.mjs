@@ -194,7 +194,15 @@ async function main() {
       }
       if (missing.length) throw new Error(`zmienne PLC bez typu / wartosci z subskrypcji: ${missing.join(', ')}`);
       log(`OK zmienne PLC: ${all.length}/${all.length} z typem i wartością (subskrypcje)`);
-      // panel lokalny bez users.json (Admin): reczny i serwis widoczne, parametry z PLC, zapis parametru (TIME s -> ms)
+      // bez users.json: logowanie Admin bez hasla na komputerze z VizuApp; reczny i serwis widoczne, parametry z PLC,
+      // zapis parametru (TIME s -> ms)
+      await page.evaluate(() => {
+        document.getElementById('loginBtn').click();
+        document.getElementById('loginUser').value = 'Admin';
+        document.getElementById('loginUser').dispatchEvent(new Event('change'));
+        document.getElementById('loginForm').requestSubmit();
+      });
+      await page.waitForFunction(() => window.vizu.app.level === 3, null, { timeout: 20000, polling: 250 });
       await page.waitForFunction(() => !document.getElementById('manOpen').hidden
         && !document.querySelector('#screens [data-tab="service"]').hidden
         && document.querySelector('[data-param="EdgeProfileConfig.ClampDelay"]').value === '1', null, { timeout: 30000, polling: 250 });
@@ -206,6 +214,9 @@ async function main() {
       await page.waitForFunction(() => window.vizu.app.hmi['EdgeProfileConfig.ClampDelay'] === 1500, null, { timeout: 30000, polling: 250 });
       assertNoErrors('serwer online - serwis', errors);
       log(`OK serwis online: ${await page.textContent('#userChip')}, ustalenie docisku 1 s -> 1.5 s w PLC`);
+      const hist = await (await fetch(`${api}/alarms?limit=5`)).json();
+      if (!Array.isArray(hist.entries)) throw new Error(`historia alarmow: ${JSON.stringify(hist)}`);
+      log(`OK historia alarmów w bazie: ${hist.total} wpisów`);
       await context.close();
     }
 

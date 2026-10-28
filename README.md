@@ -31,10 +31,13 @@ stan maszyny (X, B, wrzeciono, krok, przejście, czas, licznik) na dolnym pasku.
 
 ## Panel obsługi
 
-- **Logowanie** (przycisk „Zaloguj” na pasku, gdy obok `config.json` jest `users.json`; tworzenie:
-  `node scripts/users.mjs set <użytkownik>`). Poziomy: Podgląd (bez logowania: STOP, PAUZA), Operator (START, tryb,
-  receptura, ręczny), Serwis (parametry, adres OPC UA), Admin. Bez `users.json`: komputer z VizuApp = Admin, z sieci
-  tylko podgląd. Serwer sprawdza poziom przy każdym zapisie (403).
+- **Logowanie** w prawym górnym rogu, zawsze 3 konta: **Operator** (START, tryb, receptura, Ręczny), **Serwis** i
+  **Admin** (dodatkowo Serwis – parametry, adres OPC UA). Bez logowania: podgląd, STOP, PAUZA. Hasła w `users.json` obok
+  `config.json` (poza repo): `node scripts/users.mjs set Operator` (tak samo `Serwis`, `Admin`). Bez `users.json` konta są
+  bez hasła i można je otworzyć tylko na komputerze z VizuApp (z tabletu w sieci nie). Serwer sprawdza poziom przy
+  każdym zapisie (403). Wersja statyczna (Pages): logowanie demonstracyjne bez hasła.
+- **Alarmy**: okno z paska – aktywne i **historia z bazy** `alarms.db` (SQLite obok `config.json`; serwer zapisuje
+  wystąpienie i ustąpienie każdego alarmu PLC, także bez otwartej strony), kwitowanie od Operatora.
 - **Ręczny**: jog X± / B± (przycisk trzymany, `/api/plc/hold`, serwer puszcza po utracie strony), jog szybko,
   dojazd do X / kąta B, wrzeciono z obrotami, woda, docisk – zmienne `Manual.*` w PLC. Offline: osie
   symulatora, gdy automat stoi.

@@ -113,6 +113,24 @@ test('reczny: jog do softlimitu i hamowanie po puszczeniu, dojazd X / B w granic
   assert.equal(sim.x.pos, 0);
 });
 
+test('obroty na biezaco: reczny 40 -> 30 Hz i automat w trakcie przejazdu', () => {
+  const sim = new EdgeSimulator();
+  sim.toggleSpindle(40);
+  sim.tick(5);
+  assert.ok(Math.abs(sim.state().spindleFrequency - 40) < 0.5);
+  sim.setSpindleFrequency(30);
+  sim.tick(3);
+  assert.ok(Math.abs(sim.state().spindleFrequency - 30) < 0.5, `reczny: ${sim.state().spindleFrequency}`);
+  sim.toggleSpindle();
+  sim.tick(5);
+  sim.start(recipe(4, { spindleFrequency: 50, feed: 1 }));
+  runUntil(sim, (s) => s.step === STEP.PassX);
+  assert.ok(Math.abs(sim.state().spindleFrequency - 50) < 0.5);
+  sim.setSpindleFrequency(35);
+  sim.tick(3);
+  assert.ok(Math.abs(sim.state().spindleFrequency - 35) < 0.5, `automat: ${sim.state().spindleFrequency}`);
+});
+
 test('reczny: wrzeciono, woda, docisk tylko gdy automat stoi; parametry serwisowe zmieniaja dynamike', () => {
   const sim = new EdgeSimulator();
   assert.ok(sim.toggleSpindle(40));

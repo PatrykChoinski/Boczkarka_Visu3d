@@ -42,22 +42,31 @@ export function saveUsers(file, users) {
   fs.writeFileSync(file, `${JSON.stringify({ users }, null, 2)}\n`);
 }
 
-// Sesje w pamieci serwera; timeoutMin - wylogowanie po bezczynnosci (0 - bez limitu)
+// Sesje w pamieci serwera; timeoutMin - wylogowanie po bezczynnosci (0 - bez limitu).
+// Konta zawsze: Operator, Serwis, Admin (LEVELS). Hasla z users.json; open (brak pliku users.json) - konto bez hasla
+// mozna otworzyc tylko na komputerze z VizuApp (local), z sieci nie. Konto bez hasla w istniejacym users.json - wylaczone.
 export class Auth {
-  constructor(users, { timeoutMin = 30 } = {}) {
-    this.users = users;
+  constructor(users, { timeoutMin = 30, open = false } = {}) {
+    this.users = {};
+    for (const [name, level] of Object.entries(LEVELS)) this.users[name] = { level, salt: null, hash: null };
+    for (const [name, u] of Object.entries(users || {})) this.users[name] = u;
+    this.open = open;
     this.timeoutMs = timeoutMin > 0 ? timeoutMin * 60000 : Infinity;
     this.sessions = new Map();
   }
 
-  get enabled() { return Object.keys(this.users).length > 0; }
+  get enabled() { return true; }
+
+  hasPassword(name) { return Boolean(this.users[name]?.hash); }
 
   // nazwy uzytkownikow (bez skrotow) do listy na stronie, od najnizszego poziomu
   names() { return Object.entries(this.users).sort((a, b) => a[1].level - b[1].level).map(([n]) => n); }
 
-  login(user, password) {
+  // sesja albo null; local - zadanie z komputera z VizuApp (konto bez hasla tylko tak i tylko bez users.json)
+  login(user, password, { local = false } = {}) {
     const u = this.users[user];
-    if (!u || !checkPassword(u, password)) return null;
+    if (!u) return null;
+    if (u.hash ? !checkPassword(u, password) : !(this.open && local)) return null;
     const token = crypto.randomBytes(24).toString('hex');
     this.sessions.set(token, { user, level: u.level, last: Date.now() });
     return { user, level: u.level, token };

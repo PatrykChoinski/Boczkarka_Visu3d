@@ -1,5 +1,5 @@
 // Historia alarmow PLC w bazie SQLite (wbudowany node:sqlite, bez zaleznosci): plik alarms.db obok config.json.
-// Serwer zapisuje wystapienie i ustapienie kazdego alarmu z tablicy HMI2.aAlarms (subskrypcja w tle), takze gdy zadna
+// Serwer zapisuje wystapienie i ustapienie kazdego alarmu z tablicy Alarms.Active (subskrypcja w tle), takze gdy zadna
 // strona nie jest otwarta. Wpis: numer i nazwa alarmu, czas wystapienia, ustapienia (NULL - aktywny), kwitowanie.
 //
 // GET  /api/alarms?limit=200&offset=0&active=1   historia (najnowsze najpierw) i liczba niepotwierdzonych
@@ -17,7 +17,7 @@ export class AlarmDb {
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS alarm_history (
         id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        n       INTEGER NOT NULL,             -- numer alarmu (jak w HMI, HMI2.aAlarms[n-1])
+        n       INTEGER NOT NULL,             -- numer alarmu (Alarms.Active[n])
         name    TEXT,                         -- nazwa (PL) w chwili wystapienia
         on_ms   INTEGER NOT NULL,             -- wystapil (ms od 1970)
         off_ms  INTEGER,                      -- ustapil; NULL - aktywny

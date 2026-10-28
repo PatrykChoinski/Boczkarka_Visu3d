@@ -439,5 +439,9 @@ footer .mono b { font-weight: 600; }
 .statusline b { color: #dbe6f1; font-weight: 600; }
 #connChip.ok { color: #7ee2a0; }
 #connChip.bad { color: #ff8a80; }
+#alarmWin .seg { margin-bottom: 8px; }
+#alarmWin .seg button { flex: 1; color: var(--text); background: transparent; border: none; }
+#alarmWin .seg button.active { background: var(--accent); color: #fff; }
+.tableWrap { max-height: 50vh; overflow-y: auto; }
 .win.manWin { width: 400px; top: 70px; left: 84px; }
 .bar button.tool.active { background: var(--accent); color: #fff; }

@@ -41,6 +41,7 @@ export const VARIABLES = {
   activeAngleEnd: 'RecipeStore.Active.AngleEnd',
   activeAngleStep: 'RecipeStore.Active.AngleStep',
   activeRepeats: 'RecipeStore.Active.Repeats',
+  activeSpindleFrequency: 'RecipeStore.Active.SpindleFrequency',
   // wrzeciono, media
   spindleRunning: 'Spindle.Status.Running',
   spindleFrequency: 'Spindle.Status.FrequencyActual',
@@ -83,6 +84,8 @@ export const PLC_WRITES = {
   'Manual.GotoBTarget': { level: 1, kind: 'set', type: 'lreal', min: -95, max: 95 },
   'Manual.SpindleToggle': { level: 1, kind: 'set' },
   'Manual.SpindleFrequency': { level: 1, kind: 'set', type: 'real', min: 0, max: 120 },
+  // obroty aktywnej receptury - PLC bierze je na biezaco, takze w trakcie cyklu
+  'RecipeStore.Active.SpindleFrequency': { level: 1, kind: 'set', type: 'real', min: 0, max: 120 },
   'Manual.WaterToggle': { level: 1, kind: 'set' },
   'Manual.ClampToggle': { level: 1, kind: 'set' },
 };
@@ -216,7 +219,7 @@ export const DEFAULTS = {
     tableHeight: 820,
     stoneThickness: 30,
     stoneWidth: 650,			// glebokosc plyty (od krawedzi w glab stolu)
-    stoneOverhang: 70,			// wysiegniecie krawedzi poza stol (dostep od dolu)
+    stoneOverhang: 150,			// wysiegniecie krawedzi poza stol (tarcza z oslona pod krawedzia przy B = -90)
     wheelDiameter: 220,			// tarcza w oslonie
     wheelHeight: 40,
     motorDiameter: 170,
