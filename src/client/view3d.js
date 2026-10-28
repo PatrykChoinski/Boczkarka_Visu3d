@@ -331,7 +331,7 @@ export class EdgeView {
     const x1 = Math.max(profile.xStart, profile.xEnd);
     const angles = passes.slice(0, cut.done).map((p) => p.angleB);
     const part = cut.partial ? { ...cut.partial, from: Math.max(x0, cut.partial.from), to: Math.min(x1, cut.partial.to) } : null;
-    const key = JSON.stringify([profile.kind, x0, x1, angles, part && [part.angle, Math.round(part.from / 4), Math.round(part.to / 4)]]);
+    const key = JSON.stringify([profile.kind, profile.side, x0, x1, angles, part && [part.angle, Math.round(part.from / 4), Math.round(part.to / 4)]]);
     if (key === this.stoneKey) return;
     this.stoneKey = key;
     for (const c of [...this.stone.children]) { c.geometry?.dispose(); this.stone.remove(c); }
@@ -345,9 +345,9 @@ export class EdgeView {
     body.receiveShadow = true;
     this.stone.add(body);
     // pas krawedzi: odcinki X z wlasnym przekrojem (biezacy przejazd zeszlifowal juz czesc dlugosci)
-    const done = edgeSection(profile.kind, angles, T, this.cfg.shape, BAND);
+    const done = edgeSection(profile.kind, angles, T, this.cfg.shape, BAND, profile.side);
     const segs = part && part.to > part.from
-      ? [[x0, part.from, done], [part.from, part.to, edgeSection(profile.kind, [...angles, part.angle], T, this.cfg.shape, BAND)], [part.to, x1, done]]
+      ? [[x0, part.from, done], [part.from, part.to, edgeSection(profile.kind, [...angles, part.angle], T, this.cfg.shape, BAND, profile.side)], [part.to, x1, done]]
       : [[x0, x1, done]];
     for (const [a, b, poly] of segs) {
       if (b - a < 0.5 || poly.length < 3) continue;
@@ -371,7 +371,7 @@ export class EdgeView {
     this.carriage.position.x = x;
     // punkt styku tarczy na plaszczyznie profilu dla biezacego kata B; bez docisku - odsuniecie
     const kind = profile.kind ?? PROFILE_TYPE.StraightEdge;
-    const plane = passPlane(kind, b, m.stoneThickness, this.cfg.shape);
+    const plane = passPlane(kind, b, m.stoneThickness, this.cfg.shape, profile.side ?? 0);
     const n = normal(b);
     const off = state.clamp ? 0 : RETRACT;
     const cu = plane.contact[0] + n[0] * off;

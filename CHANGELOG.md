@@ -9,6 +9,8 @@ w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); his
 ### Profile z katalogu i etapy polerowania (jak PLC)
 - 14 nowych rodzajów profilu (ProfileType 7..20): European, 1/2 Bevel, 1/4 Round, 1/4 Bullnose, Demi Bullnose (tarcza garnkowa) i Cove, Cove Dupont, Cove Ogee, Deep Ogee, Dupont, Flat Ogee, Ogee, Ogee Bullnose, Waterfall (tarcza kształtowa, B = 0); 21 receptur startowych.
 - Przekrój krawędzi jako zarys u = f(v) (profile wklęsłe i S), 3D i rysunek 2D dla wszystkich profili.
+- Strona profilu (`side`: góra / dół / obie) jak `EdgeSide` w PLC: generator, przekrój (lustro, suma obu stron), wybór w formularzu.
+- Test wszystkich kombinacji (`test/combinations.test.js`): rodzaj x strona x etapy polerowania x tryb przejść - generator, walidacja, kształt i pełny cykl symulatora (276 cykli).
 - Etapy polerowania (`polishSteps`, walidacja kod 8), symulator i testowy PLC: krok ToolChange (wymiana narzędzia, START), etap na pasku stanu, komunikat w ekranie Automat.
 
 ## 2026-10-28 (6)

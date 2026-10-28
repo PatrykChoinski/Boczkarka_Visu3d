@@ -21,12 +21,16 @@ export const FORM_KINDS = [T.Cove, T.CoveDupont, T.CoveOgee, T.DeepOgee, T.Dupon
 // luk gorny z katow AngleStart..AngleEnd (jak cwiercwalek gorny)
 const TOP_ROUND = [T.TopQuarterRound, T.QuarterRound, T.QuarterBullnose, T.DemiBullnose];
 export const ROUND_KINDS = [...TOP_ROUND, T.BottomQuarterRound, T.HalfRound];
+// EdgeSide (PLC): strona profilu dla asymetrycznych profili katalogowych
+export const EDGE_SIDE = { Top: 0, Bottom: 1, Both: 2 };
+export const SIDE_NAMES = { 0: 'Góra', 1: 'Dół', 2: 'Obie strony' };
+export const SIDE_KINDS = [T.HalfBevel, T.QuarterRound, T.QuarterBullnose, T.DemiBullnose, ...FORM_KINDS];
 export const CHAMFER_KINDS = [T.TopChamfer, T.BottomChamfer, T.European, T.HalfBevel];
 
 // Profile z wartosciami poczatkowymi jak w DUT Profile
 export function newProfile(over = {}) {
   return {
-    name: '', kind: PROFILE_TYPE.StraightEdge, xStart: 0, xEnd: 2000, overtravel: 50, spindleFrequency: 50, feed: 1.0,
+    name: '', kind: PROFILE_TYPE.StraightEdge, side: 0, xStart: 0, xEnd: 2000, overtravel: 50, spindleFrequency: 50, feed: 1.0,
     bothDirections: true, angle: 45, angleStart: 0, angleEnd: 90, angleStep: 10, repeats: 1, polishSteps: 0, passCount: 0, passes: [], ...over,
   };
 }
@@ -58,10 +62,21 @@ export function generatePasses(p) {
     case PROFILE_TYPE.TopChamfer: list = [Math.abs(p.angle)]; break;
     case PROFILE_TYPE.BottomChamfer: list = [-Math.abs(p.angle)]; break;
     case PROFILE_TYPE.European: list = [0, Math.abs(p.angle), -Math.abs(p.angle)]; break;
-    case PROFILE_TYPE.HalfBevel: list = [Math.abs(p.angle)]; break;
-    case PROFILE_TYPE.TopQuarterRound: case PROFILE_TYPE.QuarterRound: case PROFILE_TYPE.QuarterBullnose: case PROFILE_TYPE.DemiBullnose:
-      list = angles;
+    case PROFILE_TYPE.HalfBevel: {
+      const side = p.side ?? 0;
+      list = [...(side !== EDGE_SIDE.Bottom ? [Math.abs(p.angle)] : []), ...(side !== EDGE_SIDE.Top ? [-Math.abs(p.angle)] : [])];
       break;
+    }
+    case PROFILE_TYPE.TopQuarterRound: list = angles; break;
+    case PROFILE_TYPE.QuarterRound: case PROFILE_TYPE.QuarterBullnose: case PROFILE_TYPE.DemiBullnose: {
+      // strona: gora, dol (jak cwiercwalek dolny), obie (dol od -AngleEnd i gora bez dublowania 0)
+      const side = p.side ?? 0;
+      if (side === EDGE_SIDE.Bottom) list = angles.map((a) => -a);
+      else if (side === EDGE_SIDE.Both) list = [...angles.slice().reverse().map((a) => -a), ...angles.filter((a) => a > 0.001)];
+      else list = angles;
+      if (list.length > MAX_PASSES) return { ok: false, passes: [] };
+      break;
+    }
     case PROFILE_TYPE.BottomQuarterRound: list = angles.map((a) => -a); break;
     case PROFILE_TYPE.HalfRound:
       list = [...angles.slice().reverse().map((a) => -a), ...angles.filter((a) => a > 0.001)];
@@ -134,7 +149,7 @@ export function defaultRecipes() {
 export function profileFromValues(v, prefix = 'cycle') {
   const g = (k, d) => (v[`${prefix}${k}`] ?? d);
   return newProfile({
-    name: g('Name', ''), kind: Number(g('Kind', 0)), xStart: Number(g('XStart', 0)), xEnd: Number(g('XEnd', 0)),
+    name: g('Name', ''), kind: Number(g('Kind', 0)), side: Number(g('Side', 0)), xStart: Number(g('XStart', 0)), xEnd: Number(g('XEnd', 0)),
     overtravel: Number(g('Overtravel', 0)), angle: Number(g('Angle', 45)), angleStart: Number(g('AngleStart', 0)),
     angleEnd: Number(g('AngleEnd', 90)), angleStep: Number(g('AngleStep', 10)), repeats: Number(g('Repeats', 1)),
     bothDirections: Boolean(g('BothDirections', true)), polishSteps: Number(g('PolishSteps', 0)),

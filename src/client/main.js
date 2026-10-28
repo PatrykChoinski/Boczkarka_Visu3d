@@ -10,7 +10,7 @@ import {
 import { EdgeSimulator } from '../shared/simulator.js';
 import {
   PROFILE_TYPE, PROFILE_NAMES, defaultRecipes, generatePasses, profileFromValues, setProfileDefaults, VALIDATION_TEXT,
-  ROUND_KINDS, CHAMFER_KINDS, FORM_KINDS,
+  ROUND_KINDS, CHAMFER_KINDS, FORM_KINDS, SIDE_KINDS, SIDE_NAMES,
 } from '../shared/edgeprofile.js';
 import { edgeSection, cutState } from '../shared/edgeshape.js';
 import { alarmText, activeFromValues } from '../shared/alarms.js';
@@ -76,7 +76,7 @@ const app = {
 
 // ---------------------------------------------------------------- receptura (offline)
 const recipes = defaultRecipes();
-const FIELDS = ['xStart', 'xEnd', 'overtravel', 'feed', 'spindleFrequency', 'repeats', 'angle', 'angleStart', 'angleEnd', 'angleStep', 'polishSteps'];
+const FIELDS = ['xStart', 'xEnd', 'overtravel', 'feed', 'spindleFrequency', 'repeats', 'angle', 'angleStart', 'angleEnd', 'angleStep', 'polishSteps', 'side'];
 let form = { ...recipes[4], xStart: 200, xEnd: 1600 };
 
 function fillForm() {
@@ -87,6 +87,7 @@ function fillForm() {
   document.querySelectorAll('.round').forEach((e) => e.classList.toggle('hidden', !ROUND_KINDS.includes(form.kind)));
   document.querySelectorAll('.chamfer').forEach((e) => e.classList.toggle('hidden', !CHAMFER_KINDS.includes(form.kind)));
   $('formTool').hidden = !FORM_KINDS.includes(form.kind);
+  $('sideBox').classList.toggle('hidden', !SIDE_KINDS.includes(form.kind));
 }
 
 function readForm() {
@@ -103,6 +104,7 @@ $('recipe').addEventListener('change', () => {
   form = { ...recipes[Number($('recipe').value)], xStart: form.xStart, xEnd: form.xEnd };
   fillForm();
 });
+$('side').innerHTML = Object.entries(SIDE_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
 $('kind').addEventListener('change', () => { readForm(); form = setProfileDefaults(form, form.kind); fillForm(); });
 for (const id of [...FIELDS, 'bothDirections']) $(id).addEventListener('change', readForm);
 // obroty na biezaco: zmiana pola dziala od razu na symulator (takze w trakcie cyklu)
@@ -576,8 +578,8 @@ function current() {
 function sectionSvg(profile, passes, cut) {
   const T = cfg.machine.stoneThickness;
   const angles = passes.slice(0, cut.done).map((p) => p.angleB);
-  const now = edgeSection(profile.kind, cut.partial ? [...angles, cut.partial.angle] : angles, T, cfg.shape, 45);
-  const target = edgeSection(profile.kind, passes.map((p) => p.angleB), T, cfg.shape, 45);
+  const now = edgeSection(profile.kind, cut.partial ? [...angles, cut.partial.angle] : angles, T, cfg.shape, 45, profile.side);
+  const target = edgeSection(profile.kind, passes.map((p) => p.angleB), T, cfg.shape, 45, profile.side);
   const s = 2.6;
   const P = (poly) => poly.map(([u, v]) => `${(160 + u * s).toFixed(1)},${(100 - v * s).toFixed(1)}`).join(' ');
   return `<rect x="0" y="0" width="220" height="120" fill="none"/>
@@ -614,7 +616,7 @@ function updatePanel(c) {
   $('alarmCount').hidden = !count;
   $('alarmCount').textContent = count;
   $('alarmOpen').classList.toggle('on', count > 0);
-  const key = JSON.stringify([profile.kind, passes.map((p) => p.angleB), cut.done, cut.partial?.angle, s.passIndex]);
+  const key = JSON.stringify([profile.kind, profile.side, passes.map((p) => p.angleB), cut.done, cut.partial?.angle, s.passIndex]);
   if (key !== lastKey) {
     lastKey = key;
     $('section').innerHTML = sectionSvg(profile, passes, cut);

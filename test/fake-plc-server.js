@@ -24,7 +24,7 @@ export const DEVICE = 'CODESYS SoftMotion Win V3 x64';
 const MAX_ALARMS = 32;
 
 const BOOLS = new Set(['changeTool', 'simulation', 'safetyOk', 'directionPositive', 'cycleBothDirections', 'spindleRunning', 'water', 'clamp', 'alarmAny']);
-const INTS = new Set(['activePolishSteps', 'cyclePolishSteps', 'stage', 'stageCount', 'mode', 'step', 'passIndex', 'repeatIndex', 'passCount', 'cycleKind', 'cycleRepeats', 'activeKind', 'activeRepeats']);
+const INTS = new Set(['activeSide', 'cycleSide', 'activePolishSteps', 'cyclePolishSteps', 'stage', 'stageCount', 'mode', 'step', 'passIndex', 'repeatIndex', 'passCount', 'cycleKind', 'cycleRepeats', 'activeKind', 'activeRepeats']);
 const STRINGS = new Set(['cycleName', 'activeName']);
 // typy OPC UA zmiennych z typem w PLC_WRITES (CODESYS: LREAL Double, REAL Float, INT / enum Int16, TIME UInt32 ms)
 const OPC_TYPES = { lreal: DataType.Double, real: DataType.Float, int: DataType.Int16, enum: DataType.Int16, time: DataType.UInt32, bool: DataType.Boolean };
@@ -73,7 +73,7 @@ export function createModel({ auto = false } = {}) {
       cycleAngleStart: p.angleStart, cycleAngleEnd: p.angleEnd, cycleAngleStep: p.angleStep, cycleRepeats: p.repeats, cycleBothDirections: p.bothDirections,
       activeName: a.name, activeKind: a.kind, activeXStart: a.xStart, activeXEnd: a.xEnd, activeOvertravel: a.overtravel, activeAngle: a.angle,
       activeAngleStart: a.angleStart, activeAngleEnd: a.angleEnd, activeAngleStep: a.angleStep, activeRepeats: a.repeats,
-      activeSpindleFrequency: a.spindleFrequency, activePolishSteps: a.polishSteps ?? 0, cyclePolishSteps: p.polishSteps ?? 0,
+      activeSpindleFrequency: a.spindleFrequency, activePolishSteps: a.polishSteps ?? 0, cyclePolishSteps: p.polishSteps ?? 0, activeSide: a.side ?? 0, cycleSide: p.side ?? 0,
       passTarget: s.directionPositive ? p.xEnd + p.overtravel : p.xStart - p.overtravel,
     };
   };

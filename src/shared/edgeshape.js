@@ -6,7 +6,7 @@
 // Tarcza garnkowa pod katem B = theta (0 - bok, + gora, - dol) zostawia material n.p <= d, n = (cos theta, sin theta):
 // plaszczyzna styczna do docelowego profilu (luk / faza / bok). Tarcza ksztaltowa (profile katalogowe przy B = 0)
 // zostawia od razu zarys docelowy profilu.
-import { PROFILE_TYPE as K, FORM_KINDS } from './edgeprofile.js';
+import { PROFILE_TYPE as K, FORM_KINDS, EDGE_SIDE } from './edgeprofile.js';
 
 const rad = (deg) => (deg * Math.PI) / 180;
 export const normal = (deg) => [Math.cos(rad(deg)), Math.sin(rad(deg))];
@@ -14,8 +14,9 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
 const SAMPLES = 120;
 const sq = (x) => Math.sqrt(Math.max(0, x));
 
-// Promien i srodek luku dla profili walkowych (null dla faz, boku i profili ksztaltowych)
-export function arcOf(kind, thickness, shape) {
+// Promien i srodek luku dla profili walkowych (null dla faz, boku i profili ksztaltowych). Strona (profile katalogowe):
+// dol - luk przy dolnym narozu, obie - wedlug kata przejscia (angleB < 0 - dol)
+export function arcOf(kind, thickness, shape, side = 0, angleB = 0) {
   const t = thickness;
   if (kind === K.HalfRound) return { r: t / 2, c: [-t / 2, t / 2] };
   const radius = {
@@ -24,7 +25,8 @@ export function arcOf(kind, thickness, shape) {
   }[kind];
   if (radius === undefined) return null;
   const r = Math.min(radius, t);
-  return kind === K.BottomQuarterRound ? { r, c: [-r, r] } : { r, c: [-r, t - r] };
+  const bottom = kind === K.BottomQuarterRound || side === EDGE_SIDE.Bottom || (side === EDGE_SIDE.Both && angleB < 0);
+  return bottom ? { r, c: [-r, r] } : { r, c: [-r, t - r] };
 }
 
 // Wysokosc fazy (pion przy narozu) dla rodzaju profilu
@@ -34,8 +36,17 @@ function chamferOf(kind, thickness, shape) {
   return Math.min(shape.chamferSize, thickness);
 }
 
-// Zarys docelowy profili tarczy ksztaltowej: u = f(v) (u <= 0), proporcje do grubosci T
-export function formOutline(kind, t) {
+// Zarys docelowy profilu tarczy ksztaltowej ze strona: dol - lustro (tarcza odwrocona), obie - obie strony naraz
+export function formOutline(kind, t, side = 0) {
+  const top = formTop(kind, t);
+  if (!top) return null;
+  if (side === EDGE_SIDE.Bottom) return (v) => top(t - v);
+  if (side === EDGE_SIDE.Both) return (v) => Math.min(top(v), top(t - v));
+  return top;
+}
+
+// Zarys docelowy profili tarczy ksztaltowej (strona gorna): u = f(v) (u <= 0), proporcje do grubosci T
+function formTop(kind, t) {
   const arcLeft = (cu, cv, r, v) => cu - sq(r * r - (v - cv) ** 2);		// lewa strona okregu (wkleslosc)
   const arcRight = (cu, cv, r, v) => cu + sq(r * r - (v - cv) ** 2);	// prawa strona (wypuklosc)
   const ogee = (r, v) => (v >= t - r ? arcRight(-2 * r, t - r, r, v) : v >= t - 2 * r ? arcLeft(0, t - r, r, v) : 0);
@@ -70,15 +81,15 @@ export function formOutline(kind, t) {
 
 // Polplaszczyzna przejscia tarczy garnkowej {n, d} i punkt styku tarczy (srodek odcinka szlifowanego).
 // Profil ksztaltowy: {form} - zarys docelowy, styk na wierzcholku profilu.
-export function passPlane(kind, angleB, thickness, shape) {
+export function passPlane(kind, angleB, thickness, shape, side = 0) {
   const n = normal(angleB);
-  const form = FORM_KINDS.includes(kind) ? formOutline(kind, thickness) : null;
+  const form = FORM_KINDS.includes(kind) ? formOutline(kind, thickness, side) : null;
   if (form) {
     let best = [form(thickness / 2), thickness / 2];
     for (let i = 0; i <= 40; i++) { const v = (i / 40) * thickness; if (form(v) > best[0]) best = [form(v), v]; }
     return { n, d: Infinity, form, contact: best };
   }
-  const arc = arcOf(kind, thickness, shape);
+  const arc = arcOf(kind, thickness, shape, side, angleB);
   if (arc) return { n, d: dot(n, arc.c) + arc.r, contact: [arc.c[0] + arc.r * n[0], arc.c[1] + arc.r * n[1]] };
   if (Math.abs(angleB) < 0.01) {
     // bok prosty (tez European i kat 0 w recepturze wlasnej): cienka warstwa z calej krawedzi
@@ -111,11 +122,11 @@ export function clip(poly, { n, d }) {
 }
 
 // Zarys u = f(v) pasa krawedzi po przejsciach (kat albo {angleB}); kazde przejscie scina zarys
-export function edgeOutline(kind, angles, thickness, shape, width = 60) {
+export function edgeOutline(kind, angles, thickness, shape, width = 60, side = 0) {
   const vs = Array.from({ length: SAMPLES + 1 }, (_, i) => (i * thickness) / SAMPLES);
   const f = vs.map(() => 0);
   for (const a of angles) {
-    const pl = passPlane(kind, typeof a === 'number' ? a : a.angleB, thickness, shape);
+    const pl = passPlane(kind, typeof a === 'number' ? a : a.angleB, thickness, shape, side);
     for (let i = 0; i < vs.length; i++) {
       let lim;
       if (pl.form) lim = pl.form(vs[i]);
@@ -128,8 +139,8 @@ export function edgeOutline(kind, angles, thickness, shape, width = 60) {
 }
 
 // Przekroj pasa krawedzi o szerokosci width po przejsciach (wielokat do rysunku i bryly)
-export function edgeSection(kind, angles, thickness, shape, width = 60) {
-  const { vs, f } = edgeOutline(kind, angles, thickness, shape, width);
+export function edgeSection(kind, angles, thickness, shape, width = 60, side = 0) {
+  const { vs, f } = edgeOutline(kind, angles, thickness, shape, width, side);
   const right = vs.map((v, i) => [f[i], v]);
   // proste odcinki bez punktow posrednich (mniej wierzcholkow bryly)
   const pts = right.filter((p, i) => {

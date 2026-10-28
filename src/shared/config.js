@@ -43,6 +43,8 @@ export const VARIABLES = {
   activeRepeats: 'RecipeStore.Active.Repeats',
   activeSpindleFrequency: 'RecipeStore.Active.SpindleFrequency',
   activePolishSteps: 'RecipeStore.Active.PolishSteps',
+  activeSide: 'RecipeStore.Active.Side',
+  cycleSide: 'EdgeProfile.CycleProfile.Side',
   cyclePolishSteps: 'EdgeProfile.CycleProfile.PolishSteps',
   stage: 'EdgeProfile.Stage',
   stageCount: 'EdgeProfile.StageCount',

@@ -16,8 +16,9 @@ liczniki, alarmy i przekrój krawędzi 2D (stan obecny i profil docelowy).
 21 receptur startowych jak w PLC (`src/shared/edgeprofile.js`): bok prosty, fazy, ćwierćwałki, półwałek (1/2 Bullnose) oraz
 profile z katalogu (MosCut): European, 1/2 Bevel, 1/4 Round, 1/4 Bullnose, Demi Bullnose (tarcza garnkowa, fasetki na
 kątach B) i Cove, Cove Dupont, Cove Ogee, Deep Ogee, Dupont, Flat Ogee, Ogee, Ogee Bullnose, Waterfall (tarcza kształtowa,
-przejście B = 0). Przekrój (`src/shared/edgeshape.js`) jako zarys u = f(v) – także kształty wklęsłe. Etapy polerowania
-(`polishSteps`): po kształcie wymiana narzędzia (krok „Wymiana narzędzia – START”) i ta sama lista przejść.
+przejście B = 0). Przekrój (`src/shared/edgeshape.js`) jako zarys u = f(v) – także kształty wklęsłe. Strona profilu
+(`side`): góra / dół / obie dla profili asymetrycznych. Etapy polerowania (`polishSteps`): po kształcie wymiana narzędzia
+(krok „Wymiana narzędzia – START”) i ta sama lista przejść. Wszystkie kombinacje sprawdza `test/combinations.test.js`.
 
 ## Tryby
 
