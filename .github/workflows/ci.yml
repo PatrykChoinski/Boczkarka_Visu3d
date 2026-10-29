@@ -18,11 +18,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Wybor runnera dla testow: wlasny komputer ze zmiennej repo CI_RUNS_ON (CiRunner/ w repo glownym), gdy runner
+  # z tymi etykietami jest online, inaczej windows-latest - CI nie czeka na wylaczony laptop. Lista runnerow wymaga
+  # sekretu RUNNER_STATUS_TOKEN (fine-grained PAT, "Administration: Read-only" na tym repo); bez niego CI_RUNS_ON
+  # bez sprawdzania. PR z forka ZAWSZE na windows-latest (repo publiczne - obcy kod nie idzie na nasz komputer).
+  pick-runner:
+    name: Wybor runnera
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runs-on: ${{ steps.pick.outputs.runs-on }}
+    steps:
+      - name: Wybor runnera (wlasny komputer gdy online, inaczej windows-latest)
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          SELF_HOSTED: ${{ vars.CI_RUNS_ON }}
+          FORK_PR: ${{ github.event.pull_request.head.repo.fork }}
+        run: |
+          pick() { echo "runs-on=$1" >> "$GITHUB_OUTPUT"; echo "Runner: $1 ($2)"; }
+          hosted='"windows-latest"'
+          if [ "$FORK_PR" = "true" ]; then pick "$hosted" "pull request from a fork"; exit 0; fi
+          if [ -z "$SELF_HOSTED" ]; then pick "$hosted" "CI_RUNS_ON not set"; exit 0; fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning title=Runner::No RUNNER_STATUS_TOKEN secret - cannot check if the self-hosted runner is online, using CI_RUNS_ON as is"
+            pick "$SELF_HOSTED" "no RUNNER_STATUS_TOKEN"; exit 0
+          fi
+          if ! runners=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners" --paginate); then
+            echo "::warning title=Runner::Listing runners failed (RUNNER_STATUS_TOKEN needs Administration: Read-only) - using windows-latest"
+            pick "$hosted" "runner list unavailable"; exit 0
+          fi
+          online=$(jq -rs --argjson want "$SELF_HOSTED" '($want | if type == "array" then . else [.] end) as $w
+            | [.[].runners[] | select(.status == "online")
+               | select([.labels[].name] as $have | all($w[]; . as $l | $have | index($l) != null)) | .name]
+            | join(",")' <<< "$runners")
+          if [ -n "$online" ]; then
+            pick "$SELF_HOSTED" "online: $online"
+          else
+            echo "::notice title=Runner::Self-hosted runner $SELF_HOSTED offline - tests run on windows-latest (full install)"
+            pick "$hosted" "self-hosted runner offline"
+          fi
+
   test-windows:
     name: Testy i uruchomienie strony (Windows)
-    # Domyslnie runner GitHuba; zmienna repo CI_RUNS_ON (np. ["self-hosted","boczkarka"], CiRunner/ w repo glownym)
-    # przelacza na wlasny komputer. Repo publiczne: PR z forka ZAWSZE na runnerze GitHuba (obcy kod nie idzie na nasz komputer).
-    runs-on: ${{ fromJSON((github.event.pull_request.head.repo.fork && '"windows-latest"') || vars.CI_RUNS_ON || '"windows-latest"') }}
+    # Wlasny komputer albo windows-latest - wybiera pick-runner
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
