@@ -4,6 +4,12 @@ Zmiany w Boczkarka Visu3D (VizuApp boczkarki). Starsze wpisy (do 2026-10-23) –
 (zgłoszenie [#128](https://github.com/Induprogress/Promasz_PilaJednosuportowa/issues/128)
 w repo głównym). Do 2026-10-21 aplikacja była w repo HMI (`HMI/VizuApp`); historia commitów została przeniesiona tutaj.
 
+## 2026-10-29
+
+### Polskie nazwy profili
+- Rodzaje i receptury startowe po polsku (Europejski, Faza na pół grubości, Zaokrąglenie małe, Wałek ćwiartkowy, Wałek spłaszczony, Wklęsły, Wklęsły ze stopniem, Wklęsło-wypukły, Esownica głęboka, Stopień zaokrąglony, Esownica płaska, Esownica, Esownica z wałkiem, Kaskadowy); w wersji angielskiej nazwy z katalogu (European, 1/2 Bevel, ... Waterfall).
+- Tłumaczenie nazw receptur z PLC (bez polskich znaków) na angielski.
+
 ## 2026-10-28 (8)
 
 ### Język polski / angielski, wersja strony

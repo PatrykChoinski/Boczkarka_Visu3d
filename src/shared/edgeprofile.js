@@ -11,9 +11,9 @@ export const PROFILE_TYPE = {
   Cove: 12, CoveDupont: 13, CoveOgee: 14, DeepOgee: 15, Dupont: 16, FlatOgee: 17, Ogee: 18, OgeeBullnose: 19, Waterfall: 20,
 };
 export const PROFILE_NAMES = {
-  0: 'Bok prosty', 1: 'Faza górna', 2: 'Faza dolna', 3: 'Ćwierćwałek górny', 4: 'Ćwierćwałek dolny', 5: 'Półwałek (1/2 Bullnose)',
-  6: 'Własny', 7: 'European', 8: '1/2 Bevel', 9: '1/4 Round', 10: '1/4 Bullnose', 11: 'Demi Bullnose', 12: 'Cove',
-  13: 'Cove Dupont', 14: 'Cove Ogee', 15: 'Deep Ogee', 16: 'Dupont', 17: 'Flat Ogee', 18: 'Ogee', 19: 'Ogee Bullnose', 20: 'Waterfall',
+  0: 'Bok prosty', 1: 'Faza górna', 2: 'Faza dolna', 3: 'Ćwierćwałek górny', 4: 'Ćwierćwałek dolny', 5: 'Półwałek',
+  6: 'Własny', 7: 'Europejski', 8: 'Faza na pół grubości', 9: 'Zaokrąglenie małe', 10: 'Wałek ćwiartkowy', 11: 'Wałek spłaszczony', 12: 'Wklęsły',
+  13: 'Wklęsły ze stopniem', 14: 'Wklęsło-wypukły', 15: 'Esownica głęboka', 16: 'Stopień zaokrąglony', 17: 'Esownica płaska', 18: 'Esownica', 19: 'Esownica z wałkiem', 20: 'Kaskadowy',
 };
 const T = PROFILE_TYPE;
 // profile tarczy ksztaltowej (jedno przejscie B = 0, Repeats: zgrubne + wykanczajace)
@@ -136,11 +136,11 @@ export function defaultRecipes() {
     make('Ćwierćwałek dolny', PROFILE_TYPE.BottomQuarterRound),
     make('Półwałek', PROFILE_TYPE.HalfRound),
     // profile z katalogu (MosCut: Standard / Premium)
-    make('European', T.European),
-    make('1/2 Bevel', T.HalfBevel),
-    make('1/4 Round', T.QuarterRound),
-    make('1/4 Bullnose', T.QuarterBullnose),
-    make('Demi Bullnose', T.DemiBullnose),
+    make(PROFILE_NAMES[T.European], T.European),
+    make(PROFILE_NAMES[T.HalfBevel], T.HalfBevel),
+    make(PROFILE_NAMES[T.QuarterRound], T.QuarterRound),
+    make(PROFILE_NAMES[T.QuarterBullnose], T.QuarterBullnose),
+    make(PROFILE_NAMES[T.DemiBullnose], T.DemiBullnose),
     ...FORM_KINDS.map((k) => make(PROFILE_NAMES[k], k, { polishSteps: 3 })),
   ];
 }

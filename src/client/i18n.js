@@ -71,7 +71,8 @@ const EN = {
   // profile i receptury
   'Bok prosty': 'Straight edge', 'Faza górna': 'Top chamfer', 'Faza dolna': 'Bottom chamfer', 'Faza górna 45': 'Top chamfer 45',
   'Faza górna 30': 'Top chamfer 30', 'Faza dolna 45': 'Bottom chamfer 45', 'Ćwierćwałek górny': 'Top quarter round',
-  'Ćwierćwałek dolny': 'Bottom quarter round', 'Półwałek (1/2 Bullnose)': 'Half round (1/2 Bullnose)', Półwałek: 'Half round', Własny: 'Custom',
+  'Ćwierćwałek dolny': 'Bottom quarter round', Półwałek: 'Half round (1/2 Bullnose)', Własny: 'Custom',
+  'Europejski': 'European', 'Faza na pół grubości': '1/2 Bevel', 'Zaokrąglenie małe': '1/4 Round', 'Wałek ćwiartkowy': '1/4 Bullnose', 'Wałek spłaszczony': 'Demi Bullnose', 'Wklęsły': 'Cove', 'Wklęsły ze stopniem': 'Cove Dupont', 'Wklęsło-wypukły': 'Cove Ogee', 'Esownica głęboka': 'Deep Ogee', 'Stopień zaokrąglony': 'Dupont', 'Esownica płaska': 'Flat Ogee', 'Esownica': 'Ogee', 'Esownica z wałkiem': 'Ogee Bullnose', 'Kaskadowy': 'Waterfall',
   // walidacja receptury (kody PLC)
   'Początek pola ≥ koniec': 'Field start ≥ end', 'Kąt poza zakresem osi B': 'Angle outside the B axis range',
   'Brak przejść / za dużo przejść': 'No passes / too many passes', 'Posuw poza zakresem': 'Feed out of range',
@@ -116,10 +117,14 @@ const PHRASES = Object.entries({
   'poniżej': 'below', 'powyżej': 'above', 'polerowanie': 'polishing', 'kształt': 'shaping', 'cykli': 'cycles',
 }).sort((a, b) => b[0].length - a[0].length);
 
+const ascii = (x) => x.replace(/ł/g, 'l').replace(/Ł/g, 'L').normalize('NFKD').replace(/[̀-ͯ]/g, '');
+const EN_ASCII = Object.fromEntries(Object.entries(EN).map(([k, v]) => [ascii(k), v]));
+
 export function t(text) {
   if (lang === 'pl' || text === null || text === undefined) return text;
   const s = String(text);
   if (EN[s] !== undefined) return EN[s];
+  if (EN_ASCII[s] !== undefined) return EN_ASCII[s];	// nazwy z PLC (STRING bez polskich znakow)
   let out = s;
   for (const [pl, en] of PHRASES) if (out.includes(pl)) out = out.split(pl).join(en);
   // pojedyncze slowa ze slownika w etykietach "A · B"
