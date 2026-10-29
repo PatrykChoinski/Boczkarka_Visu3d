@@ -20,7 +20,9 @@ concurrency:
 jobs:
   test-windows:
     name: Testy i uruchomienie strony (Windows)
-    runs-on: windows-latest
+    # Domyslnie runner GitHuba; zmienna repo CI_RUNS_ON (np. ["self-hosted","boczkarka"], CiRunner/ w repo glownym)
+    # przelacza na wlasny komputer. Repo publiczne: PR z forka ZAWSZE na runnerze GitHuba (obcy kod nie idzie na nasz komputer).
+    runs-on: ${{ fromJSON((github.event.pull_request.head.repo.fork && '"windows-latest"') || vars.CI_RUNS_ON || '"windows-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
